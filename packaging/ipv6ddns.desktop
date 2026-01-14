@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=ipv6ddns
+Exec=ipv6ddns
+Icon=ipv6ddns
+Terminal=true
+Categories=Network;

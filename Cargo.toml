@@ -27,3 +27,13 @@ codegen-units = 1
 
 [profile.dev]
 opt-level = 0
+
+[package.metadata.deb]
+maintainer = "Neycrol <neycrol@users.noreply.github.com>"
+license-file = ["LICENSE", "4"]
+assets = [
+  ["target/release/ipv6ddns", "usr/bin/ipv6ddns", "755"],
+  ["etc/ipv6ddns.service", "lib/systemd/system/ipv6ddns.service", "644"],
+  ["etc/config.toml", "etc/ipv6ddns/config.toml", "644"],
+  ["README.md", "usr/share/doc/ipv6ddns/README.md", "644"],
+]
