@@ -20,15 +20,40 @@ export RUSTFLAGS="-C opt-level=3 -C codegen-units=1 -C link-arg=-fuse-ld=lld"
 
 cargo build --release
 
-# Build .deb
-cargo deb --no-build
-
 mkdir -p dist
 
-# Rename deb to include git sha + arch
-DEB_SRC=$(ls -1 target/debian/*.deb | head -n1)
-DEB_OUT="dist/ipv6ddns-${PKGVER}-${ARCH}.deb"
-cp -f "$DEB_SRC" "$DEB_OUT"
+# Build .deb manually (avoid cargo-deb build deps)
+case "$ARCH" in
+  x86_64) DEB_ARCH=amd64 ;;
+  aarch64) DEB_ARCH=arm64 ;;
+  *) DEB_ARCH="$ARCH" ;;
+esac
+
+DEBROOT="dist/debroot"
+rm -rf "$DEBROOT"
+mkdir -p "$DEBROOT/DEBIAN" \
+         "$DEBROOT/usr/bin" \
+         "$DEBROOT/lib/systemd/system" \
+         "$DEBROOT/etc/ipv6ddns" \
+         "$DEBROOT/usr/share/doc/ipv6ddns"
+
+install -m 755 target/release/ipv6ddns "$DEBROOT/usr/bin/ipv6ddns"
+install -m 644 etc/ipv6ddns.service "$DEBROOT/lib/systemd/system/ipv6ddns.service"
+install -m 644 etc/config.toml "$DEBROOT/etc/ipv6ddns/config.toml"
+install -m 644 README.md "$DEBROOT/usr/share/doc/ipv6ddns/README.md"
+
+cat > "$DEBROOT/DEBIAN/control" <<EOF
+Package: ipv6ddns
+Version: ${PKGVER}
+Architecture: ${DEB_ARCH}
+Maintainer: Neycrol <neycrol@users.noreply.github.com>
+Section: net
+Priority: optional
+Depends: ca-certificates
+Description: Event-driven IPv6 DDNS client for Cloudflare
+EOF
+
+dpkg-deb --build "$DEBROOT" "dist/ipv6ddns-${PKGVER}-${ARCH}.deb"
 
 # AppImage
 rm -rf dist/AppDir
