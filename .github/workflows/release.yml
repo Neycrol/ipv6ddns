@@ -64,9 +64,30 @@ jobs:
             dist/*.AppImage
             dist/ipv6ddns-*
 
+  build-archpkg:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup build user
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git sudo base-devel
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+      - name: Build Arch package
+        run: |
+          sudo -u builder -H bash -c 'export _commit="${GITHUB_SHA}"; cd "$GITHUB_WORKSPACE"; makepkg -f -p packaging/arch/PKGBUILD --noconfirm --syncdeps'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipv6ddns-archpkg
+          path: |
+            *.pkg.tar.zst
+
   release:
     runs-on: ubuntu-latest
-    needs: [build-x86_64, build-aarch64]
+    needs: [build-x86_64, build-aarch64, build-archpkg]
     if: ${{ inputs.publish }}
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +106,6 @@ jobs:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: ${{ steps.meta.outputs.tag }}
           draft: false
-          prerelease: true
+          prerelease: false
           files: |
             release-assets/**/*
