@@ -28,7 +28,8 @@ pkgver() {
 build() {
   cd "$srcdir/ipv6ddns"
   export CARGO_PROFILE_RELEASE_LTO=thin
-  local _rustflags="-C opt-level=3 -C codegen-units=1"
+  # Force GNU ld.bfd to avoid ring/lld link issues in CI
+  local _rustflags="-C opt-level=3 -C codegen-units=1 -C link-arg=-fuse-ld=bfd"
   export CARGO_ENCODED_RUSTFLAGS="${_rustflags// /$'\x1f'}"
   unset RUSTFLAGS
   cargo build --release
