@@ -1,0 +1,33 @@
+[Unit]
+Description=Event-driven IPv6 DDNS client for Cloudflare
+Documentation=https://github.com/xishaoa/ipv6ddns
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ipv6ddns --config /etc/ipv6ddns/config.toml
+Restart=always
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+# Environment variables for sensitive data
+# IMPORTANT: Set these before enabling the service!
+# Environment="CLOUDFLARE_API_TOKEN=your-token-here"
+# Environment="CLOUDFLARE_ZONE_ID=your-zone-id"
+# Environment="CLOUDFLARE_RECORD_NAME=home.example.com"
+# Environment="CLOUDFLARE_MULTI_RECORD=error"
+
+# Logging
+Environment="RUST_LOG=info"
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ipv6ddns
+
+[Install]
+WantedBy=multi-user.target

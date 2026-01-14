@@ -1,0 +1,17 @@
+# Generated files
+target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Sensitive data
+config.toml
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
