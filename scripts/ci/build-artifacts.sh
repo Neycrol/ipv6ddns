@@ -84,11 +84,11 @@ curl -fsSL "$APPIMAGE_TOOL_URL" -o /tmp/appimagetool.AppImage
 chmod +x /tmp/appimagetool.AppImage
 
 APPIMG_TMP=$(mktemp -d)
-if /tmp/appimagetool.AppImage "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"; then
+if APPIMAGE_EXTRACT_AND_RUN=1 /tmp/appimagetool.AppImage "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"; then
   :
 else
   # FUSE may be missing on CI; extract and run the embedded tool instead
-  (cd "$APPIMG_TMP" && /tmp/appimagetool.AppImage --appimage-extract >/dev/null)
+  (cd "$APPIMG_TMP" && APPIMAGE_EXTRACT_AND_RUN=1 /tmp/appimagetool.AppImage --appimage-extract >/dev/null)
   APPIMAGETOOL_BIN="$APPIMG_TMP/squashfs-root/usr/bin/appimagetool"
   if [ -x "$APPIMAGETOOL_BIN" ]; then
     "$APPIMAGETOOL_BIN" "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
