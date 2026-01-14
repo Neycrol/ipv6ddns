@@ -5,13 +5,7 @@ ARCH=${1:?arch required (x86_64|aarch64)}
 APPIMAGE_TOOL_URL=${APPIMAGE_TOOL_URL:?APPIMAGE_TOOL_URL required}
 
 ROOT_DIR=$(pwd)
-VERSION=$(python3 - <<'PY'
-import tomllib
-with open('Cargo.toml','rb') as f:
-    data=tomllib.load(f)
-print(data['package']['version'])
-PY
-)
+VERSION=$(awk -F '\"' '/^version =/ {print $2; exit}' Cargo.toml)
 GIT_SHA=$(git rev-parse --short HEAD)
 PKGVER="${VERSION}+git.${GIT_SHA}"
 
