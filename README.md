@@ -99,14 +99,14 @@ sudo systemctl enable --now ipv6ddns
 ├─────────────────────────────────────┤
 │  IPv6 Netlink Monitor               │
 │  (fallback: polling interval)       │
-│         ↓                           │
-│  State Machine                     │
-│  - Unknown → Detected → Synced     │
-│  - Error (with backoff)            │
-│         ↓                           │
-│  Cloudflare API Client             │
-│  - GET existing record             │
-│  - PUT update / POST create        │
+│          ↓                          │
+│  State Machine                      │
+│  - Unknown → Detected → Synced      │
+│  - Error (with backoff)             │
+│          ↓                          │
+│  Cloudflare API Client              │
+│  - GET existing record              │
+│  - PUT update / POST create         │
 └─────────────────────────────────────┘
 ```
 
