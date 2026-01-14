@@ -7,6 +7,9 @@ APPIMAGE_TOOL_URL=${APPIMAGE_TOOL_URL:-auto}
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 ROOT_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
 cd "$ROOT_DIR"
+
+# Clean previous artifacts
+rm -rf "$ROOT_DIR/dist"
 VERSION=$(awk -F '\"' '/^version =/ {print $2; exit}' Cargo.toml)
 GIT_SHA=$(git rev-parse --short HEAD)
 PKGVER="${VERSION}+git.${GIT_SHA}"
@@ -61,6 +64,7 @@ Description: Event-driven IPv6 DDNS client for Cloudflare
 EOF
 
 dpkg-deb --build "$DEBROOT" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.deb"
+rm -rf "$DEBROOT"
 
 # AppImage
 APPDIR="$ROOT_DIR/dist/AppDir"
@@ -109,6 +113,7 @@ else
   fi
 fi
 rm -rf "$APPIMG_TMP"
+rm -rf "$APPDIR"
 
 # Tarball (fallback / extra)
 cp -f "$BIN_PATH" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}"
