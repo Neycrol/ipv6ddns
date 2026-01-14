@@ -87,7 +87,16 @@ chmod +x /tmp/appimagetool.AppImage
 
 APPIMG_TMP=$(mktemp -d)
 (cd "$APPIMG_TMP" && /tmp/appimagetool.AppImage --appimage-extract >/dev/null)
-"$APPIMG_TMP/squashfs-root/AppRun" "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
+APPIMAGETOOL_BIN="$APPIMG_TMP/squashfs-root/usr/bin/appimagetool"
+if [ -x "$APPIMAGETOOL_BIN" ]; then
+  "$APPIMAGETOOL_BIN" "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
+elif [ -x "$APPIMG_TMP/squashfs-root/AppRun" ]; then
+  "$APPIMG_TMP/squashfs-root/AppRun" "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
+else
+  echo "appimagetool not found inside extracted AppImage" >&2
+  ls -la "$APPIMG_TMP/squashfs-root" >&2 || true
+  exit 1
+fi
 rm -rf "$APPIMG_TMP"
 
 # Tarball (fallback / extra)
