@@ -66,13 +66,7 @@ jobs:
       - name: Compute tag
         id: meta
         run: |
-          VERSION=$(python3 - <<'PY'
-import tomllib
-with open('Cargo.toml','rb') as f:
-    data=tomllib.load(f)
-print(data['package']['version'])
-PY
-          )
+          VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml","rb"))["package"]["version"])')
           SHA=$(git rev-parse --short HEAD)
           echo "tag=v${VERSION}+git.${SHA}" >> $GITHUB_OUTPUT
       - uses: actions/download-artifact@v4
