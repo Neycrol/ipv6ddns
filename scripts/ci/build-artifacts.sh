@@ -4,7 +4,9 @@ set -euo pipefail
 ARCH=${1:?arch required (x86_64|aarch64)}
 APPIMAGE_TOOL_URL=${APPIMAGE_TOOL_URL:-auto}
 
-ROOT_DIR=$(pwd)
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+ROOT_DIR=$(cd "$SCRIPT_DIR/../.." && pwd)
+cd "$ROOT_DIR"
 VERSION=$(awk -F '\"' '/^version =/ {print $2; exit}' Cargo.toml)
 GIT_SHA=$(git rev-parse --short HEAD)
 PKGVER="${VERSION}+git.${GIT_SHA}"
@@ -14,7 +16,7 @@ export RUSTFLAGS="-C opt-level=3 -C codegen-units=1 -C link-arg=-fuse-ld=lld"
 
 cargo build --release
 
-mkdir -p dist
+mkdir -p "$ROOT_DIR/dist"
 
 # Build .deb manually (avoid cargo-deb build deps)
 case "$ARCH" in
@@ -23,7 +25,7 @@ case "$ARCH" in
   *) DEB_ARCH="$ARCH" ;;
 esac
 
-DEBROOT="dist/debroot"
+DEBROOT="$ROOT_DIR/dist/debroot"
 rm -rf "$DEBROOT"
 mkdir -p "$DEBROOT/DEBIAN" \
          "$DEBROOT/usr/bin" \
@@ -47,20 +49,21 @@ Depends: ca-certificates
 Description: Event-driven IPv6 DDNS client for Cloudflare
 EOF
 
-dpkg-deb --build "$DEBROOT" "dist/ipv6ddns-${PKGVER}-${ARCH}.deb"
+dpkg-deb --build "$DEBROOT" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.deb"
 
 # AppImage
-rm -rf dist/AppDir
-mkdir -p dist/AppDir/usr/bin
-cp -f target/release/ipv6ddns dist/AppDir/usr/bin/ipv6ddns
-cp -f packaging/ipv6ddns.desktop dist/AppDir/ipv6ddns.desktop
-cp -f packaging/ipv6ddns.svg dist/AppDir/ipv6ddns.svg
-cat > dist/AppDir/AppRun <<'APP'
+APPDIR="$ROOT_DIR/dist/AppDir"
+rm -rf "$APPDIR"
+mkdir -p "$APPDIR/usr/bin"
+cp -f target/release/ipv6ddns "$APPDIR/usr/bin/ipv6ddns"
+cp -f packaging/ipv6ddns.desktop "$APPDIR/ipv6ddns.desktop"
+cp -f packaging/ipv6ddns.svg "$APPDIR/ipv6ddns.svg"
+cat > "$APPDIR/AppRun" <<'APP'
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "$0")")"
 exec "$HERE/usr/bin/ipv6ddns" "$@"
 APP
-chmod +x dist/AppDir/AppRun
+chmod +x "$APPDIR/AppRun"
 
 if [ "$APPIMAGE_TOOL_URL" = "auto" ]; then
   ASSETS_URL="https://github.com/probonopd/go-appimage/releases/expanded_assets/continuous"
@@ -84,8 +87,8 @@ chmod +x /tmp/appimagetool.AppImage
 
 APPIMG_TMP=$(mktemp -d)
 (cd "$APPIMG_TMP" && /tmp/appimagetool.AppImage --appimage-extract >/dev/null)
-"$APPIMG_TMP/squashfs-root/AppRun" dist/AppDir "dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
+"$APPIMG_TMP/squashfs-root/AppRun" "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
 rm -rf "$APPIMG_TMP"
 
 # Tarball (fallback / extra)
-cp -f target/release/ipv6ddns "dist/ipv6ddns-${PKGVER}-${ARCH}"
+cp -f target/release/ipv6ddns "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}"
