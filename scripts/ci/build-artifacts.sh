@@ -14,7 +14,18 @@ PKGVER="${VERSION}+git.${GIT_SHA}"
 export CARGO_PROFILE_RELEASE_LTO="thin"
 export RUSTFLAGS="-C opt-level=3 -C codegen-units=1 -C link-arg=-fuse-ld=lld"
 
-cargo build --release
+TARGET_TRIPLE=${CARGO_BUILD_TARGET:-}
+BIN_PATH="target/release/ipv6ddns"
+if [ "$ARCH" = "aarch64" ]; then
+  TARGET_TRIPLE=${TARGET_TRIPLE:-aarch64-unknown-linux-gnu}
+  export CC_aarch64_unknown_linux_gnu=${CC_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-gcc}
+  export AR_aarch64_unknown_linux_gnu=${AR_aarch64_unknown_linux_gnu:-aarch64-linux-gnu-ar}
+  export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER:-aarch64-linux-gnu-gcc}
+  cargo build --release --target "$TARGET_TRIPLE"
+  BIN_PATH="target/${TARGET_TRIPLE}/release/ipv6ddns"
+else
+  cargo build --release
+fi
 
 mkdir -p "$ROOT_DIR/dist"
 
@@ -33,7 +44,7 @@ mkdir -p "$DEBROOT/DEBIAN" \
          "$DEBROOT/etc/ipv6ddns" \
          "$DEBROOT/usr/share/doc/ipv6ddns"
 
-install -m 755 target/release/ipv6ddns "$DEBROOT/usr/bin/ipv6ddns"
+install -m 755 "$BIN_PATH" "$DEBROOT/usr/bin/ipv6ddns"
 install -m 644 etc/ipv6ddns.service "$DEBROOT/lib/systemd/system/ipv6ddns.service"
 install -m 644 etc/config.toml "$DEBROOT/etc/ipv6ddns/config.toml"
 install -m 644 README.md "$DEBROOT/usr/share/doc/ipv6ddns/README.md"
@@ -55,7 +66,7 @@ dpkg-deb --build "$DEBROOT" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.deb"
 APPDIR="$ROOT_DIR/dist/AppDir"
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin"
-cp -f target/release/ipv6ddns "$APPDIR/usr/bin/ipv6ddns"
+cp -f "$BIN_PATH" "$APPDIR/usr/bin/ipv6ddns"
 cp -f packaging/ipv6ddns.desktop "$APPDIR/ipv6ddns.desktop"
 cp -f packaging/ipv6ddns.svg "$APPDIR/ipv6ddns.svg"
 cat > "$APPDIR/AppRun" <<'APP'
@@ -100,4 +111,4 @@ fi
 rm -rf "$APPIMG_TMP"
 
 # Tarball (fallback / extra)
-cp -f target/release/ipv6ddns "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}"
+cp -f "$BIN_PATH" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}"

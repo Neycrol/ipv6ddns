@@ -35,21 +35,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build artifacts (aarch64)
-        uses: uraimo/run-on-arch-action@v2
-        with:
-          arch: aarch64
-          distro: ubuntu22.04
-          githubToken: ${{ github.token }}
-          install: |
-            apt-get update
-            apt-get install -y curl build-essential clang lld llvm pkg-config python3 xz-utils file ca-certificates git dpkg-dev
-          run: |
-            curl -fsSL https://sh.rustup.rs | sh -s -- -y
-            . /root/.cargo/env
-            git config --global --add safe.directory /home/runner/work/ipv6ddns/ipv6ddns
-            export APPIMAGE_TOOL_URL=auto
-            ./scripts/ci/build-artifacts.sh aarch64
+      - name: Install deps (cross)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl build-essential clang lld llvm pkg-config python3 xz-utils file ca-certificates git dpkg-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+      - name: Install Rust + target
+        run: |
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          rustup target add aarch64-unknown-linux-gnu
+      - name: Build artifacts (aarch64, cross)
+        env:
+          APPIMAGE_TOOL_URL: https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          CARGO_BUILD_TARGET: aarch64-unknown-linux-gnu
+        run: |
+          ./scripts/ci/build-artifacts.sh aarch64
       - uses: actions/upload-artifact@v4
         with:
           name: ipv6ddns-aarch64
