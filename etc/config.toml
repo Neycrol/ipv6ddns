@@ -1,0 +1,32 @@
+# ipv6ddns Configuration
+#
+# All settings can also be set via environment variables:
+#   CLOUDFLARE_API_TOKEN  - Cloudflare API token
+#   CLOUDFLARE_ZONE_ID    - Zone ID
+#   CLOUDFLARE_RECORD_NAME - DNS record name
+#   CLOUDFLARE_MULTI_RECORD - error|first|all
+#
+# Environment variables take precedence over config file values.
+#
+# Optional (env overrides if set):
+# api_token = "your-token-here"
+# zone_id = "your-zone-id"
+
+# Record name to update
+record_name = "xishao.top"
+
+# Request timeout in seconds
+timeout = 30
+
+# Polling interval in seconds (used when netlink is unavailable)
+# Default: 60 seconds
+poll_interval = 60
+
+# Enable verbose logging
+verbose = false
+
+# Multi-record policy when multiple AAAA records exist for the same name:
+#   error - refuse to update (safe default)
+#   first - update the first record found
+#   all   - update all AAAA records
+multi_record = "error"

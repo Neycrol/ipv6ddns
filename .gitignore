@@ -1,6 +1,6 @@
 # Generated files
 target/
-Cargo.lock
+!Cargo.lock
 
 # IDE
 .idea/
@@ -10,6 +10,7 @@ Cargo.lock
 
 # Sensitive data
 config.toml
+!etc/config.toml
 *.log
 
 # OS
