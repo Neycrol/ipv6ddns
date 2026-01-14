@@ -23,7 +23,7 @@ jobs:
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       - name: Build artifacts (x86_64)
         env:
-          APPIMAGE_TOOL_URL: https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          APPIMAGE_TOOL_URL: auto
         run: |
           ./scripts/ci/build-artifacts.sh x86_64
       - uses: actions/upload-artifact@v4
@@ -48,7 +48,7 @@ jobs:
             curl -fsSL https://sh.rustup.rs | sh -s -- -y
             . /root/.cargo/env
             git config --global --add safe.directory /home/runner/work/ipv6ddns/ipv6ddns
-            export APPIMAGE_TOOL_URL=https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage
+            export APPIMAGE_TOOL_URL=auto
             ./scripts/ci/build-artifacts.sh aarch64
       - uses: actions/upload-artifact@v4
         with:

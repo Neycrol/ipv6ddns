@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ARCH=${1:?arch required (x86_64|aarch64)}
-APPIMAGE_TOOL_URL=${APPIMAGE_TOOL_URL:?APPIMAGE_TOOL_URL required}
+APPIMAGE_TOOL_URL=${APPIMAGE_TOOL_URL:-auto}
 
 ROOT_DIR=$(pwd)
 VERSION=$(awk -F '\"' '/^version =/ {print $2; exit}' Cargo.toml)
@@ -61,6 +61,23 @@ HERE="$(dirname "$(readlink -f "$0")")"
 exec "$HERE/usr/bin/ipv6ddns" "$@"
 APP
 chmod +x dist/AppDir/AppRun
+
+if [ "$APPIMAGE_TOOL_URL" = "auto" ]; then
+  ASSETS_URL="https://github.com/probonopd/go-appimage/releases/expanded_assets/continuous"
+  case "$ARCH" in
+    x86_64) ARCH_RE="x86_64" ;;
+    aarch64) ARCH_RE="(aarch64|arm64)" ;;
+    *) ARCH_RE="$ARCH" ;;
+  esac
+  APPIMAGE_TOOL_PATH=$(curl -fsSL "$ASSETS_URL" | \
+    grep -oE "probonopd/go-appimage/releases/download/continuous/appimagetool-[^\\\" ]*-${ARCH_RE}\\.AppImage" | \
+    head -n1)
+  if [ -z "$APPIMAGE_TOOL_PATH" ]; then
+    echo "Failed to find appimagetool for arch ${ARCH} via ${ASSETS_URL}" >&2
+    exit 1
+  fi
+  APPIMAGE_TOOL_URL="https://github.com/${APPIMAGE_TOOL_PATH}"
+fi
 
 curl -fsSL "$APPIMAGE_TOOL_URL" -o /tmp/appimagetool.AppImage
 chmod +x /tmp/appimagetool.AppImage
