@@ -38,7 +38,7 @@ jobs:
       - name: Install deps (cross)
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl build-essential clang lld llvm pkg-config python3 xz-utils file ca-certificates git dpkg-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo apt-get install -y curl build-essential clang lld llvm pkg-config python3 xz-utils file ca-certificates git dpkg-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu lld
       - name: Install Rust + target
         run: |
           curl -fsSL https://sh.rustup.rs | sh -s -- -y

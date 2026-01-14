@@ -12,7 +12,7 @@ GIT_SHA=$(git rev-parse --short HEAD)
 PKGVER="${VERSION}+git.${GIT_SHA}"
 
 export CARGO_PROFILE_RELEASE_LTO="thin"
-export RUSTFLAGS="-C opt-level=3 -C codegen-units=1 -C link-arg=-fuse-ld=lld"
+export RUSTFLAGS="-C opt-level=3 -C codegen-units=1"
 
 TARGET_TRIPLE=${CARGO_BUILD_TARGET:-}
 BIN_PATH="target/release/ipv6ddns"
