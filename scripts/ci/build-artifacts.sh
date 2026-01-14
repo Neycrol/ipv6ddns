@@ -46,7 +46,7 @@ chmod +x dist/AppDir/AppRun
 curl -fsSL "$APPIMAGE_TOOL_URL" -o /tmp/appimagetool.AppImage
 chmod +x /tmp/appimagetool.AppImage
 
-ARCH="$ARCH" /tmp/appimagetool.AppImage dist/AppDir "dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
+APPIMAGE_EXTRACT_AND_RUN=1 ARCH="$ARCH" /tmp/appimagetool.AppImage dist/AppDir "dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
 
 # Tarball (fallback / extra)
 cp -f target/release/ipv6ddns "dist/ipv6ddns-${PKGVER}-${ARCH}"
