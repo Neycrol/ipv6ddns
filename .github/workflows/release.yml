@@ -47,6 +47,7 @@ jobs:
           run: |
             curl -fsSL https://sh.rustup.rs | sh -s -- -y
             . /root/.cargo/env
+            git config --global --add safe.directory /home/runner/work/ipv6ddns/ipv6ddns
             export APPIMAGE_TOOL_URL=https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage
             ./scripts/ci/build-artifacts.sh aarch64
       - uses: actions/upload-artifact@v4
