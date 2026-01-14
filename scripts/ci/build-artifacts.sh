@@ -66,38 +66,24 @@ APP
 chmod +x "$APPDIR/AppRun"
 
 if [ "$APPIMAGE_TOOL_URL" = "auto" ]; then
-  ASSETS_URL="https://github.com/probonopd/go-appimage/releases/expanded_assets/continuous"
   case "$ARCH" in
-    x86_64) ARCH_RE="x86_64" ;;
-    aarch64) ARCH_RE="(aarch64|arm64)" ;;
-    *) ARCH_RE="$ARCH" ;;
+    x86_64)
+      APPIMAGE_TOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+      ;;
+    aarch64)
+      APPIMAGE_TOOL_URL="https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage"
+      ;;
+    *)
+      echo "No AppImageKit appimagetool for arch: ${ARCH}" >&2
+      exit 1
+      ;;
   esac
-  APPIMAGE_TOOL_PATH=$(curl -fsSL "$ASSETS_URL" | \
-    grep -oE "probonopd/go-appimage/releases/download/continuous/appimagetool-[^\\\" ]*-${ARCH_RE}\\.AppImage" | \
-    head -n1)
-  if [ -z "$APPIMAGE_TOOL_PATH" ]; then
-    echo "Failed to find appimagetool for arch ${ARCH} via ${ASSETS_URL}" >&2
-    exit 1
-  fi
-  APPIMAGE_TOOL_URL="https://github.com/${APPIMAGE_TOOL_PATH}"
 fi
 
 curl -fsSL "$APPIMAGE_TOOL_URL" -o /tmp/appimagetool.AppImage
 chmod +x /tmp/appimagetool.AppImage
 
-APPIMG_TMP=$(mktemp -d)
-(cd "$APPIMG_TMP" && /tmp/appimagetool.AppImage --appimage-extract >/dev/null)
-APPIMAGETOOL_BIN="$APPIMG_TMP/squashfs-root/usr/bin/appimagetool"
-if [ -x "$APPIMAGETOOL_BIN" ]; then
-  "$APPIMAGETOOL_BIN" "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
-elif [ -x "$APPIMG_TMP/squashfs-root/AppRun" ]; then
-  "$APPIMG_TMP/squashfs-root/AppRun" "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
-else
-  echo "appimagetool not found inside extracted AppImage" >&2
-  ls -la "$APPIMG_TMP/squashfs-root" >&2 || true
-  exit 1
-fi
-rm -rf "$APPIMG_TMP"
+/tmp/appimagetool.AppImage "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"
 
 # Tarball (fallback / extra)
 cp -f target/release/ipv6ddns "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}"
