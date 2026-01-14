@@ -28,7 +28,9 @@ pkgver() {
 build() {
   cd "$srcdir/ipv6ddns"
   export CARGO_PROFILE_RELEASE_LTO=thin
-  export RUSTFLAGS='-C opt-level=3 -C codegen-units=1'
+  local _rustflags="-C opt-level=3 -C codegen-units=1"
+  export CARGO_ENCODED_RUSTFLAGS="${_rustflags// /$'\x1f'}"
+  unset RUSTFLAGS
   cargo build --release
 }
 
