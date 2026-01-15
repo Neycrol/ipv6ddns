@@ -41,4 +41,11 @@ jobs:
           IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          mkdir -p ~/.iflow
+          cat > ~/.iflow/settings.json <<EOF
+          {
+            "apiKey": "${IFLOW_API_KEY}",
+            "baseUrl": "https://apis.iflow.cn/v1"
+          }
+          EOF
           python scripts/ci/iflow_auto_pr.py
