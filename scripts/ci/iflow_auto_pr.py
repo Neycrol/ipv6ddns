@@ -24,6 +24,7 @@ ALLOWED_TYPES = {
 MAX_PRS = 10
 MAX_FILES = 8
 MAX_LINES = 200
+MAX_REPAIR_ATTEMPTS = int(os.environ.get("IFLOW_REPAIR_ATTEMPTS", "1"))
 
 
 def run(cmd, check=True, capture=False, text=True, **kwargs):
@@ -123,6 +124,52 @@ def normalize_patch(text):
     return "\n".join(cleaned).rstrip() + "\n"
 
 
+def extract_patch(text):
+    match = re.search(r"^diff --git[\\s\\S]*", text, flags=re.M)
+    if not match:
+        return None
+    patch = match.group(0)
+    return normalize_patch(patch)
+
+
+def run_iflow(prompt, model, max_turns, timeout, out_path):
+    iflow_cmd = [
+        "iflow",
+        "-m",
+        model,
+        "--thinking",
+        "--yolo",
+        "--max-turns",
+        str(max_turns),
+        "--timeout",
+        str(timeout),
+        "--checkpointing",
+        "false",
+        "-o",
+        str(out_path),
+        "-p",
+        prompt,
+    ]
+    cmd_str = shlex.join(iflow_cmd)
+    output = subprocess.check_output(
+        ["script", "-q", "-c", cmd_str, "/dev/null"],
+        text=True,
+    )
+    return output
+
+
+def apply_check(patch_path):
+    result = subprocess.run(
+        ["git", "apply", "--check", patch_path],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return True, ""
+    err = (result.stderr or result.stdout or "").strip()
+    return False, err
+
+
 def sanitize_branch(name, idx):
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-")
     return cleaned if cleaned else f"auto-pr-{idx}"
@@ -161,30 +208,8 @@ def main():
     timeout = int(os.environ.get("IFLOW_TIMEOUT", "1800"))
     model = os.environ.get("IFLOW_MODEL", "glm-4.7")
     print(f"Using model: {model}")
-    iflow_cmd = [
-        "iflow",
-        "-m",
-        model,
-        "--thinking",
-        "--yolo",
-        "--max-turns",
-        str(max_turns),
-        "--timeout",
-        str(timeout),
-        "--checkpointing",
-        "false",
-        "-o",
-        "/tmp/iflow_output.json",
-        "-p",
-        prompt,
-    ]
-
     print("Running iFlow...")
-    cmd_str = shlex.join(iflow_cmd)
-    output = subprocess.check_output(
-        ["script", "-q", "-c", cmd_str, "/dev/null"],
-        text=True,
-    )
+    output = run_iflow(prompt, model, max_turns, timeout, "/tmp/iflow_output.json")
     print("=== iFlow raw output (truncated) ===")
     print(output[:8000])
     print("=== end ===")
@@ -227,9 +252,49 @@ def main():
         patch_path = Path(f"/tmp/iflow_pr_{idx}.patch")
         patch_path.write_text(patch_text)
 
-        if subprocess.run(["git", "apply", "--check", str(patch_path)]).returncode != 0:
-            print(f"Skipping PR {idx}: patch failed --check")
-            continue
+        ok, err = apply_check(str(patch_path))
+        if not ok:
+            print(f"Patch failed --check for PR {idx}")
+            if err:
+                print(err[:4000])
+
+            repaired = False
+            if MAX_REPAIR_ATTEMPTS > 0:
+                for attempt in range(1, MAX_REPAIR_ATTEMPTS + 1):
+                    print(f"Attempting patch repair {attempt}/{MAX_REPAIR_ATTEMPTS} for PR {idx}...")
+                    repair_prompt = f"""
+You generated a git patch for repo {ROOT}, but it failed to apply.
+Error:
+{err}
+
+Original patch:
+{patch_text}
+
+Please output ONLY a corrected unified diff patch (starting with 'diff --git').
+No explanations, no JSON, no index lines. The patch must apply cleanly with git apply --check.
+"""
+                    repair_output = run_iflow(
+                        textwrap.dedent(repair_prompt).strip(),
+                        model,
+                        min(20, max_turns),
+                        min(1200, timeout),
+                        f"/tmp/iflow_repair_{idx}.json",
+                    )
+                    repaired_patch = extract_patch(repair_output)
+                    if not repaired_patch:
+                        print("Repair failed: no patch detected in output.")
+                        continue
+                    patch_path.write_text(repaired_patch)
+                    ok, err = apply_check(str(patch_path))
+                    if ok:
+                        repaired = True
+                        break
+                    print("Repair patch still failed:")
+                    if err:
+                        print(err[:4000])
+            if not repaired:
+                print(f"Skipping PR {idx}: patch failed --check")
+                continue
 
         files_changed, lines_changed = count_patch_stats(str(patch_path))
         if files_changed is None:
