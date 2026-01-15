@@ -111,8 +111,8 @@ jobs:
         uses: uraimo/run-on-arch-action@v2
         with:
           arch: aarch64
-          distro: archlinuxarm
-          mount-github-workspace: true
+          distro: archlinux
+          base_image: ghcr.io/archlinuxarm/archlinuxarm:latest
           install: |
             pacman-key --init
             pacman-key --populate archlinuxarm
@@ -154,6 +154,7 @@ jobs:
       - name: Build Android assets (rust)
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.2.11394342
+          ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.2.11394342
         run: |
           ./scripts/ci/build-android.sh
       - name: Build APK
