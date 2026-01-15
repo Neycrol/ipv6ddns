@@ -45,7 +45,7 @@ object BinaryManager {
             marker.writeText(versionMarker)
         }
         try {
-            Os.chmod(dest.absolutePath, 0o700)
+            Os.chmod(dest.absolutePath, 0x1C0)
         } catch (e: Exception) {
             Log.w(TAG, "chmod via Os failed, falling back: ${e.message}")
             try {

@@ -112,10 +112,10 @@ jobs:
         with:
           arch: aarch64
           distro: archlinux
-          base_image: docker.io/archlinuxarm/archlinuxarm:latest
+          base_image: docker.io/arm64v8/archlinux:latest
           install: |
             pacman-key --init
-            pacman-key --populate archlinuxarm
+            pacman-key --populate archlinux
             pacman -Syu --noconfirm
             pacman -S --noconfirm --needed base-devel git rust sudo
           run: |
