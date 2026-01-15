@@ -209,6 +209,26 @@ def main():
     prompt = build_prompt()
     max_turns = int(os.environ.get("IFLOW_MAX_TURNS", "20"))
     timeout = int(os.environ.get("IFLOW_TIMEOUT", "1800"))
+
+    # Optional ping to validate auth/model before heavy work.
+    if os.environ.get("IFLOW_PING") == "1":
+        print("Running iFlow ping...", flush=True)
+        try:
+            ping_out = run_iflow(
+                "Respond with a single word: pong.",
+                model,
+                1,
+                min(60, timeout),
+                "/tmp/iflow_ping.json",
+            )
+            print("=== iFlow ping output (truncated) ===")
+            print(ping_out[:2000])
+            print("=== end ===")
+        except subprocess.CalledProcessError as exc:
+            print(f"iFlow ping failed (exit {exc.returncode})", flush=True)
+            if exc.output:
+                print(exc.output[:4000], flush=True)
+            return 1
     model = os.environ.get("IFLOW_MODEL", "glm-4.7")
     print(f"Using model: {model}", flush=True)
     print("Running iFlow...", flush=True)
