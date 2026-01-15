@@ -221,6 +221,7 @@ def main():
     prompt = build_prompt()
     max_turns = int(os.environ.get("IFLOW_MAX_TURNS", "20"))
     timeout = int(os.environ.get("IFLOW_TIMEOUT", "1800"))
+    model = os.environ.get("IFLOW_MODEL", "glm-4.7")
 
     # Optional ping to validate auth/model before heavy work.
     if os.environ.get("IFLOW_PING") == "1":
@@ -241,7 +242,6 @@ def main():
             if exc.output:
                 print(exc.output[:4000], flush=True)
             return 1
-    model = os.environ.get("IFLOW_MODEL", "glm-4.7")
     print(f"Using model: {model}", flush=True)
     print("Running iFlow...", flush=True)
     try:
