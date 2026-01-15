@@ -139,6 +139,14 @@ jobs:
         run: |
           yes | sdkmanager --licenses
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.2.11394342"
+      - name: Prepare signing (optional)
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [[ -n "${ANDROID_KEYSTORE_B64:-}" ]]; then
+            echo "$ANDROID_KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/android/app/keystore.jks"
+            echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/app/keystore.jks" >> $GITHUB_ENV
+          fi
       - name: Install Rust
         run: |
           curl -fsSL https://sh.rustup.rs | sh -s -- -y
@@ -154,6 +162,11 @@ jobs:
           gradle-version: 8.7
           build-root-directory: android
           arguments: :app:assembleRelease
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       - uses: actions/upload-artifact@v4
         with:
           name: ipv6ddns-android-apk

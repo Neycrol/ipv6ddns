@@ -7,6 +7,13 @@ android {
     namespace = "com.neycrol.ipv6ddns"
     compileSdk = 34
 
+    val hasReleaseSigning = listOf(
+        System.getenv("ANDROID_KEYSTORE_PATH"),
+        System.getenv("ANDROID_KEYSTORE_PASSWORD"),
+        System.getenv("ANDROID_KEY_ALIAS"),
+        System.getenv("ANDROID_KEY_PASSWORD")
+    ).all { !it.isNullOrBlank() }
+
     defaultConfig {
         applicationId = "com.neycrol.ipv6ddns"
         minSdk = 26
@@ -18,9 +25,25 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = file(System.getenv("ANDROID_KEYSTORE_PATH"))
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
