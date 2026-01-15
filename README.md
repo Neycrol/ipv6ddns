@@ -119,3 +119,5 @@ journalctl -u ipv6ddns -f
 ## License
 
 MIT
+
+<!-- gh pr test 2026-01-15 -->
