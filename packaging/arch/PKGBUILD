@@ -45,6 +45,10 @@ build() {
 
 package() {
   cd "$srcdir/ipv6ddns"
+  if [[ -z "${_bin_path:-}" && -n "${_prebuilt_bin:-}" && -f "${_prebuilt_bin}" ]]; then
+    chmod +x "${_prebuilt_bin}"
+    _bin_path="${_prebuilt_bin}"
+  fi
   install -Dm755 "${_bin_path:-target/release/ipv6ddns}" "$pkgdir/usr/bin/ipv6ddns"
   install -Dm644 etc/ipv6ddns.service "$pkgdir/usr/lib/systemd/system/ipv6ddns.service"
   install -Dm644 etc/config.toml "$pkgdir/etc/ipv6ddns/config.toml"
