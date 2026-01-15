@@ -73,8 +73,9 @@ Rules:
 - The patch must apply cleanly with `git apply --check`.
 - Use a standard unified diff with `diff --git`, `---`, `+++`, and `@@` hunks.
 - Do NOT include `index ...` lines or fake hashes.
-- Do NOT use tools (write_file/exec/search). Assume you cannot write files or run commands.
-- Do NOT create patch files, run git apply, or test patches. Only output JSON with inline diffs.
+- Tools are allowed, but only modify files within the repo workspace.
+- Do NOT create patch files or run git commands; only output JSON with inline diffs.
+- Never push directly to main/master; only create PR branches.
 - Do not include explanations outside JSON.
 - If you are unsure, output {{"prs": []}}.
 Format strictly as:
@@ -184,6 +185,12 @@ def apply_check(patch_path):
         return True, ""
     err = (result.stderr or result.stdout or "").strip()
     return False, err
+
+
+def assert_not_main_branch():
+    branch = git("rev-parse", "--abbrev-ref", "HEAD", capture=True)
+    if branch in {"main", "master"}:
+        raise RuntimeError(f"Refusing to push from protected branch: {branch}")
 
 
 def maybe_write_iflow_context():
@@ -332,9 +339,6 @@ def main():
             if f.startswith(forbidden_prefixes):
                 print(f"Skipping fallback PR: forbidden path changed ({f}).")
                 return 0
-            if f.startswith(".github/workflows"):
-                print(f"Skipping fallback PR: workflow file changed ({f}).")
-                return 0
 
         branch = f"iflow/workspace-{os.getpid()}"
         title = "auto: apply iflow workspace changes"
@@ -349,6 +353,7 @@ def main():
         ])
 
         git("checkout", "-b", branch)
+        assert_not_main_branch()
         git("add", "-A")
         git("commit", "-m", title)
         git("push", "-u", "origin", branch)
@@ -452,6 +457,7 @@ No explanations, no JSON, no index lines. The patch must apply cleanly with git 
         ])
 
         git("checkout", "-b", branch)
+        assert_not_main_branch()
         git("apply", str(patch_path))
         git("add", "-A")
         git("commit", "-m", f"{pr['type']}: {title}")
