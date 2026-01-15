@@ -18,7 +18,9 @@ object BinaryManager {
                 "x86_64" -> return "ipv6ddns-x86_64"
             }
         }
-        return "ipv6ddns-arm64-v8a"
+        throw IllegalStateException(
+            "Unsupported ABI: ${abis.joinToString()} (supported: arm64-v8a, x86_64)"
+        )
     }
 
     fun ensureBinary(context: Context): File {

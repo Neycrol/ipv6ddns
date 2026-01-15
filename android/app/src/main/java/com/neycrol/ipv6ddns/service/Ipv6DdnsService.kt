@@ -62,6 +62,8 @@ class Ipv6DdnsService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start ipv6ddns: ${e.message}", e)
             runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
     }
 
@@ -75,6 +77,8 @@ class Ipv6DdnsService : Service() {
         Log.w(TAG, "ipv6ddns exited with code $exitCode")
         runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
         process = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun stopProcess() {
