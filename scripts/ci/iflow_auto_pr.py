@@ -6,6 +6,7 @@ import subprocess
 import shlex
 import sys
 import textwrap
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -154,10 +155,21 @@ def run_iflow(prompt, model, max_turns, timeout, out_path):
         iflow_cmd.insert(1, "--debug")
     cmd_str = shlex.join(iflow_cmd)
     outer_timeout = int(os.environ.get("IFLOW_OUTER_TIMEOUT", str(timeout + 120)))
+    env = os.environ.copy()
+    env.setdefault("GIT_TERMINAL_PROMPT", "0")
+    env.setdefault("SUDO_ASKPASS", "/bin/false")
+    env.setdefault("SUDO_ASKPASS_REQUIRE", "force")
+    env.setdefault("SUDO_PROMPT", "[sudo blocked] ")
+    if env.get("IFLOW_DISABLE_SUDO") == "1":
+        stub_dir = tempfile.mkdtemp(prefix="nosudo-")
+        stub_path = Path(stub_dir) / "sudo"
+        stub_path.write_text("#!/bin/sh\n" "echo 'sudo disabled in iflow automation' >&2\n" "exit 1\n")
+        stub_path.chmod(0o755)
+        env["PATH"] = f"{stub_dir}:{env.get('PATH','')}"
     cmd = ["script", "-q", "-c", cmd_str, "/dev/null"]
     if outer_timeout > 0:
         cmd = ["timeout", str(outer_timeout)] + cmd
-    output = subprocess.check_output(cmd, text=True)
+    output = subprocess.check_output(cmd, text=True, env=env)
     return output
 
 
