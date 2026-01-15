@@ -185,6 +185,28 @@ def apply_check(patch_path):
     return False, err
 
 
+def maybe_write_iflow_context():
+    if os.environ.get("IFLOW_WRITE_CONTEXT") != "1":
+        return None
+    path = ROOT / "IFLOW.md"
+    if path.exists():
+        return None
+    content = os.environ.get("IFLOW_CONTEXT")
+    if not content:
+        content = textwrap.dedent(
+            f"""\
+            # iFlow Auto-PR Context
+
+            You are an automated refactoring bot running in GitHub Actions for {ROOT}.
+            Goal: propose small, safe PRs (<= {MAX_FILES} files, <= {MAX_LINES} lines).
+            Each PR must be a single category and include a clean unified diff.
+            Do not use sudo or interactive prompts.
+            """
+        ).strip()
+    path.write_text(content)
+    return path
+
+
 def sanitize_branch(name, idx):
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-")
     return cleaned if cleaned else f"auto-pr-{idx}"
@@ -223,6 +245,12 @@ def main():
     timeout = int(os.environ.get("IFLOW_TIMEOUT", "1800"))
     model = os.environ.get("IFLOW_MODEL", "glm-4.7")
 
+    ctx_path = maybe_write_iflow_context()
+
+    def cleanup_context():
+        if ctx_path and ctx_path.exists():
+            ctx_path.unlink()
+
     # Optional ping to validate auth/model before heavy work.
     if os.environ.get("IFLOW_PING") == "1":
         print("Running iFlow ping...", flush=True)
@@ -241,6 +269,7 @@ def main():
             print(f"iFlow ping failed (exit {exc.returncode})", flush=True)
             if exc.output:
                 print(exc.output[:4000], flush=True)
+            cleanup_context()
             return 1
     print(f"Using model: {model}", flush=True)
     print("Running iFlow...", flush=True)
@@ -250,7 +279,9 @@ def main():
         print(f"iFlow failed (exit {exc.returncode})", flush=True)
         if exc.output:
             print(exc.output[:8000], flush=True)
+        cleanup_context()
         return 1
+    cleanup_context()
     print("=== iFlow raw output (truncated) ===")
     print(output[:8000])
     print("=== end ===")
