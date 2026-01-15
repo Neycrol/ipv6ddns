@@ -149,6 +149,7 @@ def main():
     if not os.environ.get("IFLOW_API_KEY"):
         print("IFLOW_API_KEY not set; aborting.")
         return 1
+    dry_run = os.environ.get("IFLOW_DRY_RUN") == "1"
 
     prompt = build_prompt()
     iflow_cmd = [
@@ -190,6 +191,11 @@ def main():
     prs = data.get("prs", [])[:MAX_PRS]
     if not prs:
         print("No PRs proposed.")
+        return 0
+    if dry_run:
+        print("DRY RUN: Parsed PRs")
+        for idx, pr in enumerate(prs, 1):
+            print(f"- {idx}. {pr.get('type')}: {pr.get('title')}")
         return 0
 
     status = git("status", "--porcelain", capture=True)
