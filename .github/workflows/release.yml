@@ -105,36 +105,32 @@ jobs:
 
   build-archlinuxarm:
     runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    needs: [build-aarch64]
     steps:
       - uses: actions/checkout@v4
-      - name: Build Arch Linux ARM package (aarch64)
-        uses: uraimo/run-on-arch-action@v2
+      - uses: actions/download-artifact@v4
         with:
-          arch: aarch64
-          distro: archlinux
-          base_image: docker.io/heywoodlh/archlinux:latest
-          install: |
-            pacman-key --init
-            pacman-key --populate archlinux
-            pacman -Syu --noconfirm
-            pacman -S --noconfirm --needed base-devel git rust sudo
-          run: |
-            set -euo pipefail
-            useradd -m builder
-            echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-            workdir="/github/workspace"
-            if [[ ! -d "$workdir/.git" ]]; then
-              workdir="/home/builder/workspace"
-              git clone https://github.com/Neycrol/ipv6ddns "$workdir"
-            fi
-            cd "$workdir"
-            if [[ -n "${GITHUB_SHA:-}" ]]; then
-              git fetch --depth 1 origin "$GITHUB_SHA" || true
-              git checkout -q "$GITHUB_SHA" || true
-            fi
-            chown -R builder:builder "$workdir"
-            sudo -u builder -H env GITHUB_SHA="$GITHUB_SHA" _commit="$GITHUB_SHA" BUILDDIR="/home/builder/build" \
-              bash -c "cd '$workdir/packaging/archlinuxarm'; makepkg -f --noconfirm --syncdeps --ignorearch"
+          name: ipv6ddns-aarch64
+          path: alarm-artifacts
+      - name: Setup build user
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git sudo base-devel
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+      - name: Build Arch Linux ARM package (aarch64)
+        run: |
+          BIN=$(ls -1 "$GITHUB_WORKSPACE"/alarm-artifacts/ipv6ddns-*-aarch64 2>/dev/null | head -n1)
+          if [[ -z "$BIN" ]]; then
+            echo "Prebuilt aarch64 binary not found in alarm-artifacts" >&2
+            ls -la "$GITHUB_WORKSPACE/alarm-artifacts" || true
+            exit 1
+          fi
+          chmod +x "$BIN"
+          sudo -u builder -H env GITHUB_SHA="$GITHUB_SHA" _commit="$GITHUB_SHA" _prebuilt_bin="$BIN" BUILDDIR="/home/builder/build" \
+            bash -c "cd '$GITHUB_WORKSPACE/packaging/archlinuxarm'; makepkg -f --noconfirm --syncdeps --ignorearch"
       - uses: actions/upload-artifact@v4
         with:
           name: ipv6ddns-archlinuxarm
