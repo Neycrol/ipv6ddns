@@ -79,6 +79,7 @@ jobs:
       - name: Build Arch package
         run: |
           sudo -u builder -H env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" GITHUB_SHA="$GITHUB_SHA" _commit="$GITHUB_SHA" \
+            RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS= \
             bash -c 'cd "$GITHUB_WORKSPACE/packaging/arch"; makepkg -f --noconfirm --syncdeps'
       - uses: actions/upload-artifact@v4
         with:
