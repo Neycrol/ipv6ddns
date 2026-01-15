@@ -38,14 +38,8 @@ def git(*args, capture=False, **kwargs):
 
 
 def build_prompt():
-    files = git("ls-files", capture=True).splitlines()
-    files_preview = "\n".join(files[:400])
-    todo_hits = ""
-    try:
-        todo_hits = run(["rg", "-n", "TODO|FIXME", str(ROOT)], capture=True)
-        todo_hits = "\n".join(todo_hits.splitlines()[:200])
-    except Exception:
-        todo_hits = "(rg not available or no matches)"
+    top_level = sorted([p.name for p in ROOT.iterdir() if p.name != ".git"])
+    files_preview = "\n".join(top_level)
 
     allowed = ", ".join(sorted(ALLOWED_TYPES))
     prompt = f"""
@@ -83,11 +77,8 @@ BEGIN_JSON
 {{...}}
 END_JSON
 
-Repo file list (first 400):
+Top-level entries:
 {files_preview}
-
-TODO/FIXME hits (first 200 lines):
-{todo_hits}
 """
     return textwrap.dedent(prompt).strip()
 
@@ -154,6 +145,8 @@ def main():
     dry_run = os.environ.get("IFLOW_DRY_RUN") == "1"
 
     prompt = build_prompt()
+    max_turns = int(os.environ.get("IFLOW_MAX_TURNS", "20"))
+    timeout = int(os.environ.get("IFLOW_TIMEOUT", "1800"))
     iflow_cmd = [
         "iflow",
         "-m",
@@ -161,9 +154,9 @@ def main():
         "--thinking",
         "--yolo",
         "--max-turns",
-        "4",
+        str(max_turns),
         "--timeout",
-        "1800",
+        str(timeout),
         "--checkpointing",
         "false",
         "-o",
