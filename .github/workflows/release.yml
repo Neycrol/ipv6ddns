@@ -130,6 +130,7 @@ jobs:
           fi
           chmod +x "$BIN"
           sudo -u builder -H env GITHUB_SHA="$GITHUB_SHA" _commit="$GITHUB_SHA" _prebuilt_bin="$BIN" BUILDDIR="/home/builder/build" \
+            CARCH="aarch64" CHOST="aarch64-unknown-linux-gnu" \
             bash -c "cd '$GITHUB_WORKSPACE/packaging/archlinuxarm'; makepkg -f --noconfirm --syncdeps --ignorearch"
       - uses: actions/upload-artifact@v4
         with:
