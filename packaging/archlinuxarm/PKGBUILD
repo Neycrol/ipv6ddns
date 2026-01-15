@@ -1,0 +1,46 @@
+# Maintainer: Neycrol <neycrol@users.noreply.github.com>
+
+pkgname=ipv6ddns-git
+pkgver=1.0.0.r0.g0000000
+pkgrel=1
+pkgdesc='Event-driven IPv6 DDNS client for Cloudflare'
+arch=('aarch64')
+url='https://github.com/Neycrol/ipv6ddns'
+license=('MIT')
+provides=('ipv6ddns')
+conflicts=('ipv6ddns')
+depends=('ca-certificates')
+makedepends=('git' 'rust' 'cargo')
+options=('!debug')
+
+_commit=${_commit:-HEAD}
+source=("git+https://github.com/Neycrol/ipv6ddns.git#commit=${_commit}")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/ipv6ddns"
+  printf "%s.r%s.g%s" \
+    "$(git show -s --format=%cd --date=format:%Y%m%d)" \
+    "$(git rev-list --count HEAD)" \
+    "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd "$srcdir/ipv6ddns"
+  # Keep the build conservative on ALARM to avoid ring+LTO issues.
+  export CARGO_PROFILE_RELEASE_LTO=off
+  local _rustflags="-C opt-level=3 -C codegen-units=1 -C lto=off -C link-arg=-fuse-ld=bfd"
+  export RUSTFLAGS="${_rustflags}"
+  export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${_rustflags}"
+  unset CARGO_ENCODED_RUSTFLAGS
+  cargo build --release
+}
+
+package() {
+  cd "$srcdir/ipv6ddns"
+  install -Dm755 "target/release/ipv6ddns" "$pkgdir/usr/bin/ipv6ddns"
+  install -Dm644 etc/ipv6ddns.service "$pkgdir/usr/lib/systemd/system/ipv6ddns.service"
+  install -Dm644 etc/config.toml "$pkgdir/etc/ipv6ddns/config.toml"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/ipv6ddns/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/ipv6ddns/LICENSE"
+}

@@ -103,9 +103,79 @@ jobs:
           path: |
             packaging/arch/*.pkg.tar.zst
 
+  build-archlinuxarm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Arch Linux ARM package (aarch64)
+        uses: uraimo/run-on-arch-action@v2
+        with:
+          arch: aarch64
+          distro: archlinuxarm
+          mount-github-workspace: true
+          install: |
+            pacman-key --init
+            pacman-key --populate archlinuxarm
+            pacman -Syu --noconfirm
+            pacman -S --noconfirm --needed base-devel git rust sudo
+          run: |
+            useradd -m builder
+            echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+            chown -R builder:builder /github/workspace
+            sudo -u builder -H env GITHUB_SHA="$GITHUB_SHA" _commit="$GITHUB_SHA" \
+              bash -c 'cd /github/workspace/packaging/archlinuxarm; makepkg -f --noconfirm --syncdeps'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipv6ddns-archlinuxarm
+          path: |
+            packaging/archlinuxarm/*.pkg.tar.zst
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK/NDK
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;26.2.11394342"
+      - name: Prepare signing (optional)
+        env:
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [[ -n "${ANDROID_KEYSTORE_B64:-}" ]]; then
+            echo "$ANDROID_KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/android/app/keystore.jks"
+            echo "ANDROID_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/app/keystore.jks" >> $GITHUB_ENV
+          fi
+      - name: Install Rust
+        run: |
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Build Android assets (rust)
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.2.11394342
+        run: |
+          ./scripts/ci/build-android.sh
+      - name: Build APK
+        uses: gradle/gradle-build-action@v3
+        with:
+          gradle-version: 8.7
+          build-root-directory: android
+          arguments: :app:assembleRelease
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipv6ddns-android-apk
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+
   release:
     runs-on: ubuntu-latest
-    needs: [build-x86_64, build-aarch64, build-archpkg]
+    needs: [build-x86_64, build-aarch64, build-archpkg, build-archlinuxarm, build-android]
     if: ${{ inputs.publish }}
     steps:
       - uses: actions/checkout@v4
