@@ -150,11 +150,14 @@ def run_iflow(prompt, model, max_turns, timeout, out_path):
         "-p",
         prompt,
     ]
+    if os.environ.get("IFLOW_DEBUG") == "1":
+        iflow_cmd.insert(1, "--debug")
     cmd_str = shlex.join(iflow_cmd)
-    output = subprocess.check_output(
-        ["script", "-q", "-c", cmd_str, "/dev/null"],
-        text=True,
-    )
+    outer_timeout = int(os.environ.get("IFLOW_OUTER_TIMEOUT", str(timeout + 120)))
+    cmd = ["script", "-q", "-c", cmd_str, "/dev/null"]
+    if outer_timeout > 0:
+        cmd = ["timeout", str(outer_timeout)] + cmd
+    output = subprocess.check_output(cmd, text=True)
     return output
 
 
@@ -207,9 +210,15 @@ def main():
     max_turns = int(os.environ.get("IFLOW_MAX_TURNS", "20"))
     timeout = int(os.environ.get("IFLOW_TIMEOUT", "1800"))
     model = os.environ.get("IFLOW_MODEL", "glm-4.7")
-    print(f"Using model: {model}")
-    print("Running iFlow...")
-    output = run_iflow(prompt, model, max_turns, timeout, "/tmp/iflow_output.json")
+    print(f"Using model: {model}", flush=True)
+    print("Running iFlow...", flush=True)
+    try:
+        output = run_iflow(prompt, model, max_turns, timeout, "/tmp/iflow_output.json")
+    except subprocess.CalledProcessError as exc:
+        print(f"iFlow failed (exit {exc.returncode})", flush=True)
+        if exc.output:
+            print(exc.output[:8000], flush=True)
+        return 1
     print("=== iFlow raw output (truncated) ===")
     print(output[:8000])
     print("=== end ===")

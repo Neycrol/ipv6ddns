@@ -41,6 +41,8 @@ jobs:
           IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
           IFLOW_MODEL: "glm-4.7"
           IFLOW_MAX_TURNS: "100"
+          IFLOW_DEBUG: "1"
+          PYTHONUNBUFFERED: "1"
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p ~/.iflow
@@ -50,4 +52,4 @@ jobs:
             "baseUrl": "https://apis.iflow.cn/v1"
           }
           EOF
-          python scripts/ci/iflow_auto_pr.py
+          python -u scripts/ci/iflow_auto_pr.py
