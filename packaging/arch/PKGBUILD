@@ -34,7 +34,8 @@ build() {
   export RUSTFLAGS="${_rustflags}"
   export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${_rustflags}"
   unset CARGO_ENCODED_RUSTFLAGS
-  if [[ -n "${_prebuilt_bin:-}" && -x "${_prebuilt_bin}" ]]; then
+  if [[ -n "${_prebuilt_bin:-}" && -f "${_prebuilt_bin}" ]]; then
+    chmod +x "${_prebuilt_bin}"
     _bin_path="${_prebuilt_bin}"
     return 0
   fi
