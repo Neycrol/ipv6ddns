@@ -42,6 +42,12 @@ class Ipv6DdnsService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
+            else -> {
+                Log.w(TAG, "Service restarted without action; stopping.")
+                runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
         }
         return START_STICKY
     }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Build
 import android.system.Os
 import android.util.Log
+import com.neycrol.ipv6ddns.BuildConfig
 import java.io.File
 import java.io.FileOutputStream
 
@@ -29,13 +30,19 @@ object BinaryManager {
             destDir.mkdirs()
         }
         val dest = File(destDir, "ipv6ddns")
-        if (!dest.exists()) {
+        val marker = File(destDir, "ipv6ddns.version")
+        val versionMarker = BuildConfig.VERSION_CODE.toString()
+        val needsCopy = !dest.exists() ||
+            !marker.exists() ||
+            marker.readText().trim() != versionMarker
+        if (needsCopy) {
             val assetName = assetNameForAbi()
             context.assets.open(assetName).use { input ->
-                FileOutputStream(dest).use { output ->
+                FileOutputStream(dest, false).use { output ->
                     input.copyTo(output)
                 }
             }
+            marker.writeText(versionMarker)
         }
         try {
             Os.chmod(dest.absolutePath, 0o700)
