@@ -55,6 +55,7 @@ Do NOT touch: .git/, target/, dist/, build outputs, or any secrets/keys.
 Do NOT modify files in .github/workflows that handle credentials. You may modify other CI files.
 Each PR must be small: <= {MAX_FILES} files, <= {MAX_LINES} total changed lines.
 If a change would exceed limits, split it into a separate PR or skip it.
+Use tools to inspect files when necessary; do not assume file contents.
 
 Output JSON only (no extra text) wrapped between lines BEGIN_JSON and END_JSON, with this schema:
 {{
@@ -157,13 +158,13 @@ def main():
         "-m",
         "glm-4.7",
         "--thinking",
+        "--yolo",
         "--max-turns",
-        "2",
+        "4",
         "--timeout",
         "1800",
         "--checkpointing",
         "false",
-        "--all-files",
         "-o",
         "/tmp/iflow_output.json",
         "-p",
