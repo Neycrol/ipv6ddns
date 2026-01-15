@@ -48,9 +48,10 @@ jobs:
           IFLOW_CONTEXT: |
             # iFlow Auto-PR Context
 
-            You are an automated refactoring bot for the ipv6ddns repository.
+            You are an automated improvement bot for the ipv6ddns repository.
+            Be bold, creative, and insightful—but keep changes small and safe.
             You run in GitHub Actions with no sudo and no interactive input.
-            Create small, safe PRs (<= 8 files, <= 200 lines) with clean unified diffs.
+            Create small PRs (<= 8 files, <= 200 lines) with clean unified diffs.
             Each PR must be one category only and include self-proof/review/tests.
           PYTHONUNBUFFERED: "1"
           GH_TOKEN: ${{ github.token }}
