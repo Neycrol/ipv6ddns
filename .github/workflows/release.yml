@@ -112,7 +112,7 @@ jobs:
         with:
           arch: aarch64
           distro: archlinux
-          base_image: ghcr.io/archlinuxarm/archlinuxarm:latest
+          base_image: docker.io/archlinuxarm/archlinuxarm:latest
           install: |
             pacman-key --init
             pacman-key --populate archlinuxarm
@@ -157,17 +157,18 @@ jobs:
           ANDROID_NDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.2.11394342
         run: |
           ./scripts/ci/build-android.sh
-      - name: Build APK
-        uses: gradle/gradle-build-action@v3
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: 8.7
-          build-root-directory: android
-          arguments: :app:assembleRelease
+      - name: Assemble release APK
         env:
           ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          gradle -p android :app:assembleRelease
       - uses: actions/upload-artifact@v4
         with:
           name: ipv6ddns-android-apk
