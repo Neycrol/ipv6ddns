@@ -134,7 +134,7 @@ jobs:
             fi
             chown -R builder:builder "$workdir"
             sudo -u builder -H env GITHUB_SHA="$GITHUB_SHA" _commit="$GITHUB_SHA" BUILDDIR="/home/builder/build" \
-              bash -c "cd '$workdir/packaging/archlinuxarm'; makepkg -f --noconfirm --syncdeps"
+              bash -c "cd '$workdir/packaging/archlinuxarm'; makepkg -f --noconfirm --syncdeps --ignorearch"
       - uses: actions/upload-artifact@v4
         with:
           name: ipv6ddns-archlinuxarm
