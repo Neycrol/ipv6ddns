@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.neycrol.ipv6ddns.data.AppConfig
@@ -70,6 +71,12 @@ fun AppScreen() {
     var verbose by rememberSaveable { mutableStateOf(false) }
     var multiRecord by rememberSaveable { mutableStateOf("error") }
     var showMenu by remember { mutableStateOf(false) }
+    val multiRecordOptions = listOf(
+        "error" to stringResource(R.string.multi_record_error),
+        "first" to stringResource(R.string.multi_record_first),
+        "all" to stringResource(R.string.multi_record_all)
+    )
+    val multiRecordLabel = multiRecordOptions.firstOrNull { it.first == multiRecord }?.second ?: multiRecord
 
     LaunchedEffect(config) {
         apiToken = config.apiToken
@@ -82,7 +89,7 @@ fun AppScreen() {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("ipv6ddns") }) }
+        topBar = { TopAppBar(title = { Text(stringResource(R.string.app_name)) }) }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -93,24 +100,24 @@ fun AppScreen() {
         ) {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Cloudflare")
+                    Text(stringResource(R.string.section_cloudflare))
                     OutlinedTextField(
                         value = apiToken,
                         onValueChange = { apiToken = it },
-                        label = { Text("API Token") },
+                        label = { Text(stringResource(R.string.label_api_token)) },
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = PasswordVisualTransformation()
                     )
                     OutlinedTextField(
                         value = zoneId,
                         onValueChange = { zoneId = it },
-                        label = { Text("Zone ID") },
+                        label = { Text(stringResource(R.string.label_zone_id)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = recordName,
                         onValueChange = { recordName = it },
-                        label = { Text("Record Name") },
+                        label = { Text(stringResource(R.string.label_record_name)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -118,7 +125,7 @@ fun AppScreen() {
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Runtime")
+                    Text(stringResource(R.string.section_runtime))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -126,14 +133,14 @@ fun AppScreen() {
                         OutlinedTextField(
                             value = timeoutSec,
                             onValueChange = { timeoutSec = it.filter { ch -> ch.isDigit() } },
-                            label = { Text("Timeout (s)") },
+                            label = { Text(stringResource(R.string.label_timeout)) },
                             modifier = Modifier.weight(1f)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         OutlinedTextField(
                             value = pollIntervalSec,
                             onValueChange = { pollIntervalSec = it.filter { ch -> ch.isDigit() } },
-                            label = { Text("Poll (s)") },
+                            label = { Text(stringResource(R.string.label_poll)) },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -143,7 +150,7 @@ fun AppScreen() {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Verbose")
+                        Text(stringResource(R.string.label_verbose))
                         Switch(checked = verbose, onCheckedChange = { verbose = it })
                     }
 
@@ -152,14 +159,14 @@ fun AppScreen() {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Multi-record")
+                        Text(stringResource(R.string.label_multi_record))
                         Button(onClick = { showMenu = true }) {
-                            Text(multiRecord)
+                            Text(multiRecordLabel)
                         }
                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                            listOf("error", "first", "all").forEach { option ->
+                            multiRecordOptions.forEach { (option, label) ->
                                 DropdownMenuItem(
-                                    text = { Text(option) },
+                                    text = { Text(label) },
                                     onClick = {
                                         multiRecord = option
                                         showMenu = false
@@ -173,9 +180,17 @@ fun AppScreen() {
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(if (running) "Status: Running" else "Status: Stopped")
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        stringResource(
+                            if (running) R.string.status_running else R.string.status_stopped
+                        )
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         Button(
+                            modifier = Modifier.weight(1f),
                             onClick = {
                                 val cfg = AppConfig(
                                     apiToken = apiToken.trim(),
@@ -199,9 +214,10 @@ fun AppScreen() {
                                 }
                             }
                         ) {
-                            Text("Start")
+                            Text(stringResource(R.string.action_start))
                         }
                         Button(
+                            modifier = Modifier.weight(1f),
                             onClick = {
                                 val intent = Intent(context, Ipv6DdnsService::class.java).apply {
                                     action = Ipv6DdnsService.ACTION_STOP
@@ -209,7 +225,7 @@ fun AppScreen() {
                                 context.startService(intent)
                             }
                         ) {
-                            Text("Stop")
+                            Text(stringResource(R.string.action_stop))
                         }
                     }
                 }

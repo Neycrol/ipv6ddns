@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">ipv6ddns</string>
+    <string name="section_cloudflare">Cloudflare</string>
+    <string name="label_api_token">API Token</string>
+    <string name="label_zone_id">Zone ID</string>
+    <string name="label_record_name">记录名</string>
+    <string name="section_runtime">运行设置</string>
+    <string name="label_timeout">超时（秒）</string>
+    <string name="label_poll">轮询（秒）</string>
+    <string name="label_verbose">详细日志</string>
+    <string name="label_multi_record">多记录</string>
+    <string name="multi_record_error">报错</string>
+    <string name="multi_record_first">第一个</string>
+    <string name="multi_record_all">全部</string>
+    <string name="status_running">状态：运行中</string>
+    <string name="status_stopped">状态：已停止</string>
+    <string name="action_start">开始</string>
+    <string name="action_stop">停止</string>
+</resources>

@@ -1,3 +1,19 @@
 <resources>
     <string name="app_name">ipv6ddns</string>
+    <string name="section_cloudflare">Cloudflare</string>
+    <string name="label_api_token">API Token</string>
+    <string name="label_zone_id">Zone ID</string>
+    <string name="label_record_name">Record Name</string>
+    <string name="section_runtime">Runtime</string>
+    <string name="label_timeout">Timeout (s)</string>
+    <string name="label_poll">Poll (s)</string>
+    <string name="label_verbose">Verbose</string>
+    <string name="label_multi_record">Multi-record</string>
+    <string name="multi_record_error">Error</string>
+    <string name="multi_record_first">First</string>
+    <string name="multi_record_all">All</string>
+    <string name="status_running">Status: Running</string>
+    <string name="status_stopped">Status: Stopped</string>
+    <string name="action_start">Start</string>
+    <string name="action_stop">Stop</string>
 </resources>
