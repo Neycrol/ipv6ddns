@@ -73,6 +73,8 @@ Rules:
 - The patch must apply cleanly with `git apply --check`.
 - Use a standard unified diff with `diff --git`, `---`, `+++`, and `@@` hunks.
 - Do NOT include `index ...` lines or fake hashes.
+- Do NOT use tools (write_file/exec/search). Assume you cannot write files or run commands.
+- Do NOT create patch files, run git apply, or test patches. Only output JSON with inline diffs.
 - Do not include explanations outside JSON.
 - If you are unsure, output {{"prs": []}}.
 Format strictly as:
@@ -200,6 +202,7 @@ def maybe_write_iflow_context():
             Goal: propose small, safe PRs (<= {MAX_FILES} files).
             Each PR must be a single category and include a clean unified diff.
             Do not use sudo or interactive prompts.
+            Do not use tools or write files; output JSON only.
             """
         ).strip()
     path.write_text(content)
