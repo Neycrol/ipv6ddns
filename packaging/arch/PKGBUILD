@@ -30,8 +30,9 @@ build() {
   export CARGO_PROFILE_RELEASE_LTO=thin
   # Force GNU ld.bfd to avoid ring/lld link issues in CI
   local _rustflags="-C opt-level=3 -C codegen-units=1 -C link-arg=-fuse-ld=bfd"
-  export CARGO_ENCODED_RUSTFLAGS="${_rustflags// /$'\x1f'}"
-  unset RUSTFLAGS
+  export RUSTFLAGS="${_rustflags}"
+  export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${_rustflags}"
+  unset CARGO_ENCODED_RUSTFLAGS
   cargo build --release
 }
 
