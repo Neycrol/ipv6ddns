@@ -70,6 +70,8 @@ Output JSON only (no extra text) wrapped between lines BEGIN_JSON and END_JSON, 
 
 Rules:
 - The patch must apply cleanly with `git apply --check`.
+- Use a standard unified diff with `diff --git`, `---`, `+++`, and `@@` hunks.
+- Do NOT include `index ...` lines or fake hashes.
 - Do not include explanations outside JSON.
 - If you are unsure, output {{"prs": []}}.
 Format strictly as:
@@ -111,6 +113,16 @@ def validate_pr(pr):
     return True, ""
 
 
+def normalize_patch(text):
+    # Remove invalid git metadata lines and normalize line endings.
+    cleaned = []
+    for line in text.replace("\r\n", "\n").replace("\r", "\n").splitlines():
+        if line.startswith("index "):
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned).rstrip() + "\n"
+
+
 def sanitize_branch(name, idx):
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-")
     return cleaned if cleaned else f"auto-pr-{idx}"
@@ -147,10 +159,12 @@ def main():
     prompt = build_prompt()
     max_turns = int(os.environ.get("IFLOW_MAX_TURNS", "20"))
     timeout = int(os.environ.get("IFLOW_TIMEOUT", "1800"))
+    model = os.environ.get("IFLOW_MODEL", "glm-4.7")
+    print(f"Using model: {model}")
     iflow_cmd = [
         "iflow",
         "-m",
-        "glm-4.7",
+        model,
         "--thinking",
         "--yolo",
         "--max-turns",
@@ -209,7 +223,7 @@ def main():
             print(f"Skipping PR {idx}: {reason}")
             continue
 
-        patch_text = pr["patch"]
+        patch_text = normalize_patch(pr["patch"])
         patch_path = Path(f"/tmp/iflow_pr_{idx}.patch")
         patch_path.write_text(patch_text)
 

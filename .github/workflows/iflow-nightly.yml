@@ -39,6 +39,7 @@ jobs:
       - name: Run iFlow auto PR
         env:
           IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
+          IFLOW_MODEL: "glm-4.7"
           IFLOW_MAX_TURNS: "100"
           GH_TOKEN: ${{ github.token }}
         run: |
