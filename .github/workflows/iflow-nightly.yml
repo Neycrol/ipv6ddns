@@ -1,0 +1,44 @@
+name: iflow-nightly-auto-pr
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 03:00 China Standard Time (UTC+8) == 19:00 UTC (previous day)
+    - cron: "0 19 * * *"
+
+concurrency:
+  group: iflow-nightly-auto-pr
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install iFlow CLI
+        run: npm i -g @iflow-ai/iflow-cli@latest
+
+      - name: Configure git
+        run: |
+          git config user.name "iflow-bot"
+          git config user.email "iflow-bot@users.noreply.github.com"
+
+      - name: Run iFlow auto PR
+        env:
+          IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/ci/iflow_auto_pr.py
