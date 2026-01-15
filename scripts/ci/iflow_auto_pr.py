@@ -3,6 +3,7 @@ import json
 import os
 import re
 import subprocess
+import shlex
 import sys
 import textwrap
 from pathlib import Path
@@ -172,7 +173,11 @@ def main():
     ]
 
     print("Running iFlow...")
-    output = subprocess.check_output(iflow_cmd, text=True)
+    cmd_str = shlex.join(iflow_cmd)
+    output = subprocess.check_output(
+        ["script", "-q", "-c", cmd_str, "/dev/null"],
+        text=True,
+    )
     print("=== iFlow raw output (truncated) ===")
     print(output[:8000])
     print("=== end ===")
