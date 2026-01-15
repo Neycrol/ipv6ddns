@@ -119,3 +119,5 @@ journalctl -u ipv6ddns -f
 ## License
 
 MIT
+
+<!-- codex auto-review test 2026-01-15 -->
