@@ -18,6 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install deps
         run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/microsoft-prod.list
+          sudo sed -i '/packages.microsoft.com/d' /etc/apt/sources.list.d/*.list || true
           sudo apt-get update
           sudo apt-get install -y curl build-essential clang lld llvm pkg-config python3 xz-utils file ca-certificates git dpkg-dev
       - name: Install Rust
@@ -43,6 +45,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install deps (cross)
         run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/microsoft-prod.list
+          sudo sed -i '/packages.microsoft.com/d' /etc/apt/sources.list.d/*.list || true
           sudo apt-get update
           sudo apt-get install -y curl build-essential clang lld llvm pkg-config python3 xz-utils file ca-certificates git dpkg-dev gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu lld
       - name: Install Rust + target
