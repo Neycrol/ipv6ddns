@@ -24,7 +24,6 @@ ALLOWED_TYPES = {
 
 MAX_PRS = 10
 MAX_FILES = 8
-MAX_LINES = 200
 MAX_REPAIR_ATTEMPTS = int(os.environ.get("IFLOW_REPAIR_ATTEMPTS", "1"))
 
 
@@ -50,7 +49,7 @@ Each PR must be ONE category only from: {allowed}.
 You can modify any text source file except secrets or generated artifacts.
 Do NOT touch: .git/, target/, dist/, build outputs, or any secrets/keys.
 Do NOT modify files in .github/workflows that handle credentials. You may modify other CI files.
-Each PR must be small: <= {MAX_FILES} files, <= {MAX_LINES} total changed lines.
+Each PR must be small: <= {MAX_FILES} files.
 If a change would exceed limits, split it into a separate PR or skip it.
 Use tools to inspect files when necessary; do not assume file contents.
 
@@ -198,7 +197,7 @@ def maybe_write_iflow_context():
             # iFlow Auto-PR Context
 
             You are an automated refactoring bot running in GitHub Actions for {ROOT}.
-            Goal: propose small, safe PRs (<= {MAX_FILES} files, <= {MAX_LINES} lines).
+            Goal: propose small, safe PRs (<= {MAX_FILES} files).
             Each PR must be a single category and include a clean unified diff.
             Do not use sudo or interactive prompts.
             """
@@ -372,8 +371,8 @@ No explanations, no JSON, no index lines. The patch must apply cleanly with git 
         if files_changed is None:
             print(f"Skipping PR {idx}: cannot compute stats")
             continue
-        if files_changed > MAX_FILES or lines_changed > MAX_LINES:
-            print(f"Skipping PR {idx}: too large ({files_changed} files, {lines_changed} lines)")
+        if files_changed > MAX_FILES:
+            print(f"Skipping PR {idx}: too large ({files_changed} files)")
             continue
 
         branch = f"iflow/{sanitize_branch(pr['branch_name'], idx)}"
