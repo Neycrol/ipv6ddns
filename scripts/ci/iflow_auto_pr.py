@@ -44,8 +44,8 @@ def build_prompt():
     files_preview = "\n".join(top_level)
 
     allowed = ", ".join(sorted(ALLOWED_TYPES))
-    prompt = f"""
-You are an automated refactoring bot for the repo at {ROOT}. You may propose up to {MAX_PRS} independent pull requests.
+    prompt = """
+You are an automated refactoring bot for the repo at {root}. You may propose up to {max_prs} independent pull requests.
 Each PR must be ONE category only from: {allowed}.
 You can modify any text source file except secrets or generated artifacts.
 Do NOT touch: .git/, target/, dist/, build outputs, or any secrets/keys.
@@ -56,9 +56,9 @@ Use tools to inspect files when necessary; do not assume file contents.
 
 Do NOT output JSON in stdout. Instead, when you are done editing files,
 write a plan file at `.iflow_pr_plan.json` with this schema:
-{
+{{
   "prs": [
-    {
+    {{
       "title": "...",
       "branch_name": "...",
       "type": "refactor|perf|tests|docs|ci|android-ui|packaging|bugfix|auto",
@@ -67,9 +67,9 @@ write a plan file at `.iflow_pr_plan.json` with this schema:
       "self_proof": ["...", "..."],
       "self_review": ["...", "..."],
       "tests": ["..."]
-    }
+    }}
   ]
-}
+}}
 
 Rules:
 - Tools are allowed, but only modify files within the repo workspace.
@@ -78,7 +78,12 @@ Rules:
 
 Top-level entries:
 {files_preview}
-"""
+""".format(
+        root=ROOT,
+        max_prs=MAX_PRS,
+        allowed=allowed,
+        files_preview=files_preview,
+    )
     return textwrap.dedent(prompt).strip()
 
 
