@@ -157,18 +157,31 @@ def main():
         "glm-4.7",
         "--thinking",
         "--max-turns",
-        "1",
+        "2",
         "--timeout",
         "1800",
         "--checkpointing",
         "false",
         "--all-files",
+        "-o",
+        "/tmp/iflow_output.json",
         "-p",
         prompt,
     ]
 
     print("Running iFlow...")
     output = subprocess.check_output(iflow_cmd, text=True)
+    print("=== iFlow raw output (truncated) ===")
+    print(output[:8000])
+    print("=== end ===")
+    try:
+        out_path = Path("/tmp/iflow_output.json")
+        if out_path.exists():
+            print("=== iFlow output file (truncated) ===")
+            print(out_path.read_text()[:8000])
+            print("=== end ===")
+    except Exception:
+        pass
     data = extract_json(output)
     if not data:
         print("No JSON payload detected; aborting.")
