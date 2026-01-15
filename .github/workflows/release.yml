@@ -69,6 +69,10 @@ jobs:
     container: archlinux:base-devel
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ipv6ddns-x86_64
+          path: arch-artifacts
       - name: Setup build user
         run: |
           pacman -Syu --noconfirm
@@ -78,8 +82,14 @@ jobs:
           chown -R builder:builder "$GITHUB_WORKSPACE"
       - name: Build Arch package
         run: |
+          BIN=$(ls -1 "$GITHUB_WORKSPACE"/arch-artifacts/**/ipv6ddns-*-x86_64 2>/dev/null | head -n1)
+          if [[ -z "$BIN" ]]; then
+            echo "Prebuilt binary not found in arch-artifacts" >&2
+            ls -la "$GITHUB_WORKSPACE/arch-artifacts" || true
+            exit 1
+          fi
           sudo -u builder -H env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" GITHUB_SHA="$GITHUB_SHA" _commit="$GITHUB_SHA" \
-            RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS= \
+            _prebuilt_bin="$BIN" RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS= \
             bash -c 'cd "$GITHUB_WORKSPACE/packaging/arch"; makepkg -f --noconfirm --syncdeps'
       - uses: actions/upload-artifact@v4
         with:
