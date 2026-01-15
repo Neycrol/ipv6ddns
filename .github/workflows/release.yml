@@ -112,7 +112,7 @@ jobs:
         with:
           arch: aarch64
           distro: archlinux
-          base_image: docker.io/arm64v8/archlinux:latest
+          base_image: docker.io/heywoodlh/archlinux:latest
           install: |
             pacman-key --init
             pacman-key --populate archlinux
