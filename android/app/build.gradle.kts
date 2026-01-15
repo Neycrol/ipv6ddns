@@ -7,6 +7,11 @@ android {
     namespace = "com.neycrol.ipv6ddns"
     compileSdk = 34
 
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
     val hasReleaseSigning = listOf(
         System.getenv("ANDROID_KEYSTORE_PATH"),
         System.getenv("ANDROID_KEYSTORE_PASSWORD"),
@@ -59,6 +64,9 @@ android {
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
+    }
+    kotlinOptions {
+        jvmTarget = "17"
     }
     packaging {
         resources {
