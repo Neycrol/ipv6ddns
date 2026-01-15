@@ -27,9 +27,10 @@ pkgver() {
 
 build() {
   cd "$srcdir/ipv6ddns"
-  export CARGO_PROFILE_RELEASE_LTO=thin
+  # Disable LTO for Arch CI build; ring + lto + lld/bfd causes undefined symbols
+  export CARGO_PROFILE_RELEASE_LTO=off
   # Force GNU ld.bfd to avoid ring/lld link issues in CI
-  local _rustflags="-C opt-level=3 -C codegen-units=1 -C link-arg=-fuse-ld=bfd"
+  local _rustflags="-C opt-level=3 -C codegen-units=1 -C lto=off -C link-arg=-fuse-ld=bfd"
   export RUSTFLAGS="${_rustflags}"
   export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${_rustflags}"
   unset CARGO_ENCODED_RUSTFLAGS
