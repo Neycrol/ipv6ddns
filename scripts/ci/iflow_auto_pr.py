@@ -186,6 +186,12 @@ def assert_not_main_branch():
         raise RuntimeError(f"Refusing to push from protected branch: {branch}")
 
 
+def write_plan_md(text):
+    path = ROOT / "IFLOW_PLAN.md"
+    path.write_text(text)
+    return path
+
+
 def create_fallback_pr():
     changed_files = [f for f in git("diff", "--name-only", capture=True).splitlines() if f.strip()]
     if not changed_files:
@@ -312,7 +318,7 @@ def maybe_write_iflow_context():
 
             You are an automated refactoring bot running in GitHub Actions for {ROOT}.
             Goal: propose safe PRs; size is less important than correctness.
-Write a plan file at .iflow_pr_plan.json describing PR splits.
+            Consult IFLOW_PLAN.md if present, then write .iflow_pr_plan.json describing PR splits.
             Each PR must be a single category and include a clean unified diff.
             Do not use sudo or interactive prompts.
             Tools are allowed, but only modify files within the repo.
@@ -360,6 +366,7 @@ def main():
     max_turns = int(os.environ.get("IFLOW_MAX_TURNS", "20"))
     timeout = int(os.environ.get("IFLOW_TIMEOUT", "1800"))
     model = os.environ.get("IFLOW_MODEL", "glm-4.7")
+    plan_mode = os.environ.get("IFLOW_PLAN_MODE") == "1"
 
     ctx_path = maybe_write_iflow_context()
 
@@ -387,6 +394,29 @@ def main():
                 print(exc.output[:4000], flush=True)
             cleanup_context()
             return 1
+
+    if plan_mode:
+        print("Running iFlow plan mode...", flush=True)
+        plan_prompt = (
+            "Analyze the repo and propose improvements. Output a concise plan "
+            "for potential PRs and risks. Do not modify files."
+        )
+        try:
+            plan_output = run_iflow(
+                plan_prompt,
+                model,
+                min(10, max_turns),
+                min(600, timeout),
+                "/tmp/iflow_plan.json",
+            )
+            plan_path = write_plan_md(plan_output)
+            print(f"Wrote plan to {plan_path}")
+        except subprocess.CalledProcessError as exc:
+            print(f"iFlow plan failed (exit {exc.returncode})", flush=True)
+            if exc.output:
+                print(exc.output[:4000], flush=True)
+            cleanup_context()
+            return 1
     print(f"Using model: {model}", flush=True)
     print("Running iFlow...", flush=True)
     try:
@@ -398,6 +428,9 @@ def main():
         cleanup_context()
         return 1
     cleanup_context()
+    plan_md = ROOT / "IFLOW_PLAN.md"
+    if plan_md.exists() and os.environ.get("IFLOW_KEEP_PLAN") != "1":
+        plan_md.unlink()
     print("=== iFlow raw output (truncated) ===")
     print(output[:8000])
     print("=== end ===")
