@@ -311,15 +311,13 @@ def create_prs_from_file_lists(prs, temp_branch, changed_files):
 
 def maybe_write_iflow_context():
     if os.environ.get("IFLOW_WRITE_CONTEXT") != "1":
-        return None
+        return None, None, None
     path = ROOT / "IFLOW.md"
-    if path.exists():
-        return None
+    original = path.read_text() if path.exists() else None
     content = os.environ.get("IFLOW_CONTEXT")
     if not content:
         content = textwrap.dedent(
-            f"""\
-            # iFlow Auto-PR Context
+            f"""            # iFlow Auto-PR Context
 
             You are an automated refactoring bot running in GitHub Actions for {ROOT}.
             Goal: propose safe PRs; size is less important than correctness.
@@ -331,7 +329,8 @@ def maybe_write_iflow_context():
             """
         ).strip()
     path.write_text(content)
-    return path
+    return path, original, content
+
 
 
 def sanitize_branch(name, idx):
@@ -373,7 +372,7 @@ def main():
     model = os.environ.get("IFLOW_MODEL", "glm-4.7")
     plan_mode = os.environ.get("IFLOW_PLAN_MODE") == "1"
 
-    ctx_path = maybe_write_iflow_context()
+    ctx_path, ctx_original, ctx_default = maybe_write_iflow_context()
 
     def cleanup_context():
         if ctx_path and ctx_path.exists():
@@ -397,9 +396,18 @@ def main():
             print(f"iFlow ping failed (exit {exc.returncode})", flush=True)
             if exc.output:
                 print(exc.output[:4000], flush=True)
+            if ctx_path and (ctx_original is not None or ctx_default is not None):
+                ctx_path.write_text(ctx_original if ctx_original is not None else (ctx_default or ""))
             cleanup_context()
             return 1
 
+    if plan_mode and ctx_path:
+        plan_context = textwrap.dedent("""            # iFlow Plan Mode
+
+            You are in PLAN-ONLY mode. Ignore any instructions about editing files.
+            Do not modify files or run tools. Produce a concise plan only.
+            """).strip()
+        ctx_path.write_text(plan_context)
     if plan_mode:
         print("Running iFlow plan mode...", flush=True)
         plan_prompt = (
@@ -416,10 +424,15 @@ def main():
             )
             plan_path = write_plan_md(plan_output)
             print(f"Wrote plan to {plan_path}")
+            # restore normal context for execution stage
+            if ctx_path:
+                ctx_path.write_text(ctx_original if ctx_original is not None else (ctx_default or ""))
         except subprocess.CalledProcessError as exc:
             print(f"iFlow plan failed (exit {exc.returncode})", flush=True)
             if exc.output:
                 print(exc.output[:4000], flush=True)
+            if ctx_path and (ctx_original is not None or ctx_default is not None):
+                ctx_path.write_text(ctx_original if ctx_original is not None else (ctx_default or ""))
             cleanup_context()
             return 1
     print(f"Using model: {model}", flush=True)
