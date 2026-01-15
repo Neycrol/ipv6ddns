@@ -28,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -39,7 +40,9 @@ import com.neycrol.ipv6ddns.data.AppConfig
 import com.neycrol.ipv6ddns.data.ConfigStore
 import com.neycrol.ipv6ddns.data.ConfigToml
 import com.neycrol.ipv6ddns.service.Ipv6DdnsService
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,6 +55,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppScreen() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val config by ConfigStore.configFlow(context).collectAsState(
         initial = AppConfig()
     )
@@ -181,13 +185,17 @@ fun AppScreen() {
                                     verbose = verbose,
                                     multiRecord = multiRecord
                                 )
-                                runBlocking { ConfigStore.saveConfig(context, cfg) }
-                                val configFile = ConfigToml.writeConfig(context, cfg)
-                                val intent = Intent(context, Ipv6DdnsService::class.java).apply {
-                                    action = Ipv6DdnsService.ACTION_START
-                                    putExtra(Ipv6DdnsService.EXTRA_CONFIG_PATH, configFile.absolutePath)
+                                scope.launch(Dispatchers.IO) {
+                                    ConfigStore.saveConfig(context, cfg)
+                                    val configFile = ConfigToml.writeConfig(context, cfg)
+                                    withContext(Dispatchers.Main) {
+                                        val intent = Intent(context, Ipv6DdnsService::class.java).apply {
+                                            action = Ipv6DdnsService.ACTION_START
+                                            putExtra(Ipv6DdnsService.EXTRA_CONFIG_PATH, configFile.absolutePath)
+                                        }
+                                        context.startForegroundService(intent)
+                                    }
                                 }
-                                context.startForegroundService(intent)
                             }
                         ) {
                             Text("Start")
