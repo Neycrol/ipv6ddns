@@ -123,6 +123,7 @@ Rules:
 - Tools are allowed, but only modify files within the repo workspace.
 - Do NOT run git commands or write patch files.
 - Never push directly to main/master; only create PR branches.
+- Do NOT run tests or linters (cargo test/clippy/audit). External validation will run them.
 - Keep changes organized by category: docs, tests, ci, android-ui, packaging, bugfix, refactor, perf.
   The automation will split PRs by file categories, so keep related changes grouped by file type/path.
 
@@ -561,9 +562,11 @@ def main():
         return 0
 
     if VALIDATE_CMD:
+        validation_ok = False
         for attempt in range(FIX_RETRIES + 1):
             code, output = run_validation(VALIDATE_CMD)
             if code == 0:
+                validation_ok = True
                 break
             print(f"Validation failed (attempt {attempt + 1}/{FIX_RETRIES + 1}).")
             if output:
@@ -592,6 +595,9 @@ def main():
             if not status.strip():
                 print("No changes detected after fix attempt.")
                 return 0
+        if not validation_ok:
+            print("Validation failed after all retries; aborting.")
+            return 1
 
     if dry_run:
         print("DRY RUN: Working tree has changes.")

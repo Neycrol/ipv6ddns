@@ -59,6 +59,7 @@ jobs:
             Keep changes organized by category (docs/tests/ci/android-ui/packaging/bugfix/refactor/perf).
             The automation will split PRs by file category and include a brief summary.
             Tools are allowed, but only modify files within the repo.
+            Do not run tests or linters (cargo test/clippy/audit). External validation will run them.
             Do not edit files under .github/workflows/.
             Never push directly to main/master; only create PR branches.
           PYTHONUNBUFFERED: "1"
