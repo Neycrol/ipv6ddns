@@ -43,6 +43,14 @@ const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 /// Default polling interval in seconds (when netlink is unavailable)
 const DEFAULT_POLL_INTERVAL_SECS: u64 = 60;
+/// Minimum HTTP request timeout in seconds
+const MIN_TIMEOUT_SECS: u64 = 1;
+/// Maximum HTTP request timeout in seconds
+const MAX_TIMEOUT_SECS: u64 = 300;
+/// Minimum polling interval in seconds
+const MIN_POLL_INTERVAL_SECS: u64 = 10;
+/// Maximum polling interval in seconds
+const MAX_POLL_INTERVAL_SECS: u64 = 3600;
 /// Application version
 const VERSION: &str = "1.0.0";
 
@@ -293,6 +301,8 @@ impl Config {
     /// - Zone ID is missing
     /// - Record name is missing
     /// - Record name is invalid
+    /// - Timeout is out of valid range
+    /// - Poll interval is out of valid range
     fn validate(&self) -> Result<()> {
         if self.api_token.is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_API_TOKEN));
@@ -304,6 +314,27 @@ impl Config {
             return Err(anyhow::anyhow!("Missing {}", ENV_RECORD_NAME));
         }
         validate_record_name(&self.record)?;
+
+        let timeout_secs = self.timeout.as_secs();
+        if timeout_secs < MIN_TIMEOUT_SECS || timeout_secs > MAX_TIMEOUT_SECS {
+            return Err(anyhow::anyhow!(
+                "timeout must be between {} and {} seconds, got {}",
+                MIN_TIMEOUT_SECS,
+                MAX_TIMEOUT_SECS,
+                timeout_secs
+            ));
+        }
+
+        let poll_interval_secs = self.poll_interval.as_secs();
+        if poll_interval_secs < MIN_POLL_INTERVAL_SECS || poll_interval_secs > MAX_POLL_INTERVAL_SECS {
+            return Err(anyhow::anyhow!(
+                "poll_interval must be between {} and {} seconds, got {}",
+                MIN_POLL_INTERVAL_SECS,
+                MAX_POLL_INTERVAL_SECS,
+                poll_interval_secs
+            ));
+        }
+
         Ok(())
     }
 }
