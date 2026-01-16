@@ -20,6 +20,10 @@ libc = "0.2"
 async-trait = "0.1"
 urlencoding = "2.1"
 
+[dev-dependencies]
+serial_test = "3.0"
+tempfile = "3.10"
+
 [profile.release]
 opt-level = 3
 lto = true

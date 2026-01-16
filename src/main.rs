@@ -393,3 +393,115 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
+
+//==============================================================================
+// Tests
+//==============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use tempfile::TempDir;
+
+    struct EnvGuard {
+        saved: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn new() -> Self {
+            let keys = [ENV_API_TOKEN, ENV_ZONE_ID, ENV_RECORD_NAME, ENV_MULTI_RECORD];
+            let mut saved = Vec::with_capacity(keys.len());
+            for key in keys {
+                saved.push((key, std::env::var(key).ok()));
+                std::env::remove_var(key);
+            }
+            Self { saved }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..) {
+                if let Some(val) = value {
+                    std::env::set_var(key, val);
+                } else {
+                    std::env::remove_var(key);
+                }
+            }
+        }
+    }
+
+    fn write_config(contents: &str) -> (TempDir, PathBuf) {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, contents).expect("write config");
+        (dir, path)
+    }
+
+    #[test]
+    #[serial]
+    fn config_load_from_file() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "file_token"
+zone_id = "file_zone"
+record_name = "file.example.com"
+timeout = 45
+poll_interval = 90
+verbose = true
+multi_record = "all"
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.api_token, "file_token");
+        assert_eq!(cfg.zone_id, "file_zone");
+        assert_eq!(cfg.record, "file.example.com");
+        assert_eq!(cfg.timeout, Duration::from_secs(45));
+        assert_eq!(cfg.poll_interval, Duration::from_secs(90));
+        assert!(cfg.verbose);
+        assert!(matches!(cfg.multi_record, MultiRecordPolicy::UpdateAll));
+    }
+
+    #[test]
+    #[serial]
+    fn config_env_overrides_file() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "file_token"
+zone_id = "file_zone"
+record_name = "file.example.com"
+"#,
+        );
+
+        std::env::set_var(ENV_API_TOKEN, "env_token");
+        std::env::set_var(ENV_ZONE_ID, "env_zone");
+        std::env::set_var(ENV_RECORD_NAME, "env.example.com");
+
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.api_token, "env_token");
+        assert_eq!(cfg.zone_id, "env_zone");
+        assert_eq!(cfg.record, "env.example.com");
+    }
+
+    #[test]
+    #[serial]
+    fn config_missing_required_fields() {
+        let _env = EnvGuard::new();
+        let err = Config::load(None).expect_err("missing required");
+        let msg = format!("{err}");
+        assert!(msg.contains(ENV_API_TOKEN) || msg.contains(ENV_ZONE_ID) || msg.contains(ENV_RECORD_NAME));
+    }
+
+    #[test]
+    fn parse_multi_record_valid_and_invalid() {
+        assert!(matches!(
+            parse_multi_record("first").unwrap(),
+            MultiRecordPolicy::UpdateFirst
+        ));
+        assert!(parse_multi_record("bogus").is_err());
+    }
+}
