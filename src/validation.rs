@@ -71,8 +71,51 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
 }
 
 /// Validates that a string is a properly formatted IPv6 address
+///
+/// This function checks that the address is syntactically valid AND
+/// filters out reserved/special IPv6 address ranges that are not suitable
+/// for DDNS:
+/// - Unspecified address (::)
+/// - Loopback address (::1)
+/// - Link-local addresses (fe80::/10)
+/// - Multicast addresses (ff00::/8)
+/// - Documentation addresses (2001:db8::/32)
 pub fn is_valid_ipv6(ip: &str) -> bool {
-    ip.parse::<std::net::Ipv6Addr>().is_ok()
+    let addr = match ip.parse::<std::net::Ipv6Addr>() {
+        Ok(a) => a,
+        Err(_) => return false,
+    };
+
+    // Filter out unspecified address (::)
+    if addr.is_unspecified() {
+        return false;
+    }
+
+    // Filter out loopback address (::1)
+    if addr.is_loopback() {
+        return false;
+    }
+
+    let segments = addr.segments();
+
+    // Filter out link-local addresses (fe80::/10)
+    // Link-local addresses have first 10 bits as 1111111010
+    if segments[0] & 0xffc0 == 0xfe80 {
+        return false;
+    }
+
+    // Filter out multicast addresses (ff00::/8)
+    // Multicast addresses have first 8 bits as 11111111
+    if segments[0] & 0xff00 == 0xff00 {
+        return false;
+    }
+
+    // Filter out documentation addresses (2001:db8::/32)
+    if segments[0] == 0x2001 && segments[1] == 0x0db8 {
+        return false;
+    }
+
+    true
 }
 
 #[cfg(test)]
@@ -106,11 +149,23 @@ mod tests {
 
     #[test]
     fn test_is_valid_ipv6() {
-        assert!(is_valid_ipv6("2001:db8::1"));
-        assert!(is_valid_ipv6("::1"));
-        assert!(is_valid_ipv6("fe80::1"));
-        assert!(is_valid_ipv6("2001:0db8:0000:0000:0000:0000:0000:0001"));
-        assert!(!is_valid_ipv6("192.168.1.1"));
+        // Valid global unicast addresses
+        assert!(is_valid_ipv6("2606:4700:4700::1111"));
+        assert!(is_valid_ipv6("2001:4860:4860::8888"));
+        assert!(is_valid_ipv6("2a00:1450:4001:81b::200e"));
+
+        // Reserved addresses that should be rejected
+        assert!(!is_valid_ipv6("::")); // Unspecified
+        assert!(!is_valid_ipv6("::1")); // Loopback
+        assert!(!is_valid_ipv6("fe80::1")); // Link-local
+        assert!(!is_valid_ipv6("fe80::dead:beef")); // Link-local
+        assert!(!is_valid_ipv6("ff00::1")); // Multicast
+        assert!(!is_valid_ipv6("ff02::1")); // Multicast
+        assert!(!is_valid_ipv6("2001:db8::1")); // Documentation
+        assert!(!is_valid_ipv6("2001:0db8::1")); // Documentation
+
+        // Invalid formats
+        assert!(!is_valid_ipv6("192.168.1.1")); // IPv4
         assert!(!is_valid_ipv6("invalid"));
         assert!(!is_valid_ipv6(""));
         assert!(!is_valid_ipv6("2001:db8::g"));
