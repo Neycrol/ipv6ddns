@@ -487,4 +487,158 @@ mod tests {
         };
         assert_eq!(format!("{}", err), "[6003] Invalid request headers");
     }
+
+    #[test]
+    fn test_api_response_with_errors() {
+        let json = r#"{
+            "success": false,
+            "errors": [
+                {
+                    "code": 1000,
+                    "message": "Invalid API token"
+                }
+            ],
+            "messages": [],
+            "result": null
+        }"#;
+
+        let resp: ApiResponse<DnsRecord> = serde_json::from_str(json).unwrap();
+        assert!(!resp.success);
+        assert_eq!(resp.errors.len(), 1);
+        assert_eq!(resp.errors[0].code, 1000);
+        assert_eq!(resp.errors[0].message, "Invalid API token");
+    }
+
+    #[test]
+    fn test_api_response_multiple_errors() {
+        let json = r#"{
+            "success": false,
+            "errors": [
+                {
+                    "code": 1000,
+                    "message": "Invalid API token"
+                },
+                {
+                    "code": 1003,
+                    "message": "Invalid or missing zone id"
+                }
+            ],
+            "messages": [],
+            "result": null
+        }"#;
+
+        let resp: ApiResponse<DnsRecord> = serde_json::from_str(json).unwrap();
+        assert!(!resp.success);
+        assert_eq!(resp.errors.len(), 2);
+    }
+
+    #[test]
+    fn test_api_response_with_messages() {
+        let json = r#"{
+            "success": true,
+            "errors": [],
+            "messages": [
+                "DNS record was successfully updated"
+            ],
+            "result": {
+                "id": "abc123",
+                "type": "AAAA",
+                "name": "test.example.com",
+                "content": "::1",
+                "proxied": false,
+                "ttl": 1
+            }
+        }"#;
+
+        let resp: ApiResponse<DnsRecord> = serde_json::from_str(json).unwrap();
+        assert!(resp.success);
+        assert_eq!(resp.messages.len(), 1);
+        assert_eq!(resp.messages[0], "DNS record was successfully updated");
+    }
+
+    #[test]
+    fn test_api_response_array_result() {
+        let json = r#"{
+            "success": true,
+            "errors": [],
+            "messages": [],
+            "result": [
+                {
+                    "id": "abc123",
+                    "type": "AAAA",
+                    "name": "test.example.com",
+                    "content": "2001:db8::1",
+                    "proxied": false,
+                    "ttl": 1
+                },
+                {
+                    "id": "def456",
+                    "type": "AAAA",
+                    "name": "test.example.com",
+                    "content": "2001:db8::2",
+                    "proxied": false,
+                    "ttl": 1
+                }
+            ]
+        }"#;
+
+        let resp: ApiResponse<Vec<DnsRecord>> = serde_json::from_str(json).unwrap();
+        assert!(resp.success);
+        assert!(resp.result.is_some());
+        assert_eq!(resp.result.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_dns_record_with_proxy() {
+        let json = r#"{
+            "id": "abc123",
+            "type": "AAAA",
+            "name": "test.example.com",
+            "content": "2001:db8::1",
+            "proxied": true,
+            "ttl": 1
+        }"#;
+
+        let record: DnsRecord = serde_json::from_str(json).unwrap();
+        assert!(record.proxied);
+    }
+
+    #[test]
+    fn test_dns_record_with_custom_ttl() {
+        let json = r#"{
+            "id": "abc123",
+            "type": "AAAA",
+            "name": "test.example.com",
+            "content": "2001:db8::1",
+            "proxied": false,
+            "ttl": 3600
+        }"#;
+
+        let record: DnsRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.ttl, 3600);
+    }
+
+    #[test]
+    fn test_api_error_zero_code() {
+        let err = ApiError {
+            code: 0,
+            message: "Unknown error".to_string(),
+        };
+        assert_eq!(format!("{}", err), "[0] Unknown error");
+    }
+
+    #[test]
+    fn test_api_response_empty_result() {
+        let json = r#"{
+            "success": true,
+            "errors": [],
+            "messages": [],
+            "result": []
+        }"#;
+
+        let resp: ApiResponse<Vec<DnsRecord>> = serde_json::from_str(json).unwrap();
+        assert!(resp.success);
+        assert!(resp.result.is_some());
+        assert!(resp.result.unwrap().is_empty());
+    }
 }
