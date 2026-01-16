@@ -590,4 +590,126 @@ record_name = "file.example.com"
         ));
         assert!(parse_multi_record("bogus").is_err());
     }
+
+    // Integration tests for daemon lifecycle
+
+    #[test]
+    fn validate_record_name_valid_cases() {
+        assert!(validate_record_name("@").is_ok());
+        assert!(validate_record_name("example.com").is_ok());
+        assert!(validate_record_name("sub.example.com").is_ok());
+        assert!(validate_record_name("_acme-challenge.example.com").is_ok());
+        assert!(validate_record_name("*.example.com").is_ok());
+        assert!(validate_record_name("a-b.example.com").is_ok());
+        assert!(validate_record_name("example.com.").is_ok());
+        assert!(validate_record_name(&("a".repeat(63) + ".com")).is_ok());
+    }
+
+    #[test]
+    fn validate_record_name_invalid_cases() {
+        assert!(validate_record_name("").is_err());
+        assert!(validate_record_name(" ").is_err());
+        assert!(validate_record_name("example com").is_err());
+        assert!(validate_record_name(".example.com").is_err());
+        assert!(validate_record_name("example..com").is_err());
+        assert!(validate_record_name("-example.com").is_err());
+        assert!(validate_record_name("example-.com").is_err());
+        assert!(validate_record_name("ex@mple.com").is_err());
+        // Note: "example.com." is valid (FQDN with trailing dot)
+        assert!(validate_record_name(&"a.".repeat(254)).is_err());
+    }
+
+    #[test]
+    fn test_backoff_delay_calculation() {
+        let delay = backoff_delay(1);
+        assert_eq!(delay, Duration::from_secs(5));
+
+        let delay = backoff_delay(2);
+        assert_eq!(delay, Duration::from_secs(10));
+
+        let delay = backoff_delay(3);
+        assert_eq!(delay, Duration::from_secs(20));
+
+        let delay = backoff_delay(5);
+        assert_eq!(delay, Duration::from_secs(80));
+
+        let delay = backoff_delay(10);
+        assert_eq!(delay, BACKOFF_MAX);
+
+        let delay = backoff_delay(100);
+        assert_eq!(delay, BACKOFF_MAX);
+    }
+
+    #[test]
+    fn test_app_state_default() {
+        let state = AppState::default();
+        assert_eq!(state.state, RecordState::Unknown);
+        assert!(state.last_sync.is_none());
+        assert_eq!(state.error_count, 0);
+        assert!(state.next_retry.is_none());
+    }
+
+    #[test]
+    fn test_app_state_mark_synced() {
+        let mut state = AppState::default();
+        state.mark_synced("2001:db8::1".to_string());
+
+        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        assert!(state.last_sync.is_some());
+        assert_eq!(state.error_count, 0);
+        assert!(state.next_retry.is_none());
+    }
+
+    #[test]
+    fn test_app_state_mark_error() {
+        let mut state = AppState::default();
+        state.mark_synced("2001:db8::1".to_string());
+        state.mark_error();
+
+        assert!(matches!(state.state, RecordState::Error(_)));
+        assert_eq!(state.error_count, 1);
+        assert!(state.next_retry.is_some());
+    }
+
+    #[test]
+    fn test_app_state_error_backoff_increases() {
+        let mut state = AppState::default();
+
+        state.mark_error();
+        let retry1 = state.next_retry.unwrap();
+        state.mark_error();
+        let retry2 = state.next_retry.unwrap();
+
+        assert!(retry2 > retry1);
+    }
+
+    #[test]
+    fn test_app_state_sync_resets_error() {
+        let mut state = AppState::default();
+        state.mark_error();
+        state.mark_synced("2001:db8::1".to_string());
+
+        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        assert_eq!(state.error_count, 0);
+        assert!(state.next_retry.is_none());
+    }
+
+    #[test]
+    fn test_redact_secrets() {
+        let api_token = "secret_token_123";
+        let zone_id = "zone_id_456";
+        let message = "API call with token secret_token_123 and zone zone_id_456";
+
+        let redacted = redact_secrets(message, api_token, zone_id);
+        assert!(!redacted.contains(api_token));
+        assert!(!redacted.contains(zone_id));
+        assert!(redacted.contains("***REDACTED***"));
+    }
+
+    #[test]
+    fn test_redact_secrets_empty() {
+        let message = "API call with no secrets";
+        let redacted = redact_secrets(message, "", "");
+        assert_eq!(redacted, message);
+    }
 }
