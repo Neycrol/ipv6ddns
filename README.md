@@ -141,6 +141,8 @@ sudo systemctl enable --now ipv6ddns
 
 ## Architecture
 
+For detailed architecture documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ```
 ┌─────────────────────────────────────┐
 │           ipv6ddns Daemon           │
