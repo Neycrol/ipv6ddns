@@ -69,6 +69,10 @@ jobs:
               - git push -u origin iflow/<category>-<n>
               - gh pr create --title "<category>: <short>" --body "<rationale/self-review/tests>"
             Never push to main/master. Only use iflow/ branches.
+            Before creating any PR, you MUST run the relevant tests locally and ensure they pass.
+            For Rust changes: run `cargo test`.
+            For Android changes: run `./gradlew -p android test` if applicable, otherwise state why not.
+            If tests fail, stop and do not create PRs.
             If no valuable changes, exit without creating PRs.
             Tools are allowed, but only modify files within the repo.
           PYTHONUNBUFFERED: "1"
