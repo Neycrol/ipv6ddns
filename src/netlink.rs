@@ -360,9 +360,18 @@ impl NetlinkSocket {
 
 pub fn detect_global_ipv6() -> Option<String> {
     match netlink_dump_ipv6() {
-        Ok((stable, temporary)) => stable.or(temporary),
+        Ok((stable, temporary)) => {
+            // Validate the IPv6 address format
+            stable.and_then(|ip| if is_valid_ipv6(&ip) { Some(ip) } else { None })
+                .or_else(|| temporary.and_then(|ip| if is_valid_ipv6(&ip) { Some(ip) } else { None }))
+        }
         Err(_) => None,
     }
+}
+
+/// Validates that a string is a properly formatted IPv6 address
+fn is_valid_ipv6(ip: &str) -> bool {
+    ip.parse::<std::net::Ipv6Addr>().is_ok()
 }
 
 fn nlmsg_align(len: usize) -> usize {

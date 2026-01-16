@@ -278,6 +278,11 @@ impl Daemon {
     }
 
     async fn sync_record(&self, ip: &str) -> Result<()> {
+        // Validate IPv6 address format before making API calls
+        if ip.parse::<std::net::Ipv6Addr>().is_err() {
+            return Err(anyhow::anyhow!("Invalid IPv6 address format: {}", ip));
+        }
+
         {
             let state = self.state.lock().await;
             if let RecordState::Synced(current) = &state.state {
