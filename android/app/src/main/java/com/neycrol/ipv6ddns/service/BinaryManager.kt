@@ -61,22 +61,31 @@ object BinaryManager {
         val assetName = assetNameForAbi()
         val expectedChecksum = getExpectedChecksum(context, assetName)
             ?: run {
-                Log.e(TAG, "Missing checksum asset for $assetName; refusing to run")
+                Log.e(TAG, "Checksum file not found for $assetName; refusing to run")
                 dest.delete()
                 marker.delete()
                 checksumMarker.delete()
-                throw SecurityException("Checksum file missing for $assetName")
+                throw SecurityException("Checksum file missing for $assetName (expected: $assetName.sha256 in assets)")
             }
         val needsCopy = !dest.exists() ||
             !marker.exists() ||
             marker.readText().trim() != versionMarker
         if (needsCopy) {
-            context.assets.open(assetName).use { input ->
-                FileOutputStream(dest, false).use { output ->
-                    input.copyTo(output)
+            try {
+                context.assets.open(assetName).use { input ->
+                    FileOutputStream(dest, false).use { output ->
+                        input.copyTo(output)
+                    }
                 }
+                marker.writeText(versionMarker)
+                Log.i(TAG, "Copied binary from assets: $assetName (version: $versionMarker)")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to copy binary from assets: $assetName", e)
+                dest.delete()
+                marker.delete()
+                checksumMarker.delete()
+                throw SecurityException("Failed to copy binary from assets: ${e.message}")
             }
-            marker.writeText(versionMarker)
         }
 
         val actualChecksum = computeSha256(dest)
@@ -84,10 +93,11 @@ object BinaryManager {
             Log.e(TAG, "Checksum mismatch for $assetName")
             Log.e(TAG, "Expected: $expectedChecksum")
             Log.e(TAG, "Actual: $actualChecksum")
+            Log.e(TAG, "Binary file: ${dest.absolutePath} (size: ${dest.length()} bytes)")
             dest.delete()
             marker.delete()
             checksumMarker.delete()
-            throw SecurityException("Binary checksum verification failed")
+            throw SecurityException("Binary checksum verification failed for $assetName (expected: $expectedChecksum, got: $actualChecksum)")
         }
         Log.i(TAG, "Checksum verified for $assetName: $actualChecksum")
         checksumMarker.writeText(actualChecksum)
@@ -96,7 +106,11 @@ object BinaryManager {
         } catch (e: Exception) {
             Log.w(TAG, "chmod via Os failed, falling back: ${e.message}")
             try {
-                Runtime.getRuntime().exec(arrayOf("chmod", "700", dest.absolutePath)).waitFor()
+                val process = Runtime.getRuntime().exec(arrayOf("chmod", "700", dest.absolutePath))
+                val exitCode = process.waitFor()
+                if (exitCode != 0) {
+                    Log.w(TAG, "chmod fallback failed with exit code: $exitCode")
+                }
             } catch (ignored: Exception) {
                 Log.w(TAG, "chmod fallback failed: ${ignored.message}")
             }
