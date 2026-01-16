@@ -211,6 +211,7 @@ journalctl -u ipv6ddns | grep -i netlink
 # Check if zone ID is correct
 curl -X GET "https://api.cloudflare.com/client/v4/zones/YOUR_ZONE_ID/dns_records" \
   -H "Authorization: Bearer YOUR_API_TOKEN"
+# Tip: avoid pasting real tokens into shell history; use env vars or a temp file.
 ```
 
 ### Scenario 3: Rate limiting from Cloudflare
