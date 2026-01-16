@@ -10,7 +10,7 @@ license=('MIT')
 provides=('ipv6ddns')
 conflicts=('ipv6ddns')
 depends=('ca-certificates')
-makedepends=('git' 'rust' 'cargo')
+makedepends=('git' 'rust' 'cargo' 'toml-cli')
 options=('!debug')
 
 _commit=${_commit:-HEAD}
@@ -19,10 +19,12 @@ sha256sums=('SKIP')
 
 pkgver() {
   cd "$srcdir/ipv6ddns"
-  printf "%s.r%s.g%s" \
-    "$(git show -s --format=%cd --date=format:%Y%m%d)" \
-    "$(git rev-list --count HEAD)" \
-    "$(git rev-parse --short HEAD)"
+  # Extract version from Cargo.toml for accuracy
+  local _version=$(toml get Cargo.toml package.version | tr -d '"')
+  local _date=$(git show -s --format=%cd --date=format:%Y%m%d)
+  local _count=$(git rev-list --count HEAD)
+  local _hash=$(git rev-parse --short HEAD)
+  printf "%s.r%s.g%s" "$_version" "$_count" "$_hash"
 }
 
 build() {
@@ -53,5 +55,6 @@ package() {
   install -Dm644 etc/ipv6ddns.service "$pkgdir/usr/lib/systemd/system/ipv6ddns.service"
   install -Dm644 etc/config.toml "$pkgdir/etc/ipv6ddns/config.toml"
   install -Dm644 README.md "$pkgdir/usr/share/doc/ipv6ddns/README.md"
+  install -Dm644 ARCHITECTURE.md "$pkgdir/usr/share/doc/ipv6ddns/ARCHITECTURE.md"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/ipv6ddns/LICENSE"
 }
