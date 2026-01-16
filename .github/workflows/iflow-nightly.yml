@@ -54,7 +54,7 @@ jobs:
           gradle-version: 8.7
 
       - name: Run Android unit tests
-        run: ./gradlew -p android test --stacktrace
+        run: gradle -p android test --stacktrace
 
   auto-pr:
     needs: [test-and-lint, test-android]

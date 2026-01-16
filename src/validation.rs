@@ -38,9 +38,7 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
         return Err(anyhow!("Record name cannot start with a dot"));
     }
     if name.contains("..") {
-        return Err(anyhow!(
-            "Record name cannot contain consecutive dots"
-        ));
+        return Err(anyhow!("Record name cannot contain consecutive dots"));
     }
 
     for label in name.split('.') {
@@ -57,9 +55,7 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
             ));
         }
         if label.starts_with('-') || label.ends_with('-') {
-            return Err(anyhow!(
-                "Record name label cannot start or end with hyphen"
-            ));
+            return Err(anyhow!("Record name label cannot start or end with hyphen"));
         }
         for ch in label.chars() {
             if !ch.is_alphanumeric() && ch != '-' && ch != '_' {
