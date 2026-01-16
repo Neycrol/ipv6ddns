@@ -12,6 +12,22 @@ permissions:
   contents: write
 
 jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      - name: Install cargo-deny
+        run: cargo install cargo-deny
+      - name: Run cargo-audit
+        run: cargo audit
+      - name: Run cargo-deny check
+        run: cargo deny check
   build-x86_64:
     runs-on: ubuntu-latest
     steps:
