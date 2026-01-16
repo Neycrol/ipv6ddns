@@ -58,38 +58,39 @@ object BinaryManager {
         val marker = File(destDir, "ipv6ddns.version")
         val checksumMarker = File(destDir, "ipv6ddns.checksum")
         val versionMarker = BuildConfig.VERSION_CODE.toString()
+        val assetName = assetNameForAbi()
+        val expectedChecksum = getExpectedChecksum(context, assetName)
+            ?: run {
+                Log.e(TAG, "Missing checksum asset for $assetName; refusing to run")
+                dest.delete()
+                marker.delete()
+                checksumMarker.delete()
+                throw SecurityException("Checksum file missing for $assetName")
+            }
         val needsCopy = !dest.exists() ||
             !marker.exists() ||
-            marker.readText().trim() != versionMarker ||
-            !checksumMarker.exists()
+            marker.readText().trim() != versionMarker
         if (needsCopy) {
-            val assetName = assetNameForAbi()
             context.assets.open(assetName).use { input ->
                 FileOutputStream(dest, false).use { output ->
                     input.copyTo(output)
                 }
             }
             marker.writeText(versionMarker)
-
-            val actualChecksum = computeSha256(dest)
-            val expectedChecksum = getExpectedChecksum(context, assetName)
-
-            if (expectedChecksum != null) {
-                if (actualChecksum != expectedChecksum) {
-                    Log.e(TAG, "Checksum mismatch for $assetName")
-                    Log.e(TAG, "Expected: $expectedChecksum")
-                    Log.e(TAG, "Actual: $actualChecksum")
-                    dest.delete()
-                    marker.delete()
-                    throw SecurityException("Binary checksum verification failed")
-                }
-                Log.i(TAG, "Checksum verified for $assetName: $actualChecksum")
-            } else {
-                Log.w(TAG, "No checksum available for $assetName, skipping verification")
-            }
-
-            checksumMarker.writeText(actualChecksum)
         }
+
+        val actualChecksum = computeSha256(dest)
+        if (actualChecksum != expectedChecksum) {
+            Log.e(TAG, "Checksum mismatch for $assetName")
+            Log.e(TAG, "Expected: $expectedChecksum")
+            Log.e(TAG, "Actual: $actualChecksum")
+            dest.delete()
+            marker.delete()
+            checksumMarker.delete()
+            throw SecurityException("Binary checksum verification failed")
+        }
+        Log.i(TAG, "Checksum verified for $assetName: $actualChecksum")
+        checksumMarker.writeText(actualChecksum)
         try {
             Os.chmod(dest.absolutePath, 0x1C0)
         } catch (e: Exception) {
