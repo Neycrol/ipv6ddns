@@ -47,6 +47,7 @@ jobs:
           IFLOW_DISABLE_SUDO: "1"
           IFLOW_WRITE_CONTEXT: "1"
           IFLOW_TOOL_FALLBACK: "1"
+          IFLOW_FORCE_EDIT: "1"
           IFLOW_CONTEXT: |
             # iFlow Auto-PR Context
 

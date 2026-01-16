@@ -26,6 +26,7 @@ MAX_PRS = 10
 MAX_FILES = 0
 MAX_REPAIR_ATTEMPTS = int(os.environ.get("IFLOW_REPAIR_ATTEMPTS", "1"))
 TOOL_FALLBACK = os.environ.get("IFLOW_TOOL_FALLBACK", "1") == "1"
+FORCE_EDIT = os.environ.get("IFLOW_FORCE_EDIT", "1") == "1"
 
 
 def run(cmd, check=True, capture=False, text=True, **kwargs):
@@ -55,7 +56,7 @@ If a change would exceed limits, split it into a separate PR or skip it.
 Use tools to inspect files when necessary; do not assume file contents.
 
 Do NOT output JSON in stdout. Instead, when you are done editing files,
-write a plan file at `.iflow_pr_plan.json` with this schema:
+write a plan file at `.iflow_pr_plan.json` with this schema (inside the repo):
 {{
   "prs": [
     {{
@@ -73,6 +74,7 @@ write a plan file at `.iflow_pr_plan.json` with this schema:
 
 Rules:
 - Tools are allowed, but only modify files within the repo workspace.
+- Do NOT print the plan to stdout; only write .iflow_pr_plan.json.
 - Do NOT run git commands or write patch files.
 - Never push directly to main/master; only create PR branches.
 
@@ -452,6 +454,28 @@ def main():
     print("=== iFlow raw output (truncated) ===")
     print(output[:8000])
     print("=== end ===")
+    # Enforce plan file + edits if requested
+    plan_path = Path(os.environ.get("IFLOW_PLAN_FILE", ".iflow_pr_plan.json"))
+    if FORCE_EDIT:
+        if not plan_path.exists():
+            print("Plan file missing; running strict edit prompt...", flush=True)
+            strict_prompt = (
+                "You must modify files in the repo and create .iflow_pr_plan.json. "
+                "Do not print the plan to stdout. Make at least one concrete improvement."
+            )
+            try:
+                run_iflow(
+                    strict_prompt,
+                    model,
+                    min(10, max_turns),
+                    min(900, timeout),
+                    "/tmp/iflow_strict.json",
+                )
+            except subprocess.CalledProcessError as exc:
+                print(f"iFlow strict run failed (exit {exc.returncode})")
+                if exc.output:
+                    print(exc.output[:4000])
+    
     try:
         out_path = Path("/tmp/iflow_output.json")
         if out_path.exists():
