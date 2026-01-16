@@ -70,11 +70,10 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Validates that a string is a properly formatted IPv6 address
+/// Validates that a string is a properly formatted IPv6 address.
 ///
-/// This function checks that the address is syntactically valid AND
-/// filters out reserved/special IPv6 address ranges that are not suitable
-/// for DDNS:
+/// This function checks that the address is syntactically valid AND filters out
+/// reserved/special IPv6 address ranges that are not suitable for DDNS:
 /// - Unspecified address (::)
 /// - Loopback address (::1)
 /// - Link-local addresses (fe80::/10)
@@ -148,6 +147,35 @@ mod tests {
         assert!(validate_record_name("example-.com").is_err());
         assert!(validate_record_name("ex@mple.com").is_err());
         assert!(validate_record_name(&"a.".repeat(254)).is_err());
+    }
+
+    #[test]
+    fn test_validate_record_name_boundaries() {
+        let max_name = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(61)
+        );
+        assert_eq!(max_name.len(), 253);
+        assert!(validate_record_name(&max_name).is_ok());
+
+        let too_long = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(62)
+        );
+        assert_eq!(too_long.len(), 254);
+        assert!(validate_record_name(&too_long).is_err());
+
+        let max_label = format!("{}.com", "a".repeat(63));
+        assert!(validate_record_name(&max_label).is_ok());
+
+        let too_long_label = format!("{}.com", "a".repeat(64));
+        assert!(validate_record_name(&too_long_label).is_err());
     }
 
     #[test]
