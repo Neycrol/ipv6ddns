@@ -18,6 +18,8 @@ Event-driven IPv6 DDNS client for Cloudflare, written in Rust.
 
 ## Installation
 
+### Linux
+
 ```bash
 # Build
 cargo build --release
@@ -29,6 +31,52 @@ sudo cp etc/config.toml /etc/ipv6ddns/config.toml
 sudo cp etc/ipv6ddns.service /etc/systemd/system/
 
 # Set environment variables (choose one method below)
+```
+
+### Android
+
+The ipv6ddns Android app provides a convenient UI for managing the DDNS service on your Android device.
+
+**Features:**
+- Native Android UI with Material Design 3
+- Secure credential storage (API tokens are never exposed)
+- Foreground service with persistent notification
+- Real-time status monitoring
+- Configurable timeout and polling intervals
+- Multi-record policy selection
+- Automatic binary download and verification
+
+**Installation:**
+1. Download the latest APK from the [Releases](https://github.com/Neycrol/ipv6ddns/releases) page
+2. Enable "Install from unknown sources" in your device settings
+3. Install the APK
+4. Grant necessary permissions (foreground service, network access)
+
+**Setup:**
+1. Open the ipv6ddns app
+2. Enter your Cloudflare API Token
+3. Enter your Zone ID
+4. Enter the DNS record name to update (e.g., `home.example.com`)
+5. Configure optional settings (timeout, polling interval, verbose logging)
+6. Tap "Start" to begin monitoring
+
+**Troubleshooting Android:**
+- **Service stops unexpectedly:** Check if battery optimization is affecting the app. Add ipv6ddns to the battery whitelist.
+- **No IPv6 detected:** Ensure your device has a global IPv6 address. Check in Settings > Network.
+- **Binary verification fails:** Clear app data and try reinstalling. Ensure you have a stable internet connection.
+- **Logs not visible:** Enable verbose logging in the app settings and check logcat: `adb logcat | grep ipv6ddns`
+
+**Building from source:**
+```bash
+# Install Android SDK and NDK
+export ANDROID_NDK_HOME=/path/to/ndk
+
+# Build Android assets
+./scripts/ci/build-android.sh
+
+# Build APK
+cd android
+gradle assembleRelease
 ```
 
 ## Configuration
