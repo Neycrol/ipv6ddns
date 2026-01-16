@@ -15,7 +15,29 @@ permissions:
   pull-requests: write
 
 jobs:
+  test-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          "$HOME/.cargo/bin/rustup" component add clippy rustfmt
+
+      - name: Run cargo test
+        run: cargo test --verbose
+
+      - name: Run cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run cargo fmt check
+        run: cargo fmt -- --check
+
   auto-pr:
+    needs: test-and-lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
