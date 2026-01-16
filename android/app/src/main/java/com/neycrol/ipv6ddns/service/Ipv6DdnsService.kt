@@ -52,6 +52,7 @@ class Ipv6DdnsService : Service() {
         return START_STICKY
     }
 
+    @Synchronized
     private fun startProcess(configFile: File) {
         if (process != null) return
         try {
@@ -87,6 +88,7 @@ class Ipv6DdnsService : Service() {
         stopSelf()
     }
 
+    @Synchronized
     private fun stopProcess() {
         try {
             process?.destroy()
