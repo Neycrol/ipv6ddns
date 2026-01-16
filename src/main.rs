@@ -43,6 +43,14 @@ const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
 /// Default polling interval in seconds (when netlink is unavailable)
 const DEFAULT_POLL_INTERVAL_SECS: u64 = 60;
+/// Minimum HTTP request timeout in seconds
+const MIN_TIMEOUT_SECS: u64 = 1;
+/// Maximum HTTP request timeout in seconds
+const MAX_TIMEOUT_SECS: u64 = 300;
+/// Minimum polling interval in seconds
+const MIN_POLL_INTERVAL_SECS: u64 = 10;
+/// Maximum polling interval in seconds
+const MAX_POLL_INTERVAL_SECS: u64 = 3600;
 /// Application version
 const VERSION: &str = "1.0.0";
 
@@ -293,6 +301,8 @@ impl Config {
     /// - Zone ID is missing
     /// - Record name is missing
     /// - Record name is invalid
+    /// - Timeout is out of valid range
+    /// - Poll interval is out of valid range
     fn validate(&self) -> Result<()> {
         if self.api_token.is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_API_TOKEN));
@@ -304,6 +314,27 @@ impl Config {
             return Err(anyhow::anyhow!("Missing {}", ENV_RECORD_NAME));
         }
         validate_record_name(&self.record)?;
+
+        let timeout_secs = self.timeout.as_secs();
+        if timeout_secs < MIN_TIMEOUT_SECS || timeout_secs > MAX_TIMEOUT_SECS {
+            return Err(anyhow::anyhow!(
+                "timeout must be between {} and {} seconds, got {}",
+                MIN_TIMEOUT_SECS,
+                MAX_TIMEOUT_SECS,
+                timeout_secs
+            ));
+        }
+
+        let poll_interval_secs = self.poll_interval.as_secs();
+        if poll_interval_secs < MIN_POLL_INTERVAL_SECS || poll_interval_secs > MAX_POLL_INTERVAL_SECS {
+            return Err(anyhow::anyhow!(
+                "poll_interval must be between {} and {} seconds, got {}",
+                MIN_POLL_INTERVAL_SECS,
+                MAX_POLL_INTERVAL_SECS,
+                poll_interval_secs
+            ));
+        }
+
         Ok(())
     }
 }
@@ -1183,5 +1214,186 @@ multi_record = "error"
         for ip in invalid_ips {
             assert!(ip.parse::<std::net::Ipv6Addr>().is_err());
         }
+    }
+
+    // Config validation bounds tests
+
+    #[test]
+    fn test_config_validation_timeout_below_min() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 0
+poll_interval = 60
+"#,
+        );
+
+        let err = Config::load(Some(path)).expect_err("timeout below min");
+        let msg = format!("{err}");
+        assert!(msg.contains("timeout"));
+        assert!(msg.contains("between"));
+    }
+
+    #[test]
+    fn test_config_validation_timeout_above_max() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 500
+poll_interval = 60
+"#,
+        );
+
+        let err = Config::load(Some(path)).expect_err("timeout above max");
+        let msg = format!("{err}");
+        assert!(msg.contains("timeout"));
+        assert!(msg.contains("between"));
+    }
+
+    #[test]
+    fn test_config_validation_timeout_at_min() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 1
+poll_interval = 60
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("timeout at min");
+        assert_eq!(cfg.timeout, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_config_validation_timeout_at_max() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 300
+poll_interval = 60
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("timeout at max");
+        assert_eq!(cfg.timeout, Duration::from_secs(300));
+    }
+
+    #[test]
+    fn test_config_validation_poll_interval_below_min() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 30
+poll_interval = 5
+"#,
+        );
+
+        let err = Config::load(Some(path)).expect_err("poll_interval below min");
+        let msg = format!("{err}");
+        assert!(msg.contains("poll_interval"));
+        assert!(msg.contains("between"));
+    }
+
+    #[test]
+    fn test_config_validation_poll_interval_above_max() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 30
+poll_interval = 5000
+"#,
+        );
+
+        let err = Config::load(Some(path)).expect_err("poll_interval above max");
+        let msg = format!("{err}");
+        assert!(msg.contains("poll_interval"));
+        assert!(msg.contains("between"));
+    }
+
+    #[test]
+    fn test_config_validation_poll_interval_at_min() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 30
+poll_interval = 10
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("poll_interval at min");
+        assert_eq!(cfg.poll_interval, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn test_config_validation_poll_interval_at_max() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 30
+poll_interval = 3600
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("poll_interval at max");
+        assert_eq!(cfg.poll_interval, Duration::from_secs(3600));
+    }
+
+    #[test]
+    fn test_config_validation_both_bounds_invalid() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 0
+poll_interval = 0
+"#,
+        );
+
+        let err = Config::load(Some(path)).expect_err("both bounds invalid");
+        let msg = format!("{err}");
+        // Should fail on timeout validation first
+        assert!(msg.contains("timeout"));
+    }
+
+    #[test]
+    fn test_config_validation_default_values() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("default values");
+        assert_eq!(cfg.timeout, Duration::from_secs(DEFAULT_TIMEOUT_SECS));
+        assert_eq!(cfg.poll_interval, Duration::from_secs(DEFAULT_POLL_INTERVAL_SECS));
     }
 }
