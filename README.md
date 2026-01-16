@@ -112,12 +112,13 @@ Edit `/etc/ipv6ddns/config.toml`:
 
 ```toml
 record_name = "home.example.com"
-timeout = 30
+timeout = 30 # 1-300 seconds
 # Optional, but env vars override these when set:
 # api_token = "your-token-here"
 # zone_id = "your-zone-id"
 verbose = false
 multi_record = "error" # error|first|all
+# poll_interval = 60 # 10-3600 seconds (polling fallback)
 # Sensitive values via environment variables (recommended)
 ```
 
