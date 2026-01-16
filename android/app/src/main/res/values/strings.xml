@@ -17,4 +17,9 @@
     <string name="last_sync">Last sync</string>
     <string name="action_start">Start</string>
     <string name="action_stop">Stop</string>
+    <string name="validation_api_token_required">API Token is required</string>
+    <string name="validation_zone_id_required">Zone ID is required</string>
+    <string name="validation_record_name_required">Record Name is required</string>
+    <string name="validation_timeout_range" formatted="false">Timeout must be between %1$d and %2$d seconds</string>
+    <string name="validation_poll_interval_range" formatted="false">Poll interval must be between %1$d and %2$d seconds</string>
 </resources>

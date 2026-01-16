@@ -17,4 +17,9 @@
     <string name="last_sync">上次同步</string>
     <string name="action_start">开始</string>
     <string name="action_stop">停止</string>
+    <string name="validation_api_token_required">API Token 不能为空</string>
+    <string name="validation_zone_id_required">Zone ID 不能为空</string>
+    <string name="validation_record_name_required">记录名 不能为空</string>
+    <string name="validation_timeout_range" formatted="false">超时时间必须在 %1$d 到 %2$d 秒之间</string>
+    <string name="validation_poll_interval_range" formatted="false">轮询间隔必须在 %1$d 到 %2$d 秒之间</string>
 </resources>
