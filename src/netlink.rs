@@ -181,7 +181,7 @@ impl NetlinkImpl {
         Ok(Some(buf))
     }
 
-    fn parse_message(&self, data: &[u8]) -> Option<NetlinkEvent> {
+    fn parse_message(data: &[u8]) -> Option<NetlinkEvent> {
         let mut msg_offset = 0usize;
 
         while msg_offset + NLMSG_HDRLEN <= data.len() {
@@ -300,7 +300,7 @@ impl Ipv6Monitor for NetlinkImpl {
                 Err(_would_block) => continue,
             };
 
-            if let Some(event) = self.parse_message(&data) {
+            if let Some(event) = Self::parse_message(&data) {
                 return event;
             }
         }
@@ -633,4 +633,475 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
 
     unsafe { libc::close(fd) };
     Ok((stable, temporary))
+}
+
+//==============================================================================
+// Tests
+//==============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_nlmsg_align() {
+        assert_eq!(nlmsg_align(0), 0);
+        assert_eq!(nlmsg_align(1), 4);
+        assert_eq!(nlmsg_align(4), 4);
+        assert_eq!(nlmsg_align(5), 8);
+        assert_eq!(nlmsg_align(16), 16);
+        assert_eq!(nlmsg_align(17), 20);
+        assert_eq!(nlmsg_align(19), 20);
+    }
+
+    #[test]
+    fn test_rta_align() {
+        assert_eq!(rta_align(0), 0);
+        assert_eq!(rta_align(1), 4);
+        assert_eq!(rta_align(4), 4);
+        assert_eq!(rta_align(5), 8);
+        assert_eq!(nlmsg_align(16), 16);
+    }
+
+    #[test]
+    fn test_is_valid_ipv6() {
+        assert!(is_valid_ipv6("2001:db8::1"));
+        assert!(is_valid_ipv6("::1"));
+        assert!(is_valid_ipv6("fe80::1"));
+        assert!(is_valid_ipv6("2001:0db8:0000:0000:0000:0000:0000:0001"));
+        assert!(!is_valid_ipv6("192.168.1.1"));
+        assert!(!is_valid_ipv6("invalid"));
+        assert!(!is_valid_ipv6(""));
+        assert!(!is_valid_ipv6("2001:db8::g"));
+    }
+
+    #[test]
+    fn test_parse_message_valid_rtm_newaddr() {
+        let mut buf = vec![0u8; 64];
+
+        // Netlink header
+        let nlmsg_len = 44u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes()); // flags
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes()); // seq
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes()); // pid
+
+        // Ifaddrmsg
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6; // family
+        buf[ifa_offset + 1] = 64; // prefixlen
+        buf[ifa_offset + 2] = 0; // flags (1 byte)
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE; // scope
+        buf[ifa_offset + 4..ifa_offset + 8].copy_from_slice(&0u32.to_ne_bytes()); // ifa_index
+
+        // RTA header for IFA_ADDRESS
+        let rta_offset = ifa_offset + 8;
+        let rta_len = 20u16;
+        buf[rta_offset..rta_offset + 2].copy_from_slice(&rta_len.to_ne_bytes());
+        buf[rta_offset + 2..rta_offset + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+
+        // IPv6 address
+        let ip_bytes = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string())));
+    }
+
+    #[test]
+    fn test_parse_message_rtm_deladdr() {
+        let mut buf = vec![0u8; 64];
+
+        // Netlink header
+        let nlmsg_len = 44u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_DELADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        // Ifaddrmsg
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6;
+        buf[ifa_offset + 1] = 64;
+        buf[ifa_offset + 2] = 0;
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset + 4..ifa_offset + 8].copy_from_slice(&0u32.to_ne_bytes()); // ifa_index
+
+        // RTA header for IFA_ADDRESS
+        let rta_offset = ifa_offset + 8;
+        let rta_len = 20u16;
+        buf[rta_offset..rta_offset + 2].copy_from_slice(&rta_len.to_ne_bytes());
+        buf[rta_offset + 2..rta_offset + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+
+        // IPv6 address
+        let ip_bytes = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, Some(NetlinkEvent::Ipv6Removed));
+    }
+
+    #[test]
+    fn test_parse_message_nlmsg_done() {
+        let mut buf = vec![0u8; 16];
+
+        let nlmsg_len = 16u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&NLMSG_DONE.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_nlmsg_error() {
+        let mut buf = vec![0u8; 20];
+
+        let nlmsg_len = 20u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&NLMSG_ERROR.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+        buf[16..20].copy_from_slice(&0xFFFFFFFFu32.to_ne_bytes()); // error code
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_truncated_header() {
+        let buf = vec![0u8; 10]; // Less than NLMSG_HDRLEN
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_invalid_nlmsg_len() {
+        let mut buf = vec![0u8; 16];
+
+        // Invalid nlmsg_len (less than header)
+        buf[0..4].copy_from_slice(&8u32.to_ne_bytes());
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_zero_nlmsg_len() {
+        let mut buf = vec![0u8; 16];
+
+        buf[0..4].copy_from_slice(&0u32.to_ne_bytes());
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_non_ipv6_family() {
+        let mut buf = vec![0u8; 64];
+
+        let nlmsg_len = 40u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset = 16;
+        buf[ifa_offset] = libc::AF_INET as u8; // IPv4, not IPv6
+        buf[ifa_offset + 1] = 32;
+        buf[ifa_offset + 2] = 0;
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE;
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_non_universe_scope() {
+        let mut buf = vec![0u8; 64];
+
+        let nlmsg_len = 40u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6;
+        buf[ifa_offset + 1] = 64;
+        buf[ifa_offset + 2] = 0;
+        buf[ifa_offset + 3] = libc::RT_SCOPE_LINK as u8; // Link scope, not universe
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_temporary_address() {
+        let mut buf = vec![0u8; 64];
+
+        let nlmsg_len = 44u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6;
+        buf[ifa_offset + 1] = 64;
+        buf[ifa_offset + 2] = IFA_F_TEMPORARY as u8;
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset + 4..ifa_offset + 8].copy_from_slice(&0u32.to_ne_bytes()); // ifa_index
+
+        // RTA header for IFA_ADDRESS
+        let rta_offset = ifa_offset + 8;
+        let rta_len = 20u16;
+        buf[rta_offset..rta_offset + 2].copy_from_slice(&rta_len.to_ne_bytes());
+        buf[rta_offset + 2..rta_offset + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+
+        let ip_bytes = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_tentative_address() {
+        let mut buf = vec![0u8; 64];
+
+        let nlmsg_len = 44u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6;
+        buf[ifa_offset + 1] = 64;
+        buf[ifa_offset + 2] = IFA_F_TENTATIVE as u8;
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset + 4..ifa_offset + 8].copy_from_slice(&0u32.to_ne_bytes()); // ifa_index
+
+        // RTA header for IFA_ADDRESS
+        let rta_offset = ifa_offset + 8;
+        let rta_len = 20u16;
+        buf[rta_offset..rta_offset + 2].copy_from_slice(&rta_len.to_ne_bytes());
+        buf[rta_offset + 2..rta_offset + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+
+        let ip_bytes = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_deprecated_address() {
+        let mut buf = vec![0u8; 64];
+
+        let nlmsg_len = 44u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6;
+        buf[ifa_offset + 1] = 64;
+        buf[ifa_offset + 2] = IFA_F_DEPRECATED as u8;
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset + 4..ifa_offset + 8].copy_from_slice(&0u32.to_ne_bytes()); // ifa_index
+
+        // RTA header for IFA_ADDRESS
+        let rta_offset = ifa_offset + 8;
+        let rta_len = 20u16;
+        buf[rta_offset..rta_offset + 2].copy_from_slice(&rta_len.to_ne_bytes());
+        buf[rta_offset + 2..rta_offset + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+
+        let ip_bytes = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_dadfailed_address() {
+        let mut buf = vec![0u8; 64];
+
+        let nlmsg_len = 44u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6;
+        buf[ifa_offset + 1] = 64;
+        buf[ifa_offset + 2] = IFA_F_DADFAILED as u8;
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset + 4..ifa_offset + 8].copy_from_slice(&0u32.to_ne_bytes()); // ifa_index
+
+        // RTA header for IFA_ADDRESS
+        let rta_offset = ifa_offset + 8;
+        let rta_len = 20u16;
+        buf[rta_offset..rta_offset + 2].copy_from_slice(&rta_len.to_ne_bytes());
+        buf[rta_offset + 2..rta_offset + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+
+        let ip_bytes = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_multiple_messages() {
+        let mut buf = vec![0u8; 128];
+
+        // First message: RTM_NEWADDR
+        let offset1 = 0;
+        let nlmsg_len1 = 44u32;
+        buf[offset1..offset1 + 4].copy_from_slice(&nlmsg_len1.to_ne_bytes());
+        buf[offset1 + 4..offset1 + 6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[offset1 + 6..offset1 + 8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[offset1 + 8..offset1 + 12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[offset1 + 12..offset1 + 16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset1 = offset1 + 16;
+        buf[ifa_offset1] = AF_INET6;
+        buf[ifa_offset1 + 1] = 64;
+        buf[ifa_offset1 + 2] = 0;
+        buf[ifa_offset1 + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset1 + 4..ifa_offset1 + 8].copy_from_slice(&0u32.to_ne_bytes()); // ifa_index
+
+        let rta_offset1 = ifa_offset1 + 8;
+        let rta_len1 = 20u16;
+        buf[rta_offset1..rta_offset1 + 2].copy_from_slice(&rta_len1.to_ne_bytes());
+        buf[rta_offset1 + 2..rta_offset1 + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+        let ip_bytes1 = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        buf[rta_offset1 + 4..rta_offset1 + 20].copy_from_slice(&ip_bytes1);
+
+        // Second message: RTM_NEWADDR (different IP)
+        let offset2 = 44;
+        let nlmsg_len2 = 44u32;
+        buf[offset2..offset2 + 4].copy_from_slice(&nlmsg_len2.to_ne_bytes());
+        buf[offset2 + 4..offset2 + 6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[offset2 + 6..offset2 + 8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[offset2 + 8..offset2 + 12].copy_from_slice(&2u32.to_ne_bytes());
+        buf[offset2 + 12..offset2 + 16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset2 = offset2 + 16;
+        buf[ifa_offset2] = AF_INET6;
+        buf[ifa_offset2 + 1] = 64;
+        buf[ifa_offset2 + 2] = 0;
+        buf[ifa_offset2 + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset2 + 4..ifa_offset2 + 8].copy_from_slice(&0u32.to_ne_bytes()); // ifa_index
+
+        let rta_offset2 = ifa_offset2 + 8;
+        let rta_len2 = 20u16;
+        buf[rta_offset2..rta_offset2 + 2].copy_from_slice(&rta_len2.to_ne_bytes());
+        buf[rta_offset2 + 2..rta_offset2 + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+        let ip_bytes2 = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2];
+        buf[rta_offset2 + 4..rta_offset2 + 20].copy_from_slice(&ip_bytes2);
+        let event = NetlinkImpl::parse_message(&buf);
+
+        // Should return the first valid event
+        assert_eq!(event, Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string())));
+    }
+
+    #[test]
+    fn test_parse_message_malformed_rta() {
+        let mut buf = vec![0u8; 64];
+
+        let nlmsg_len = 40u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6;
+        buf[ifa_offset + 1] = 64;
+        buf[ifa_offset + 2] = 0;
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE;
+
+        let rta_offset = ifa_offset + 8;
+        // Invalid RTA length (less than header)
+        buf[rta_offset..rta_offset + 2].copy_from_slice(&2u16.to_ne_bytes());
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_wrong_payload_length() {
+        let mut buf = vec![0u8; 64];
+
+        let nlmsg_len = 40u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6;
+        buf[ifa_offset + 1] = 64;
+        buf[ifa_offset + 2] = 0;
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE;
+
+        let rta_offset = ifa_offset + 8;
+        let rta_len = 8u16; // Wrong payload length (not 16 bytes for IPv6)
+        buf[rta_offset..rta_offset + 2].copy_from_slice(&rta_len.to_ne_bytes());
+        buf[rta_offset + 2..rta_offset + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, None);
+    }
+
+    #[test]
+    fn test_parse_message_uses_ifa_local() {
+        let mut buf = vec![0u8; 64];
+
+        let nlmsg_len = 44u32;
+        buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
+        buf[4..6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[6..8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[8..12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset = 16;
+        buf[ifa_offset] = AF_INET6;
+        buf[ifa_offset + 1] = 64;
+        buf[ifa_offset + 2] = 0;
+        buf[ifa_offset + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset + 4..ifa_offset + 8].copy_from_slice(&0u32.to_ne_bytes()); // ifa_index
+
+        let rta_offset = ifa_offset + 8;
+        let rta_len = 20u16;
+        buf[rta_offset..rta_offset + 2].copy_from_slice(&rta_len.to_ne_bytes());
+        // Use IFA_LOCAL instead of IFA_ADDRESS
+        buf[rta_offset + 2..rta_offset + 4].copy_from_slice(&IFA_LOCAL_VAL.to_ne_bytes());
+        let ip_bytes = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
+        let event = NetlinkImpl::parse_message(&buf);
+
+        assert_eq!(event, Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string())));
+    }
 }
