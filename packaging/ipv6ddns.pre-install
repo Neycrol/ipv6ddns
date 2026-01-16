@@ -1,6 +1,0 @@
-#!/bin/sh
-
-addgroup -S ipv6ddns 2>/dev/null
-adduser -S -D -H -h /var/lib/ipv6ddns -s /sbin/nologin -G ipv6ddns -g ipv6ddns ipv6ddns 2>/dev/null
-
-exit 0
