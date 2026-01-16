@@ -1,0 +1,44 @@
+# Contributor: Neycrol <neycrol@users.noreply.github.com>
+# Maintainer: Neycrol <neycrol@users.noreply.github.com>
+pkgname=ipv6ddns
+pkgver=1.0.0
+pkgrel=0
+pkgdesc="Event-driven IPv6 DDNS client for Cloudflare"
+url="https://github.com/Neycrol/ipv6ddns"
+arch="all"
+license="MIT"
+depends="ca-certificates"
+makedepends="cargo"
+install="$pkgname.pre-install"
+subpackages="$pkgname-openrc"
+source="$pkgname-$pkgver.tar.gz::https://github.com/Neycrol/ipv6ddns/archive/v$pkgver.tar.gz"
+builddir="$srcdir/$pkgname-$pkgver"
+
+build() {
+	cd "$builddir"
+	cargo build --release
+}
+
+check() {
+	cd "$builddir"
+	cargo test --release
+}
+
+package() {
+	cd "$builddir"
+
+	# Install binary
+	install -Dm755 target/release/ipv6ddns "$pkgdir"/usr/bin/ipv6ddns
+
+	# Install systemd service (as reference)
+	install -Dm644 etc/ipv6ddns.service "$pkgdir"/usr/share/doc/$pkgname/ipv6ddns.service
+
+	# Install config file
+	install -Dm644 etc/config.toml "$pkgdir"/etc/ipv6ddns/config.toml
+
+	# Install documentation
+	install -Dm644 README.md "$pkgdir"/usr/share/doc/$pkgname/README.md
+	install -Dm644 LICENSE "$pkgdir"/usr/share/licenses/$pkgname/LICENSE
+}
+
+sha512sums="SKIP"

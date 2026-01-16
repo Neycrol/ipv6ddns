@@ -1,0 +1,23 @@
+#!/sbin/openrc-run
+
+name="ipv6ddns"
+description="Event-driven IPv6 DDNS client for Cloudflare"
+command="/usr/bin/ipv6ddns"
+command_args="--config /etc/ipv6ddns/config.toml"
+command_user="ipv6ddns:ipv6ddns"
+command_background=true
+pidfile="/run/$name.pid"
+output_log="/var/log/$name.log"
+error_log="/var/log/$name.err"
+
+depend() {
+	need net
+	after firewall
+	use dns logger
+}
+
+start_pre() {
+	checkpath --directory --owner ipv6ddns:ipv6ddns --mode 0755 /var/lib/ipv6ddns
+	checkpath --file --owner ipv6ddns:ipv6ddns --mode 0644 /var/log/$name.log
+	checkpath --file --owner ipv6ddns:ipv6ddns --mode 0644 /var/log/$name.err
+}
