@@ -52,7 +52,7 @@ const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
 ///
 /// # Examples
 ///
-/// ```
+/// ```text
 /// # use ipv6ddns::main::redact_secrets;
 /// let message = "API call with token secret123 and zone zone456";
 /// let redacted = redact_secrets(message, "secret123", "zone456");
@@ -97,7 +97,7 @@ fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
 ///
 /// # Example
 ///
-/// ```no_run
+/// ```text
 /// use ipv6ddns::Config;
 /// use std::path::PathBuf;
 ///
@@ -171,7 +171,7 @@ impl Config {
     ///
     /// # Example
     ///
-    /// ```no_run
+    /// ```text
     /// use ipv6ddns::Config;
     /// use std::path::PathBuf;
     ///
@@ -327,7 +327,7 @@ struct TomlConfig {
 ///
 /// # Examples
 ///
-/// ```
+/// ```text
 /// # use ipv6ddns::main::parse_multi_record;
 /// # use ipv6ddns::cloudflare::MultiRecordPolicy;
 /// assert!(matches!(
@@ -439,7 +439,7 @@ const BACKOFF_MAX: Duration = Duration::from_secs(600);
 ///
 /// # Examples
 ///
-/// ```
+/// ```text
 /// # use ipv6ddns::main::backoff_delay;
 /// # use std::time::Duration;
 /// let delay = backoff_delay(1);
