@@ -10,7 +10,7 @@ ipv6ddns is an event-driven IPv6 DDNS client for Cloudflare. It monitors IPv6 ad
 
 1. **Event-driven**: Uses netlink for real-time IPv6 address change events, falling back to polling if netlink is unavailable
 2. **Correctness-first**: Filters out temporary, tentative, deprecated, and DAD-failed addresses
-3. **Lightweight**: ~1MB memory footprint, zero runtime dependencies
+3. **Lightweight**: Small memory footprint in typical use; minimal runtime dependencies
 4. **Secure**: Sensitive data (API tokens, zone IDs) via environment variables
 5. **Reliable**: Automatic retry with exponential backoff on failures
 
@@ -225,13 +225,13 @@ The daemon responds to Unix signals:
 
 ### Memory Usage
 
-- ~1MB memory footprint (mostly from tokio runtime)
-- Minimal heap allocations
+- Small footprint in typical use (varies with runtime and build flags)
+- Minimal heap allocations in steady state
 - No data caching (stateless design)
 
 ### CPU Usage
 
-- **Event-driven mode**: ~0% CPU when idle (no polling)
+- **Event-driven mode**: Near-zero CPU when idle (no polling)
 - **Polling mode**: Periodic CPU usage every poll_interval
 - **API requests**: CPU usage proportional to request rate
 
