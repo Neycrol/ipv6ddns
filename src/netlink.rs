@@ -706,7 +706,10 @@ mod tests {
         buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
         let event = NetlinkImpl::parse_message(&buf);
 
-        assert_eq!(event, Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string())));
+        assert_eq!(
+            event,
+            Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string()))
+        );
     }
 
     #[test]
@@ -1021,7 +1024,10 @@ mod tests {
         let event = NetlinkImpl::parse_message(&buf);
 
         // Should return the first valid event
-        assert_eq!(event, Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string())));
+        assert_eq!(
+            event,
+            Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string()))
+        );
     }
 
     #[test]
@@ -1102,6 +1108,9 @@ mod tests {
         buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
         let event = NetlinkImpl::parse_message(&buf);
 
-        assert_eq!(event, Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string())));
+        assert_eq!(
+            event,
+            Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string()))
+        );
     }
 }
