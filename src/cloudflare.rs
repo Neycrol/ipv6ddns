@@ -136,26 +136,26 @@ impl CloudflareClient {
             API_BASE, zone_id, record_name
         );
 
-        debug!("GET {}", url);
+        debug!("GET {} (record: {})", url, record_name);
         let resp = self
             .client
             .get(&url)
             .bearer_auth(&self.api_token)
             .send()
             .await
-            .context("GET request failed")?;
+            .with_context(|| format!("GET request failed for record '{}' in zone '{}'", record_name, zone_id))?;
         let status = resp.status();
         let body: ApiResponse<Vec<DnsRecord>> =
-            resp.json().await.context("Failed to parse response")?;
+            resp.json().await.with_context(|| format!("Failed to parse response for record '{}'", record_name))?;
 
         if !body.success {
             if status == StatusCode::TOO_MANY_REQUESTS {
-                bail!("Rate limited by Cloudflare");
+                bail!("Rate limited by Cloudflare for record '{}' in zone '{}'", record_name, zone_id);
             }
             if status.is_server_error() {
-                bail!("Cloudflare server error: {}", status.as_u16());
+                bail!("Cloudflare server error {} for record '{}' in zone '{}'", status.as_u16(), record_name, zone_id);
             }
-            bail!("API error: {}", body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
+            bail!("API error for record '{}' in zone '{}': {}", record_name, zone_id, body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
         }
 
         Ok(body.result.unwrap_or_default())
@@ -268,7 +268,7 @@ impl CloudflareClient {
             proxied: false,
         })?;
 
-        debug!("POST {}", url);
+        debug!("POST {} (record: {}, ip: {})", url, record_name, ipv6_addr);
         let resp = self
             .client
             .post(&url)
@@ -277,21 +277,21 @@ impl CloudflareClient {
             .body(payload)
             .send()
             .await
-            .context("POST request failed")?;
+            .with_context(|| format!("POST request failed to create record '{}' in zone '{}'", record_name, zone_id))?;
         let status = resp.status();
-        let body: ApiResponse<DnsRecord> = resp.json().await.context("Failed to parse response")?;
+        let body: ApiResponse<DnsRecord> = resp.json().await.with_context(|| format!("Failed to parse create response for record '{}'", record_name))?;
 
         if !body.success {
             if status == StatusCode::TOO_MANY_REQUESTS {
-                bail!("Rate limited by Cloudflare");
+                bail!("Rate limited by Cloudflare while creating record '{}' in zone '{}'", record_name, zone_id);
             }
             if status.is_server_error() {
-                bail!("Cloudflare server error: {}", status.as_u16());
+                bail!("Cloudflare server error {} while creating record '{}' in zone '{}'", status.as_u16(), record_name, zone_id);
             }
-            bail!("Create failed: {}", body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
+            bail!("Create failed for record '{}' in zone '{}': {}", record_name, zone_id, body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
         }
 
-        body.result.context("API returned success but no result")
+        body.result.with_context(|| format!("API returned success but no result for record '{}'", record_name))
     }
 
     /// Update an existing AAAA record
@@ -321,7 +321,7 @@ impl CloudflareClient {
             proxied: false,
         })?;
 
-        debug!("PUT {}", url);
+        debug!("PUT {} (record: {}, ip: {})", url, record_name, ipv6_addr);
         let resp = self
             .client
             .put(&url)
@@ -330,21 +330,21 @@ impl CloudflareClient {
             .body(payload)
             .send()
             .await
-            .context("PUT request failed")?;
+            .with_context(|| format!("PUT request failed to update record '{}' (ID: {}) in zone '{}'", record_name, record_id, zone_id))?;
         let status = resp.status();
-        let body: ApiResponse<DnsRecord> = resp.json().await.context("Failed to parse response")?;
+        let body: ApiResponse<DnsRecord> = resp.json().await.with_context(|| format!("Failed to parse update response for record '{}' (ID: {})", record_name, record_id))?;
 
         if !body.success {
             if status == StatusCode::TOO_MANY_REQUESTS {
-                bail!("Rate limited by Cloudflare");
+                bail!("Rate limited by Cloudflare while updating record '{}' (ID: {}) in zone '{}'", record_name, record_id, zone_id);
             }
             if status.is_server_error() {
-                bail!("Cloudflare server error: {}", status.as_u16());
+                bail!("Cloudflare server error {} while updating record '{}' (ID: {}) in zone '{}'", status.as_u16(), record_name, record_id, zone_id);
             }
-            bail!("Update failed: {}", body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
+            bail!("Update failed for record '{}' (ID: {}) in zone '{}': {}", record_name, record_id, zone_id, body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
         }
 
-        body.result.context("API returned success but no result")
+        body.result.with_context(|| format!("API returned success but no result for record '{}' (ID: {})", record_name, record_id))
     }
 }
 
