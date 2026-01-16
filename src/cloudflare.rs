@@ -11,7 +11,16 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 use urlencoding::encode;
 
+/// Cloudflare API base URL
 const API_BASE: &str = "https://api.cloudflare.com/client/v4";
+/// User agent string for API requests
+const USER_AGENT: &str = "ipv6ddns/1.0";
+/// DNS record type for IPv6 addresses
+const DNS_RECORD_TYPE_AAAA: &str = "AAAA";
+/// TTL value for automatic TTL (1 second)
+const DNS_TTL_AUTO: u64 = 1;
+/// HTTP status code for rate limiting
+const HTTP_STATUS_TOO_MANY_REQUESTS: u16 = 429;
 
 //==============================================================================
 // Types
@@ -97,7 +106,7 @@ impl CloudflareClient {
         let client = reqwest::Client::builder()
             .connect_timeout(timeout)
             .timeout(timeout)
-            .user_agent("ipv6ddns/1.0")
+            .user_agent(USER_AGENT)
             .build()
             .context("build reqwest client")?;
 
@@ -125,7 +134,7 @@ impl CloudflareClient {
         context: &str,
     ) -> Result<()> {
         if !body.success {
-            if status == StatusCode::TOO_MANY_REQUESTS {
+            if status.as_u16() == HTTP_STATUS_TOO_MANY_REQUESTS {
                 bail!("Rate limited by Cloudflare: {}", context);
             }
             if status.is_server_error() {
@@ -301,10 +310,10 @@ impl CloudflareClient {
 
         let url = format!("{}/zones/{}/dns_records", API_BASE, zone_id);
         let payload = serde_json::to_string(&Payload {
-            rt: "AAAA",
+            rt: DNS_RECORD_TYPE_AAAA,
             name: record_name.to_string(),
             content: ipv6_addr.to_string(),
-            ttl: 1,
+            ttl: DNS_TTL_AUTO,
             proxied: false,
         })?;
 
@@ -362,10 +371,10 @@ impl CloudflareClient {
 
         let url = format!("{}/zones/{}/dns_records/{}", API_BASE, zone_id, record_id);
         let payload = serde_json::to_string(&Payload {
-            rt: "AAAA",
+            rt: DNS_RECORD_TYPE_AAAA,
             name: record_name.to_string(),
             content: ipv6_addr.to_string(),
-            ttl: 1,
+            ttl: DNS_TTL_AUTO,
             proxied: false,
         })?;
 
