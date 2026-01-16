@@ -33,34 +33,87 @@ const ENV_ZONE_ID: &str = "CLOUDFLARE_ZONE_ID";
 const ENV_RECORD_NAME: &str = "CLOUDFLARE_RECORD_NAME";
 const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
 
-/// Redacts sensitive data (API tokens and zone IDs) from log messages
-///
-/// This function replaces API tokens and zone IDs with placeholders
-/// to prevent accidental exposure of secrets in logs.
-///
-/// # Arguments
-///
-/// * `message` - The log message to sanitize
-/// * `api_token` - The API token to redact (if present in message)
-/// * `zone_id` - The zone ID to redact (if present in message)
-///
-/// # Returns
-///
-/// Returns a sanitized string with sensitive data redacted
+/// Redacts sensitive data (API tokens and zone IDs) from log messages.
 fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
     let mut sanitized = message.to_string();
 
-    // Redact API token
     if !api_token.is_empty() {
         sanitized = sanitized.replace(api_token, "***REDACTED***");
     }
-
-    // Redact zone ID
     if !zone_id.is_empty() {
         sanitized = sanitized.replace(zone_id, "***REDACTED***");
     }
 
     sanitized
+}
+
+/// Validates that a string is a reasonable DNS record name.
+///
+/// Allows common DNS conventions used for TXT/ACME and wildcard records:
+/// - `@` for apex
+/// - `_` in labels (e.g. `_acme-challenge`)
+/// - `*` as a whole label (e.g. `*.example.com`)
+/// - trailing dot (FQDN), which is ignored for validation
+fn validate_record_name(record_name: &str) -> Result<()> {
+    let trimmed = record_name.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow::anyhow!("Record name cannot be empty"));
+    }
+    if trimmed == "@" {
+        return Ok(());
+    }
+    if trimmed.contains(' ') {
+        return Err(anyhow::anyhow!("Record name cannot contain spaces"));
+    }
+
+    let name = trimmed.strip_suffix('.').unwrap_or(trimmed);
+    if name.is_empty() {
+        return Err(anyhow::anyhow!("Record name cannot be empty"));
+    }
+    if name.len() > 253 {
+        return Err(anyhow::anyhow!(
+            "Record name too long (max 253 characters, got {})",
+            name.len()
+        ));
+    }
+    if name.starts_with('.') {
+        return Err(anyhow::anyhow!("Record name cannot start with a dot"));
+    }
+    if name.contains("..") {
+        return Err(anyhow::anyhow!(
+            "Record name cannot contain consecutive dots"
+        ));
+    }
+
+    for label in name.split('.') {
+        if label.is_empty() {
+            return Err(anyhow::anyhow!("Record name contains empty label"));
+        }
+        if label == "*" {
+            continue;
+        }
+        if label.len() > 63 {
+            return Err(anyhow::anyhow!(
+                "Record name label too long (max 63 characters, got {})",
+                label.len()
+            ));
+        }
+        if label.starts_with('-') || label.ends_with('-') {
+            return Err(anyhow::anyhow!(
+                "Record name label cannot start or end with hyphen"
+            ));
+        }
+        for ch in label.chars() {
+            if !ch.is_alphanumeric() && ch != '-' && ch != '_' {
+                return Err(anyhow::anyhow!(
+                    "Record name contains invalid character: '{}' (allowed: letters, digits, '-', '_', or wildcard labels)",
+                    ch
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +171,9 @@ impl Config {
                 record = v;
             }
         }
+
+        // Validate record_name format
+        validate_record_name(&record)?;
         if let Ok(v) = env::var(ENV_MULTI_RECORD) {
             if !v.is_empty() {
                 multi_record = parse_multi_record(&v)?;
