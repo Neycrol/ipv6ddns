@@ -20,7 +20,9 @@ object BinaryManager {
             }
         }
         throw IllegalStateException(
-            "Unsupported ABI: ${abis.joinToString()} (supported: arm64-v8a, x86_64)"
+            "Unsupported ABI: ${abis.joinToString()} (supported: arm64-v8a, x86_64). " +
+            "This app is not compatible with your device architecture. " +
+            "Please use a device with ARM64 or x86_64 architecture."
         )
     }
 
@@ -65,7 +67,11 @@ object BinaryManager {
                 dest.delete()
                 marker.delete()
                 checksumMarker.delete()
-                throw SecurityException("Checksum file missing for $assetName (expected: $assetName.sha256 in assets)")
+                throw SecurityException(
+                    "Security check failed: Checksum file missing for $assetName. " +
+                    "Expected file: $assetName.sha256 in app assets. " +
+                    "Please reinstall the app or contact support."
+                )
             }
         val needsCopy = !dest.exists() ||
             !marker.exists() ||
@@ -84,7 +90,10 @@ object BinaryManager {
                 dest.delete()
                 marker.delete()
                 checksumMarker.delete()
-                throw SecurityException("Failed to copy binary from assets: ${e.message}")
+                throw SecurityException(
+                    "Failed to extract binary: ${e.localizedMessage}. " +
+                    "Please ensure the app has sufficient storage space and try reinstalling."
+                )
             }
         }
 
@@ -97,7 +106,11 @@ object BinaryManager {
             dest.delete()
             marker.delete()
             checksumMarker.delete()
-            throw SecurityException("Binary checksum verification failed for $assetName (expected: $expectedChecksum, got: $actualChecksum)")
+            throw SecurityException(
+                "Security check failed: Binary checksum mismatch. " +
+                "This may indicate a corrupted installation. " +
+                "Please clear app data and reinstall: Settings > Apps > ipv6ddns > Clear data."
+            )
         }
         Log.i(TAG, "Checksum verified for $assetName: $actualChecksum")
         checksumMarker.writeText(actualChecksum)
