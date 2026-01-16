@@ -28,13 +28,13 @@ jobs:
           "$HOME/.cargo/bin/rustup" component add clippy rustfmt
 
       - name: Run cargo test
-        run: cargo test --verbose
+        run: cargo test --all-features --verbose
 
       - name: Run cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run cargo fmt check
-        run: cargo fmt -- --check
+        run: cargo fmt --all-features -- --check
 
   test-android:
     runs-on: ubuntu-latest
