@@ -80,7 +80,10 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
 /// - Link-local addresses (fe80::/10)
 /// - Multicast addresses (ff00::/8)
 /// - Documentation addresses (2001:db8::/32)
-pub fn is_valid_ipv6(ip: &str) -> bool {
+///
+/// Note: unique-local addresses (fc00::/7) are allowed by design, since DDNS
+/// is often used on private networks.
+pub fn is_valid_ipv6(ip: &str, allow_loopback: bool) -> bool {
     let addr = match ip.parse::<std::net::Ipv6Addr>() {
         Ok(a) => a,
         Err(_) => return false,
@@ -92,7 +95,7 @@ pub fn is_valid_ipv6(ip: &str) -> bool {
     }
 
     // Filter out loopback address (::1)
-    if addr.is_loopback() {
+    if addr.is_loopback() && !allow_loopback {
         return false;
     }
 
@@ -150,24 +153,33 @@ mod tests {
     #[test]
     fn test_is_valid_ipv6() {
         // Valid global unicast addresses
-        assert!(is_valid_ipv6("2606:4700:4700::1111"));
-        assert!(is_valid_ipv6("2001:4860:4860::8888"));
-        assert!(is_valid_ipv6("2a00:1450:4001:81b::200e"));
+        assert!(is_valid_ipv6("2606:4700:4700::1111", false));
+        assert!(is_valid_ipv6("2001:4860:4860::8888", false));
+        assert!(is_valid_ipv6("2a00:1450:4001:81b::200e", false));
 
+        // Unique-local addresses are allowed
+        assert!(is_valid_ipv6("fc00::1", false));
+        assert!(is_valid_ipv6("fd12:3456:789a::1", false));
         // Reserved addresses that should be rejected
-        assert!(!is_valid_ipv6("::")); // Unspecified
-        assert!(!is_valid_ipv6("::1")); // Loopback
-        assert!(!is_valid_ipv6("fe80::1")); // Link-local
-        assert!(!is_valid_ipv6("fe80::dead:beef")); // Link-local
-        assert!(!is_valid_ipv6("ff00::1")); // Multicast
-        assert!(!is_valid_ipv6("ff02::1")); // Multicast
-        assert!(!is_valid_ipv6("2001:db8::1")); // Documentation
-        assert!(!is_valid_ipv6("2001:0db8::1")); // Documentation
+        assert!(!is_valid_ipv6("::", false)); // Unspecified
+        assert!(!is_valid_ipv6("::1", false)); // Loopback (default reject)
+        assert!(!is_valid_ipv6("fe80::1", false)); // Link-local
+        assert!(!is_valid_ipv6("fe80::dead:beef", false)); // Link-local
+        assert!(!is_valid_ipv6("ff00::1", false)); // Multicast
+        assert!(!is_valid_ipv6("ff02::1", false)); // Multicast
+        assert!(!is_valid_ipv6("2001:db8::1", false)); // Documentation
+        assert!(!is_valid_ipv6("2001:0db8::1", false)); // Documentation
 
         // Invalid formats
-        assert!(!is_valid_ipv6("192.168.1.1")); // IPv4
-        assert!(!is_valid_ipv6("invalid"));
-        assert!(!is_valid_ipv6(""));
-        assert!(!is_valid_ipv6("2001:db8::g"));
+        assert!(!is_valid_ipv6("192.168.1.1", false)); // IPv4
+        assert!(!is_valid_ipv6("invalid", false));
+        assert!(!is_valid_ipv6("", false));
+        assert!(!is_valid_ipv6("2001:db8::g", false));
+    }
+
+    #[test]
+    fn test_is_valid_ipv6_allow_loopback() {
+        assert!(is_valid_ipv6("::1", true));
+        assert!(!is_valid_ipv6("::", true));
     }
 }

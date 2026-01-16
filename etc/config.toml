@@ -5,12 +5,14 @@
 #   CLOUDFLARE_ZONE_ID    - Zone ID
 #   CLOUDFLARE_RECORD_NAME - DNS record name
 #   CLOUDFLARE_MULTI_RECORD - error|first|all
+#   IPV6DDNS_ALLOW_LOOPBACK - true|false (allow ::1 as valid IPv6)
 #
 # Environment variables take precedence over config file values.
 #
 # Optional (env overrides if set):
 # api_token = "your-token-here"
 # zone_id = "your-zone-id"
+# allow_loopback = false
 
 # Record name to update
 record_name = "xishao.top"
