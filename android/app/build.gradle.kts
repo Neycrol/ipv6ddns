@@ -92,4 +92,8 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-saveable")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+
+    // Unit testing dependencies
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.0")
 }
