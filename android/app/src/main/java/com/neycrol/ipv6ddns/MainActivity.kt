@@ -76,6 +76,7 @@ fun AppScreen() {
     var multiRecord by rememberSaveable { mutableStateOf("error") }
     var showMenu by remember { mutableStateOf(false) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    val clearError = { errorMessage = null }
     val multiRecordOptions = listOf(
         "error" to stringResource(R.string.multi_record_error),
         "first" to stringResource(R.string.multi_record_first),
@@ -136,20 +137,29 @@ fun AppScreen() {
                     Text(stringResource(R.string.section_cloudflare))
                     OutlinedTextField(
                         value = apiToken,
-                        onValueChange = { apiToken = it },
+                        onValueChange = {
+                            apiToken = it
+                            clearError()
+                        },
                         label = { Text(stringResource(R.string.label_api_token)) },
                         modifier = Modifier.fillMaxWidth(),
                         visualTransformation = PasswordVisualTransformation()
                     )
                     OutlinedTextField(
                         value = zoneId,
-                        onValueChange = { zoneId = it },
+                        onValueChange = {
+                            zoneId = it
+                            clearError()
+                        },
                         label = { Text(stringResource(R.string.label_zone_id)) },
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
                         value = recordName,
-                        onValueChange = { recordName = it },
+                        onValueChange = {
+                            recordName = it
+                            clearError()
+                        },
                         label = { Text(stringResource(R.string.label_record_name)) },
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -165,14 +175,20 @@ fun AppScreen() {
                     ) {
                         OutlinedTextField(
                             value = timeoutSec,
-                            onValueChange = { timeoutSec = it.filter { ch -> ch.isDigit() } },
+                            onValueChange = {
+                                timeoutSec = it.filter { ch -> ch.isDigit() }
+                                clearError()
+                            },
                             label = { Text(stringResource(R.string.label_timeout)) },
                             modifier = Modifier.weight(1f)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         OutlinedTextField(
                             value = pollIntervalSec,
-                            onValueChange = { pollIntervalSec = it.filter { ch -> ch.isDigit() } },
+                            onValueChange = {
+                                pollIntervalSec = it.filter { ch -> ch.isDigit() }
+                                clearError()
+                            },
                             label = { Text(stringResource(R.string.label_poll)) },
                             modifier = Modifier.weight(1f)
                         )
@@ -184,7 +200,13 @@ fun AppScreen() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(stringResource(R.string.label_verbose))
-                        Switch(checked = verbose, onCheckedChange = { verbose = it })
+                        Switch(
+                            checked = verbose,
+                            onCheckedChange = {
+                                verbose = it
+                                clearError()
+                            }
+                        )
                     }
 
                     Row(
@@ -202,6 +224,7 @@ fun AppScreen() {
                                     text = { Text(label) },
                                     onClick = {
                                         multiRecord = option
+                                        clearError()
                                         showMenu = false
                                     }
                                 )
