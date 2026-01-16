@@ -46,16 +46,15 @@ jobs:
           IFLOW_PLAN_MODE: "1"
           IFLOW_DISABLE_SUDO: "1"
           IFLOW_WRITE_CONTEXT: "1"
-          IFLOW_TOOL_FALLBACK: "1"
-          IFLOW_FORCE_EDIT: "1"
           IFLOW_CONTEXT: |
             # iFlow Auto-PR Context
 
             You are an automated improvement bot for the ipv6ddns repository.
             Be bold, creative, and insightful—but keep changes small and safe.
             You run in GitHub Actions with no sudo and no interactive input.
-            First read IFLOW_PLAN.md if it exists. Then create PRs and write a plan file at .iflow_pr_plan.json describing how to split changes.
-            Each PR must be one category only and include self-proof/review/tests.
+            First read IFLOW_PLAN.md if it exists, then make concrete edits.
+            Keep changes organized by category (docs/tests/ci/android-ui/packaging/bugfix/refactor/perf).
+            The automation will split PRs by file category and include a brief summary.
             Tools are allowed, but only modify files within the repo.
             Never push directly to main/master; only create PR branches.
           PYTHONUNBUFFERED: "1"

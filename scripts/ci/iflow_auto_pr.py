@@ -55,28 +55,14 @@ You may modify any number of files.
 If a change would exceed limits, split it into a separate PR or skip it.
 Use tools to inspect files when necessary; do not assume file contents.
 
-Do NOT output JSON in stdout. Instead, when you are done editing files,
-write a plan file at `.iflow_pr_plan.json` with this schema (inside the repo):
-{{
-  "prs": [
-    {{
-      "title": "...",
-      "branch_name": "...",
-      "type": "refactor|perf|tests|docs|ci|android-ui|packaging|bugfix|auto",
-      "files": ["path/one.rs", "path/two.rs"],
-      "rationale": ["...", "..."],
-      "self_proof": ["...", "..."],
-      "self_review": ["...", "..."],
-      "tests": ["..."]
-    }}
-  ]
-}}
+Do NOT output JSON or patches to stdout. Make concrete file edits only.
 
 Rules:
 - Tools are allowed, but only modify files within the repo workspace.
-- Do NOT print the plan to stdout; only write .iflow_pr_plan.json.
 - Do NOT run git commands or write patch files.
 - Never push directly to main/master; only create PR branches.
+- Keep changes organized by category: docs, tests, ci, android-ui, packaging, bugfix, refactor, perf.
+  The automation will split PRs by file categories, so keep related changes grouped by file type/path.
 
 Top-level entries:
 {files_preview}
@@ -197,6 +183,41 @@ def write_plan_md(text):
     path = ROOT / "IFLOW_PLAN.md"
     path.write_text(text)
     return path
+
+
+def classify_file(path):
+    if path.startswith("android/"):
+        return "android-ui"
+    if path.startswith(".github/"):
+        return "ci"
+    if path.startswith("packaging/") or path in {"deploy.sh"} or path.startswith("etc/"):
+        return "packaging"
+    if path.startswith("tests/") or path.endswith("_test.rs") or path.endswith("/tests.rs"):
+        return "tests"
+    if path.endswith(".md") or path.startswith("docs/"):
+        return "docs"
+    return "refactor"
+
+
+def build_prs_from_categories(changed_files):
+    groups = {}
+    for path in changed_files:
+        category = classify_file(path)
+        groups.setdefault(category, []).append(path)
+    prs = []
+    for idx, (category, files) in enumerate(groups.items(), 1):
+        title = f"{category}: update {len(files)} file(s)"
+        prs.append({
+            "title": title,
+            "branch_name": f"{category}-{idx}",
+            "type": category,
+            "files": files,
+            "rationale": [f"Grouped {category} changes for focused review."],
+            "self_proof": [f"Only {category} files were modified: {len(files)} file(s)."],
+            "self_review": ["Reviewed diffs for scope; no functional review beyond category grouping."],
+            "tests": ["Not run (automation)."],
+        })
+    return prs
 
 
 def create_fallback_pr():
@@ -454,28 +475,6 @@ def main():
     print("=== iFlow raw output (truncated) ===")
     print(output[:8000])
     print("=== end ===")
-    # Enforce plan file + edits if requested
-    plan_path = Path(os.environ.get("IFLOW_PLAN_FILE", ".iflow_pr_plan.json"))
-    if FORCE_EDIT:
-        if not plan_path.exists():
-            print("Plan file missing; running strict edit prompt...", flush=True)
-            strict_prompt = (
-                "You must modify files in the repo and create .iflow_pr_plan.json. "
-                "Do not print the plan to stdout. Make at least one concrete improvement."
-            )
-            try:
-                run_iflow(
-                    strict_prompt,
-                    model,
-                    min(10, max_turns),
-                    min(900, timeout),
-                    "/tmp/iflow_strict.json",
-                )
-            except subprocess.CalledProcessError as exc:
-                print(f"iFlow strict run failed (exit {exc.returncode})")
-                if exc.output:
-                    print(exc.output[:4000])
-    
     try:
         out_path = Path("/tmp/iflow_output.json")
         if out_path.exists():
@@ -484,17 +483,6 @@ def main():
             print("=== end ===")
     except Exception:
         pass
-    plan_path = Path(os.environ.get("IFLOW_PLAN_FILE", ".iflow_pr_plan.json"))
-    plan = None
-    if plan_path.exists():
-        try:
-            plan = json.loads(plan_path.read_text())
-        except Exception as exc:
-            print(f"Failed to parse plan file: {exc}")
-        try:
-            plan_path.unlink()
-        except Exception:
-            pass
 
     status = git("status", "--porcelain", capture=True)
     dirty = bool(status.strip())
@@ -508,7 +496,8 @@ def main():
 
     changed_files = [f for f in git("diff", "--name-only", capture=True).splitlines() if f.strip()]
 
-    if plan and isinstance(plan, dict) and plan.get("prs"):
+    prs = build_prs_from_categories(changed_files)
+    if prs:
         temp_branch = f"iflow/workspace-temp-{os.getpid()}"
         git("checkout", "-b", temp_branch)
         assert_not_main_branch()
@@ -517,7 +506,7 @@ def main():
         git("checkout", "main")
         git("reset", "--hard", "origin/main")
         git("clean", "-fd")
-        created = create_prs_from_file_lists(plan["prs"][:MAX_PRS], temp_branch, changed_files)
+        created = create_prs_from_file_lists(prs[:MAX_PRS], temp_branch, changed_files)
         print(f"Created {created} PR(s).")
         return 0
 
