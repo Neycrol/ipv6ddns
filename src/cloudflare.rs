@@ -129,11 +129,7 @@ impl CloudflareClient {
                 bail!("Rate limited by Cloudflare: {}", context);
             }
             if status.is_server_error() {
-                bail!(
-                    "Cloudflare server error {}: {}",
-                    status.as_u16(),
-                    context
-                );
+                bail!("Cloudflare server error {}: {}", status.as_u16(), context);
             }
             bail!(
                 "API error: {}: {}",
@@ -166,11 +162,7 @@ impl CloudflareClient {
     /// - The API returns an error response
     /// - Rate limit is exceeded (429 status)
     /// - Server error occurs (5xx status)
-    pub async fn get_records(
-        &self,
-        zone_id: &str,
-        record_name: &str,
-    ) -> Result<Vec<DnsRecord>> {
+    pub async fn get_records(&self, zone_id: &str, record_name: &str) -> Result<Vec<DnsRecord>> {
         let record_name = encode(record_name);
         let url = format!(
             "{}/zones/{}/dns_records?name={}&type=AAAA",
@@ -191,10 +183,10 @@ impl CloudflareClient {
                 )
             })?;
         let status = resp.status();
-        let body: ApiResponse<Vec<DnsRecord>> =
-            resp.json()
-                .await
-                .with_context(|| format!("Failed to parse response for record '{}'", record_name))?;
+        let body: ApiResponse<Vec<DnsRecord>> = resp
+            .json()
+            .await
+            .with_context(|| format!("Failed to parse response for record '{}'", record_name))?;
 
         let ctx = format!("GET record '{}' in zone '{}'", record_name, zone_id);
         self.handle_api_response(status, &body, &ctx)?;
@@ -238,14 +230,18 @@ impl CloudflareClient {
             MultiRecordPolicy::Error => {
                 if records.len() > 1 {
                     warn!("Multiple AAAA records found for {}", record_name);
-                    bail!("Multiple AAAA records found for {}. Refusing to update.", record_name);
+                    bail!(
+                        "Multiple AAAA records found for {}. Refusing to update.",
+                        record_name
+                    );
                 }
                 if let Some(record) = records.into_iter().next() {
                     if record.content == ipv6_addr {
                         debug!("Record already matches {}", ipv6_addr);
                         return Ok(record);
                     }
-                    self.update_record(zone_id, &record.id, record_name, ipv6_addr).await
+                    self.update_record(zone_id, &record.id, record_name, ipv6_addr)
+                        .await
                 } else {
                     self.create_record(zone_id, record_name, ipv6_addr).await
                 }
@@ -256,7 +252,8 @@ impl CloudflareClient {
                         debug!("Record already matches {}", ipv6_addr);
                         return Ok(record);
                     }
-                    self.update_record(zone_id, &record.id, record_name, ipv6_addr).await
+                    self.update_record(zone_id, &record.id, record_name, ipv6_addr)
+                        .await
                 } else {
                     self.create_record(zone_id, record_name, ipv6_addr).await
                 }
@@ -273,7 +270,9 @@ impl CloudflareClient {
                         }
                         continue;
                     }
-                    let updated = self.update_record(zone_id, &record.id, record_name, ipv6_addr).await?;
+                    let updated = self
+                        .update_record(zone_id, &record.id, record_name, ipv6_addr)
+                        .await?;
                     if first.is_none() {
                         first = Some(updated);
                     }
@@ -325,10 +324,12 @@ impl CloudflareClient {
                 )
             })?;
         let status = resp.status();
-        let body: ApiResponse<DnsRecord> = resp
-            .json()
-            .await
-            .with_context(|| format!("Failed to parse create response for record '{}'", record_name))?;
+        let body: ApiResponse<DnsRecord> = resp.json().await.with_context(|| {
+            format!(
+                "Failed to parse create response for record '{}'",
+                record_name
+            )
+        })?;
 
         let ctx = format!("Create record '{}' in zone '{}'", record_name, zone_id);
         self.handle_api_response(status, &body, &ctx)?;
@@ -387,15 +388,12 @@ impl CloudflareClient {
                 )
             })?;
         let status = resp.status();
-        let body: ApiResponse<DnsRecord> = resp
-            .json()
-            .await
-            .with_context(|| {
-                format!(
-                    "Failed to parse update response for record '{}' (ID: {})",
-                    record_name, record_id
-                )
-            })?;
+        let body: ApiResponse<DnsRecord> = resp.json().await.with_context(|| {
+            format!(
+                "Failed to parse update response for record '{}' (ID: {})",
+                record_name, record_id
+            )
+        })?;
 
         let ctx = format!(
             "Update record '{}' (ID: {}) in zone '{}'",

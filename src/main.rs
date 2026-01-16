@@ -141,8 +141,8 @@ impl Config {
             if path.exists() {
                 let content = std::fs::read_to_string(&path)
                     .with_context(|| format!("Failed to read config: {}", path.display()))?;
-                let toml_config: TomlConfig = toml::from_str(&content)
-                    .with_context(|| "Failed to parse config file")?;
+                let toml_config: TomlConfig =
+                    toml::from_str(&content).with_context(|| "Failed to parse config file")?;
 
                 api_token = toml_config.api_token.unwrap_or_default();
                 zone_id = toml_config.zone_id.unwrap_or_default();
@@ -309,9 +309,23 @@ impl Daemon {
     async fn run(&mut self) -> Result<()> {
         info!("Starting ipv6ddns daemon");
         info!("Record: {}", self.config.record);
-        info!("Mode: {}", if self.netlink.is_event_driven() { "event-driven (netlink)" } else { "polling" });
+        info!(
+            "Mode: {}",
+            if self.netlink.is_event_driven() {
+                "event-driven (netlink)"
+            } else {
+                "polling"
+            }
+        );
         info!("Multi-record policy: {:?}", self.config.multi_record);
-        debug!("Zone ID: {}", redact_secrets(&self.config.zone_id, &self.config.api_token, &self.config.zone_id));
+        debug!(
+            "Zone ID: {}",
+            redact_secrets(
+                &self.config.zone_id,
+                &self.config.api_token,
+                &self.config.zone_id
+            )
+        );
 
         if let Some(ip) = detect_global_ipv6() {
             info!("Initial IPv6: {}", ip);
@@ -387,8 +401,15 @@ impl Daemon {
             }
         }
 
-        let redacted_zone = redact_secrets(&self.config.zone_id, &self.config.api_token, &self.config.zone_id);
-        info!("Syncing {} -> {} (zone: {})", self.config.record, ip, redacted_zone);
+        let redacted_zone = redact_secrets(
+            &self.config.zone_id,
+            &self.config.api_token,
+            &self.config.zone_id,
+        );
+        info!(
+            "Syncing {} -> {} (zone: {})",
+            self.config.record, ip, redacted_zone
+        );
 
         let result = self
             .cf_client
@@ -434,16 +455,15 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let config = Config::load(args.config).context("Config load failed")?;
 
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-        EnvFilter::new(if config.verbose { "debug" } else { "info" })
-    });
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(if config.verbose { "debug" } else { "info" }));
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
     let cf_client = CloudflareClient::new(&config.api_token, config.timeout)
         .context("Cloudflare client failed")?;
 
-    let netlink = NetlinkSocket::new(Some(config.poll_interval))
-        .context("Netlink socket failed")?;
+    let netlink =
+        NetlinkSocket::new(Some(config.poll_interval)).context("Netlink socket failed")?;
 
     let mut daemon = Daemon::new(config, cf_client, netlink);
     daemon.run().await?;
@@ -467,7 +487,12 @@ mod tests {
 
     impl EnvGuard {
         fn new() -> Self {
-            let keys = [ENV_API_TOKEN, ENV_ZONE_ID, ENV_RECORD_NAME, ENV_MULTI_RECORD];
+            let keys = [
+                ENV_API_TOKEN,
+                ENV_ZONE_ID,
+                ENV_RECORD_NAME,
+                ENV_MULTI_RECORD,
+            ];
             let mut saved = Vec::with_capacity(keys.len());
             for key in keys {
                 saved.push((key, std::env::var(key).ok()));
@@ -550,7 +575,11 @@ record_name = "file.example.com"
         let _env = EnvGuard::new();
         let err = Config::load(None).expect_err("missing required");
         let msg = format!("{err}");
-        assert!(msg.contains(ENV_API_TOKEN) || msg.contains(ENV_ZONE_ID) || msg.contains(ENV_RECORD_NAME));
+        assert!(
+            msg.contains(ENV_API_TOKEN)
+                || msg.contains(ENV_ZONE_ID)
+                || msg.contains(ENV_RECORD_NAME)
+        );
     }
 
     #[test]

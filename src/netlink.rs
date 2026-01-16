@@ -121,8 +121,7 @@ impl NetlinkImpl {
             )
         };
         if fd < 0 {
-            return Err(std::io::Error::last_os_error())
-                .context("create netlink socket");
+            return Err(std::io::Error::last_os_error()).context("create netlink socket");
         }
 
         let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
@@ -146,13 +145,11 @@ impl NetlinkImpl {
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
         if flags < 0 {
             unsafe { libc::close(fd) };
-            return Err(std::io::Error::last_os_error())
-                .context("fcntl F_GETFL");
+            return Err(std::io::Error::last_os_error()).context("fcntl F_GETFL");
         }
         if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
             unsafe { libc::close(fd) };
-            return Err(std::io::Error::last_os_error())
-                .context("fcntl F_SETFL");
+            return Err(std::io::Error::last_os_error()).context("fcntl F_SETFL");
         }
 
         let fd = unsafe { OwnedFd::from_raw_fd(fd) };
@@ -183,7 +180,6 @@ impl NetlinkImpl {
         buf.truncate(n as usize);
         Ok(Some(buf))
     }
-
 
     fn parse_message(&self, data: &[u8]) -> Option<NetlinkEvent> {
         let mut msg_offset = 0usize;
@@ -249,17 +245,11 @@ impl NetlinkImpl {
 
             let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
             while rta_offset + RTA_HEADER_SIZE <= msg_end {
-                let rta_len = u16::from_ne_bytes([
-                    data[rta_offset],
-                    data[rta_offset + 1],
-                ]) as usize;
+                let rta_len = u16::from_ne_bytes([data[rta_offset], data[rta_offset + 1]]) as usize;
                 if rta_len < RTA_HEADER_SIZE {
                     break;
                 }
-                let rta_type = u16::from_ne_bytes([
-                    data[rta_offset + 2],
-                    data[rta_offset + 3],
-                ]);
+                let rta_type = u16::from_ne_bytes([data[rta_offset + 2], data[rta_offset + 3]]);
 
                 let payload_len = rta_len - RTA_HEADER_SIZE;
                 let payload_offset = rta_offset + RTA_HEADER_SIZE;
@@ -267,11 +257,14 @@ impl NetlinkImpl {
                     break;
                 }
 
-                if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL) && payload_len == IPV6_ADDR_BYTES {
-                    let addr: [u8; IPV6_ADDR_BYTES] = match data[payload_offset..payload_offset + IPV6_ADDR_BYTES].try_into() {
-                        Ok(a) => a,
-                        Err(_) => return None,
-                    };
+                if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL)
+                    && payload_len == IPV6_ADDR_BYTES
+                {
+                    let addr: [u8; IPV6_ADDR_BYTES] =
+                        match data[payload_offset..payload_offset + IPV6_ADDR_BYTES].try_into() {
+                            Ok(a) => a,
+                            Err(_) => return None,
+                        };
                     let ip = std::net::Ipv6Addr::from(addr);
                     let event = match nlmsg_type {
                         RTM_NEWADDR_VAL => NetlinkEvent::Ipv6Added(ip.to_string()),
@@ -416,10 +409,7 @@ impl NetlinkSocket {
                 tracing::warn!("Netlink socket failed ({:#}), falling back to polling", e);
                 tracing::info!("Polling interval: {} seconds", interval.as_secs());
                 Ok(Self {
-                    monitor: Box::new(PollingImpl::new(
-                        interval,
-                        Arc::new(AtomicBool::new(true)),
-                    )),
+                    monitor: Box::new(PollingImpl::new(interval, Arc::new(AtomicBool::new(true)))),
                     is_event_driven: false,
                 })
             }
@@ -466,8 +456,11 @@ pub fn detect_global_ipv6() -> Option<String> {
     match netlink_dump_ipv6() {
         Ok((stable, temporary)) => {
             // Validate the IPv6 address format
-            stable.and_then(|ip| if is_valid_ipv6(&ip) { Some(ip) } else { None })
-                .or_else(|| temporary.and_then(|ip| if is_valid_ipv6(&ip) { Some(ip) } else { None }))
+            stable
+                .and_then(|ip| if is_valid_ipv6(&ip) { Some(ip) } else { None })
+                .or_else(|| {
+                    temporary.and_then(|ip| if is_valid_ipv6(&ip) { Some(ip) } else { None })
+                })
         }
         Err(_) => None,
     }
@@ -487,10 +480,15 @@ fn rta_align(len: usize) -> usize {
 }
 
 fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
-    let fd = unsafe { libc::socket(NETLINK_ROUTE, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE_PROTOCOL) };
+    let fd = unsafe {
+        libc::socket(
+            NETLINK_ROUTE,
+            SOCK_RAW | SOCK_CLOEXEC,
+            NETLINK_ROUTE_PROTOCOL,
+        )
+    };
     if fd < 0 {
-        return Err(std::io::Error::last_os_error())
-            .context("create netlink socket");
+        return Err(std::io::Error::last_os_error()).context("create netlink socket");
     }
 
     let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
@@ -521,14 +519,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
     buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
     buf[16] = AF_INET6;
 
-    let send_res = unsafe {
-        libc::send(
-            fd,
-            buf.as_ptr() as *const libc::c_void,
-            buf.len(),
-            0,
-        )
-    };
+    let send_res = unsafe { libc::send(fd, buf.as_ptr() as *const libc::c_void, buf.len(), 0) };
     if send_res < 0 {
         let err = std::io::Error::last_os_error();
         unsafe { libc::close(fd) };
@@ -595,17 +586,14 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
 
                         let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
                         while rta_offset + RTA_HEADER_SIZE <= msg_end {
-                            let rta_len = u16::from_ne_bytes([
-                                data[rta_offset],
-                                data[rta_offset + 1],
-                            ]) as usize;
+                            let rta_len =
+                                u16::from_ne_bytes([data[rta_offset], data[rta_offset + 1]])
+                                    as usize;
                             if rta_len < RTA_HEADER_SIZE {
                                 break;
                             }
-                            let rta_type = u16::from_ne_bytes([
-                                data[rta_offset + 2],
-                                data[rta_offset + 3],
-                            ]);
+                            let rta_type =
+                                u16::from_ne_bytes([data[rta_offset + 2], data[rta_offset + 3]]);
                             let payload_len = rta_len - RTA_HEADER_SIZE;
                             let payload_offset = rta_offset + RTA_HEADER_SIZE;
                             if payload_offset + payload_len > msg_end {
@@ -615,11 +603,13 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
                             if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL)
                                 && payload_len == IPV6_ADDR_BYTES
                             {
-                                let addr: [u8; IPV6_ADDR_BYTES] =
-                                    match data[payload_offset..payload_offset + IPV6_ADDR_BYTES].try_into() {
-                                        Ok(a) => a,
-                                        Err(_) => break,
-                                    };
+                                let addr: [u8; IPV6_ADDR_BYTES] = match data
+                                    [payload_offset..payload_offset + IPV6_ADDR_BYTES]
+                                    .try_into()
+                                {
+                                    Ok(a) => a,
+                                    Err(_) => break,
+                                };
                                 let ip = std::net::Ipv6Addr::from(addr).to_string();
                                 if is_temp {
                                     if temporary.is_none() {
