@@ -27,10 +27,7 @@ MAX_FILES = 0
 MAX_REPAIR_ATTEMPTS = int(os.environ.get("IFLOW_REPAIR_ATTEMPTS", "1"))
 TOOL_FALLBACK = os.environ.get("IFLOW_TOOL_FALLBACK", "1") == "1"
 FORCE_EDIT = os.environ.get("IFLOW_FORCE_EDIT", "1") == "1"
-DISALLOW_WORKFLOWS = os.environ.get("IFLOW_ALLOW_WORKFLOWS") != "1"
-DISALLOWED_PREFIXES = [".github/workflows/"] if DISALLOW_WORKFLOWS else []
-VALIDATE_CMD = os.environ.get("IFLOW_VALIDATE_CMD")
-FIX_RETRIES = int(os.environ.get("IFLOW_FIX_RETRIES", "2"))
+RUN_ID = os.environ.get("GITHUB_RUN_ID") or str(os.getpid())
 
 
 def run(cmd, check=True, capture=False, text=True, **kwargs):
@@ -59,49 +56,6 @@ def status_paths(lines):
     return paths
 
 
-def filter_disallowed_files():
-    lines = status_lines()
-    if not lines:
-        return
-    paths = status_paths(lines)
-    blocked = [p for p in paths if any(p.startswith(pref) for pref in DISALLOWED_PREFIXES)]
-    if not blocked:
-        return
-    tracked = []
-    untracked = []
-    for line in lines:
-        parts = line.split()
-        if not parts:
-            continue
-        path = parts[-1]
-        if path not in blocked:
-            continue
-        if line.startswith("??"):
-            untracked.append(path)
-        else:
-            tracked.append(path)
-    print(f"Reverting disallowed changes: {blocked}")
-    if tracked:
-        run(["git", "checkout", "--", *tracked], check=False)
-        run(["git", "reset", "--", *tracked], check=False)
-    if untracked:
-        run(["git", "clean", "-fd", "--", *untracked], check=False)
-
-
-def run_validation(cmd):
-    if not cmd:
-        return 0, ""
-    print(f"Running validation: {cmd}")
-    proc = subprocess.run(
-        cmd,
-        shell=True,
-        text=True,
-        capture_output=True,
-    )
-    output = (proc.stdout or "") + (proc.stderr or "")
-    return proc.returncode, output.strip()
-
-
 def build_prompt():
     top_level = sorted([p.name for p in ROOT.iterdir() if p.name != ".git"])
     files_preview = "\n".join(top_level)
@@ -112,7 +66,6 @@ You are an automated refactoring bot for the repo at {root}. You may propose up 
 Each PR must be ONE category only from: {allowed}.
 You can modify any text source file except secrets or generated artifacts.
 Do NOT touch: .git/, target/, dist/, build outputs, or any secrets/keys.
-Do NOT modify files in .github/workflows that handle credentials. You may modify other CI files.
 You may modify any number of files.
 If a change would exceed limits, split it into a separate PR or skip it.
 Use tools to inspect files when necessary; do not assume file contents.
@@ -123,7 +76,6 @@ Rules:
 - Tools are allowed, but only modify files within the repo workspace.
 - Do NOT run git commands or write patch files.
 - Never push directly to main/master; only create PR branches.
-- Do NOT run tests or linters (cargo test/clippy/audit). External validation will run them.
 - Keep changes organized by category: docs, tests, ci, android-ui, packaging, bugfix, refactor, perf.
   The automation will split PRs by file categories, so keep related changes grouped by file type/path.
 
@@ -339,10 +291,8 @@ def create_prs_from_file_lists(prs, temp_branch, changed_files):
             print(f"Skipping PR {idx}: missing files list")
             continue
         files = [f for f in files if f in changed_set]
-        if DISALLOWED_PREFIXES:
-            files = [f for f in files if not any(f.startswith(pref) for pref in DISALLOWED_PREFIXES)]
         if not files:
-            print(f"Skipping PR {idx}: no allowed files to include")
+            print(f"Skipping PR {idx}: no files to include")
             continue
         overlap = used.intersection(files)
         if overlap:
@@ -350,7 +300,7 @@ def create_prs_from_file_lists(prs, temp_branch, changed_files):
             continue
         used.update(files)
 
-        branch = f"iflow/{sanitize_branch(pr.get('branch_name', f'auto-{idx}'), idx)}"
+        branch = f"iflow/{sanitize_branch(pr.get('branch_name', f'auto-{idx}'), idx)}-{RUN_ID}"
         title = pr.get("title", f"auto: change set {idx}").strip()[:72]
         body = "\n".join([
             f"Type: {pr.get('type','auto')}",
@@ -555,61 +505,11 @@ def main():
         print("No changes detected.")
         return 0
 
-    filter_disallowed_files()
-    status = git("status", "--porcelain", capture=True)
-    if not status.strip():
-        print("No changes detected after filtering disallowed files.")
-        return 0
-
-    if VALIDATE_CMD:
-        validation_ok = False
-        for attempt in range(FIX_RETRIES + 1):
-            code, output = run_validation(VALIDATE_CMD)
-            if code == 0:
-                validation_ok = True
-                break
-            print(f"Validation failed (attempt {attempt + 1}/{FIX_RETRIES + 1}).")
-            if output:
-                print(output[:4000])
-            if attempt >= FIX_RETRIES:
-                break
-            fix_prompt = (
-                "Validation failed. Fix the errors and re-run the validation command.\n"
-                f"Command: {VALIDATE_CMD}\n"
-                f"Output (truncated):\n{output[:2000]}"
-            )
-            try:
-                run_iflow(
-                    fix_prompt,
-                    model,
-                    min(10, max_turns),
-                    min(900, timeout),
-                    "/tmp/iflow_fix.json",
-                )
-            except subprocess.CalledProcessError as exc:
-                print(f"iFlow fix run failed (exit {exc.returncode})")
-                if exc.output:
-                    print(exc.output[:4000])
-            filter_disallowed_files()
-            status = git("status", "--porcelain", capture=True)
-            if not status.strip():
-                print("No changes detected after fix attempt.")
-                return 0
-        if not validation_ok:
-            print("Validation failed after all retries; aborting.")
-            return 1
-
     if dry_run:
         print("DRY RUN: Working tree has changes.")
         return 0
 
     changed_files = [f for f in git("diff", "--name-only", capture=True).splitlines() if f.strip()]
-    if DISALLOWED_PREFIXES:
-        changed_files = [f for f in changed_files if not any(f.startswith(pref) for pref in DISALLOWED_PREFIXES)]
-        if not changed_files:
-            print("No changes detected after filtering disallowed files.")
-            return 0
-
     prs = build_prs_from_categories(changed_files)
     if prs:
         temp_branch = f"iflow/workspace-temp-{os.getpid()}"

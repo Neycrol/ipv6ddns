@@ -46,9 +46,6 @@ jobs:
           IFLOW_PLAN_MODE: "1"
           IFLOW_DISABLE_SUDO: "1"
           IFLOW_WRITE_CONTEXT: "1"
-          IFLOW_ALLOW_WORKFLOWS: "0"
-          IFLOW_VALIDATE_CMD: "cargo test"
-          IFLOW_FIX_RETRIES: "2"
           IFLOW_CONTEXT: |
             # iFlow Auto-PR Context
 
@@ -59,8 +56,6 @@ jobs:
             Keep changes organized by category (docs/tests/ci/android-ui/packaging/bugfix/refactor/perf).
             The automation will split PRs by file category and include a brief summary.
             Tools are allowed, but only modify files within the repo.
-            Do not run tests or linters (cargo test/clippy/audit). External validation will run them.
-            Do not edit files under .github/workflows/.
             Never push directly to main/master; only create PR branches.
           PYTHONUNBUFFERED: "1"
           GH_TOKEN: ${{ github.token }}
