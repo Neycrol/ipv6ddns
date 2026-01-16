@@ -38,6 +38,8 @@ const ENV_ZONE_ID: &str = "CLOUDFLARE_ZONE_ID";
 const ENV_RECORD_NAME: &str = "CLOUDFLARE_RECORD_NAME";
 /// Environment variable name for multi-record policy
 const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
+/// Environment variable name to allow loopback IPv6 (::1)
+const ENV_ALLOW_LOOPBACK: &str = "IPV6DDNS_ALLOW_LOOPBACK";
 
 /// Default HTTP request timeout in seconds
 const DEFAULT_TIMEOUT_SECS: u64 = 30;
@@ -105,6 +107,7 @@ fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
 /// - `poll_interval`: Polling interval in seconds (fallback when netlink unavailable)
 /// - `verbose`: Enable verbose logging
 /// - `multi_record`: Policy for handling multiple AAAA records
+/// - `allow_loopback`: Allow loopback IPv6 (::1) as a valid address
 ///
 /// # Configuration Loading Priority
 ///
@@ -158,6 +161,11 @@ pub struct Config {
     /// Default: `MultiRecordPolicy::Error`
     /// Can be set via the `CLOUDFLARE_MULTI_RECORD` environment variable.
     pub multi_record: MultiRecordPolicy,
+    /// Allow loopback IPv6 address (::1) to be used for DDNS updates
+    ///
+    /// Default: false
+    /// Can be set via the `IPV6DDNS_ALLOW_LOOPBACK` environment variable.
+    pub allow_loopback: bool,
 }
 
 impl Config {
@@ -221,6 +229,7 @@ impl Config {
         let mut poll_interval = DEFAULT_POLL_INTERVAL_SECS;
         let mut verbose = false;
         let mut multi_record = MultiRecordPolicy::Error;
+        let mut allow_loopback = false;
 
         if let Some(path) = config_path {
             if path.exists() {
@@ -240,6 +249,9 @@ impl Config {
                 if let Some(v) = toml_config.multi_record.as_deref() {
                     multi_record = parse_multi_record(v)?;
                 }
+                if let Some(v) = toml_config.allow_loopback {
+                    allow_loopback = v;
+                }
             }
         }
 
@@ -251,6 +263,7 @@ impl Config {
             poll_interval: Duration::from_secs(poll_interval),
             verbose,
             multi_record,
+            allow_loopback,
         })
     }
 
@@ -285,6 +298,11 @@ impl Config {
         if let Ok(v) = env::var(ENV_MULTI_RECORD) {
             if !v.is_empty() {
                 config.multi_record = parse_multi_record(&v)?;
+            }
+        }
+        if let Ok(v) = env::var(ENV_ALLOW_LOOPBACK) {
+            if !v.is_empty() {
+                config.allow_loopback = parse_bool_env(&v).context("Invalid IPV6DDNS_ALLOW_LOOPBACK value")?;
             }
         }
         Ok(())
@@ -339,6 +357,14 @@ impl Config {
     }
 }
 
+fn parse_bool_env(value: &str) -> Result<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(anyhow::anyhow!("expected boolean (true/false/1/0/yes/no/on/off)")),
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
 struct TomlConfig {
     api_token: Option<String>,
@@ -350,6 +376,7 @@ struct TomlConfig {
     poll_interval: Option<u64>,
     verbose: Option<bool>,
     multi_record: Option<String>,
+    allow_loopback: Option<bool>,
 }
 
 /// Parses a multi-record policy string into a `MultiRecordPolicy` enum
@@ -570,7 +597,7 @@ impl Daemon {
             )
         );
 
-        if let Some(ip) = detect_global_ipv6() {
+        if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
             info!("Initial IPv6: {}", ip);
             _ = self.sync_record(&ip).await;
         } else {
@@ -588,7 +615,7 @@ impl Daemon {
                 }
                 _ = sighup.recv() => {
                     info!("SIGHUP received: forcing resync");
-                    if let Some(ip) = detect_global_ipv6() {
+                    if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
                         if let Err(e) = self.sync_record(&ip).await {
                             error!("Sync failed: {:#}", e);
                         }
@@ -726,8 +753,8 @@ async fn main() -> Result<()> {
     let cf_client = CloudflareClient::new(&config.api_token, config.timeout)
         .context("Cloudflare client failed")?;
 
-    let netlink =
-        NetlinkSocket::new(Some(config.poll_interval)).context("Netlink socket failed")?;
+    let netlink = NetlinkSocket::new(Some(config.poll_interval), config.allow_loopback)
+        .context("Netlink socket failed")?;
 
     let mut daemon = Daemon::new(config, cf_client, netlink);
     daemon.run().await?;
@@ -756,6 +783,7 @@ mod tests {
                 ENV_ZONE_ID,
                 ENV_RECORD_NAME,
                 ENV_MULTI_RECORD,
+                ENV_ALLOW_LOOPBACK,
             ];
             let mut saved = Vec::with_capacity(keys.len());
             for key in keys {
@@ -798,6 +826,7 @@ timeout = 45
 poll_interval = 90
 verbose = true
 multi_record = "all"
+allow_loopback = true
 "#,
         );
 
@@ -809,6 +838,7 @@ multi_record = "all"
         assert_eq!(cfg.poll_interval, Duration::from_secs(90));
         assert!(cfg.verbose);
         assert!(matches!(cfg.multi_record, MultiRecordPolicy::UpdateAll));
+        assert!(cfg.allow_loopback);
     }
 
     #[test]
@@ -820,17 +850,20 @@ multi_record = "all"
 api_token = "file_token"
 zone_id = "file_zone"
 record_name = "file.example.com"
+allow_loopback = false
 "#,
         );
 
         std::env::set_var(ENV_API_TOKEN, "env_token");
         std::env::set_var(ENV_ZONE_ID, "env_zone");
         std::env::set_var(ENV_RECORD_NAME, "env.example.com");
+        std::env::set_var(ENV_ALLOW_LOOPBACK, "true");
 
         let cfg = Config::load(Some(path)).expect("config load");
         assert_eq!(cfg.api_token, "env_token");
         assert_eq!(cfg.zone_id, "env_zone");
         assert_eq!(cfg.record, "env.example.com");
+        assert!(cfg.allow_loopback);
     }
 
     #[test]

@@ -96,6 +96,7 @@ Environment="CLOUDFLARE_API_TOKEN=your-token-here"
 Environment="CLOUDFLARE_ZONE_ID=your-zone-id"
 Environment="CLOUDFLARE_RECORD_NAME=home.example.com"
 Environment="CLOUDFLARE_MULTI_RECORD=error"
+Environment="IPV6DDNS_ALLOW_LOOPBACK=false"
 ```
 
 Or create `/etc/default/ipv6ddns`:
@@ -104,6 +105,7 @@ export CLOUDFLARE_API_TOKEN="your-token-here"
 export CLOUDFLARE_ZONE_ID="your-zone-id"
 export CLOUDFLARE_RECORD_NAME="home.example.com"
 export CLOUDFLARE_MULTI_RECORD="error"
+export IPV6DDNS_ALLOW_LOOPBACK="false"
 ```
 
 ### Method 2: Config File
@@ -118,6 +120,7 @@ timeout = 30 # 1-300 seconds
 # zone_id = "your-zone-id"
 verbose = false
 multi_record = "error" # error|first|all
+# allow_loopback = false # allow ::1 for local testing
 # poll_interval = 60 # 10-3600 seconds (polling fallback)
 # Sensitive values via environment variables (recommended)
 ```

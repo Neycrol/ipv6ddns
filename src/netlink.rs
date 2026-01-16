@@ -313,13 +313,15 @@ impl Ipv6Monitor for NetlinkImpl {
 
 struct PollingImpl {
     interval: Duration,
+    allow_loopback: bool,
     last_ip: Option<String>,
 }
 
 impl PollingImpl {
-    fn new(interval: Duration) -> Self {
+    fn new(interval: Duration, allow_loopback: bool) -> Self {
         Self {
             interval,
+            allow_loopback,
             last_ip: None,
         }
     }
@@ -331,7 +333,7 @@ impl Ipv6Monitor for PollingImpl {
         loop {
             tokio::time::sleep(self.interval).await;
 
-            let current_ip = detect_global_ipv6();
+            let current_ip = detect_global_ipv6(self.allow_loopback);
 
             match (&self.last_ip, &current_ip) {
                 (None, Some(ip)) => {
@@ -387,7 +389,7 @@ impl NetlinkSocket {
     ///
     /// - If netlink is available: Uses event-driven monitoring (zero CPU when idle)
     /// - If netlink is unavailable: Falls back to polling with the specified interval
-    pub fn new(poll_interval: Option<Duration>) -> Result<Self> {
+    pub fn new(poll_interval: Option<Duration>, allow_loopback: bool) -> Result<Self> {
         let interval = poll_interval.unwrap_or(POLL_INTERVAL_DEFAULT);
 
         match NetlinkImpl::new() {
@@ -402,7 +404,7 @@ impl NetlinkSocket {
                 tracing::warn!("Netlink socket failed ({:#}), falling back to polling", e);
                 tracing::info!("Polling interval: {} seconds", interval.as_secs());
                 Ok(Self {
-                    monitor: Box::new(PollingImpl::new(interval)),
+                    monitor: Box::new(PollingImpl::new(interval, allow_loopback)),
                     is_event_driven: false,
                 })
             }
@@ -445,14 +447,14 @@ impl NetlinkSocket {
 /// - Returns stable IPv6 addresses if available
 /// - Falls back to temporary addresses if no stable address exists
 /// - Returns `None` if no global IPv6 address is found or an error occurs
-pub fn detect_global_ipv6() -> Option<String> {
+pub fn detect_global_ipv6(allow_loopback: bool) -> Option<String> {
     match netlink_dump_ipv6() {
         Ok((stable, temporary)) => {
             // Validate the IPv6 address format
             stable
-                .and_then(|ip| if is_valid_ipv6(&ip) { Some(ip) } else { None })
+                .and_then(|ip| if is_valid_ipv6(&ip, allow_loopback) { Some(ip) } else { None })
                 .or_else(|| {
-                    temporary.and_then(|ip| if is_valid_ipv6(&ip) { Some(ip) } else { None })
+                    temporary.and_then(|ip| if is_valid_ipv6(&ip, allow_loopback) { Some(ip) } else { None })
                 })
         }
         Err(_) => None,
