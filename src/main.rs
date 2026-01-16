@@ -172,8 +172,6 @@ impl Config {
             }
         }
 
-        // Validate record_name format
-        validate_record_name(&record)?;
         if let Ok(v) = env::var(ENV_MULTI_RECORD) {
             if !v.is_empty() {
                 multi_record = parse_multi_record(&v)?;
@@ -189,6 +187,9 @@ impl Config {
         if record.is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_RECORD_NAME));
         }
+
+        // Validate record_name format after required fields are present
+        validate_record_name(&record)?;
 
         Ok(Self {
             api_token,
