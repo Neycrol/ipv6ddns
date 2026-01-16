@@ -12,7 +12,7 @@ Event-driven IPv6 DDNS client for Cloudflare, written in Rust.
 
 ## Requirements
 
-- Rust 1.70+
+- Rust 1.76+
 - Linux with netlink support
 - Cloudflare API Token with DNS edit permissions
 
