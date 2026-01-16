@@ -97,11 +97,39 @@ impl Config {
         if api_token.is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_API_TOKEN));
         }
+        if api_token.len() < 10 || api_token.len() > 200 {
+            return Err(anyhow::anyhow!(
+                "Invalid {}: length must be between 10 and 200 characters",
+                ENV_API_TOKEN
+            ));
+        }
         if zone_id.is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_ZONE_ID));
         }
+        if !zone_id.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return Err(anyhow::anyhow!(
+                "Invalid {}: must contain only alphanumeric characters",
+                ENV_ZONE_ID
+            ));
+        }
         if record.is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_RECORD_NAME));
+        }
+        if record.len() > 253 {
+            return Err(anyhow::anyhow!(
+                "Invalid {}: length must not exceed 253 characters",
+                ENV_RECORD_NAME
+            ));
+        }
+        if timeout < 1 || timeout > 3600 {
+            return Err(anyhow::anyhow!(
+                "Invalid timeout: must be between 1 and 3600 seconds"
+            ));
+        }
+        if poll_interval < 1 || poll_interval > 3600 {
+            return Err(anyhow::anyhow!(
+                "Invalid poll_interval: must be between 1 and 3600 seconds"
+            ));
         }
 
         Ok(Self {

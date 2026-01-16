@@ -82,6 +82,19 @@ impl CloudflareClient {
         })
     }
 
+    fn check_api_response<T>(status: StatusCode, body: &ApiResponse<T>, operation: &str) -> Result<()> {
+        if !body.success {
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                bail!("Rate limited by Cloudflare");
+            }
+            if status.is_server_error() {
+                bail!("Cloudflare server error: {}", status.as_u16());
+            }
+            bail!("{} failed: {}", operation, body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
+        }
+        Ok(())
+    }
+
     /// Get a DNS record by name (AAAA only)
     pub async fn get_records(
         &self,
@@ -106,15 +119,7 @@ impl CloudflareClient {
         let body: ApiResponse<Vec<DnsRecord>> =
             resp.json().await.context("Failed to parse response")?;
 
-        if !body.success {
-            if status == StatusCode::TOO_MANY_REQUESTS {
-                bail!("Rate limited by Cloudflare");
-            }
-            if status.is_server_error() {
-                bail!("Cloudflare server error: {}", status.as_u16());
-            }
-            bail!("API error: {}", body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
-        }
+        Self::check_api_response(status, &body, "API")?;
 
         Ok(body.result.unwrap_or_default())
     }
@@ -216,15 +221,7 @@ impl CloudflareClient {
         let status = resp.status();
         let body: ApiResponse<DnsRecord> = resp.json().await.context("Failed to parse response")?;
 
-        if !body.success {
-            if status == StatusCode::TOO_MANY_REQUESTS {
-                bail!("Rate limited by Cloudflare");
-            }
-            if status.is_server_error() {
-                bail!("Cloudflare server error: {}", status.as_u16());
-            }
-            bail!("Create failed: {}", body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
-        }
+        Self::check_api_response(status, &body, "Create")?;
 
         body.result.context("API returned success but no result")
     }
@@ -269,15 +266,7 @@ impl CloudflareClient {
         let status = resp.status();
         let body: ApiResponse<DnsRecord> = resp.json().await.context("Failed to parse response")?;
 
-        if !body.success {
-            if status == StatusCode::TOO_MANY_REQUESTS {
-                bail!("Rate limited by Cloudflare");
-            }
-            if status.is_server_error() {
-                bail!("Cloudflare server error: {}", status.as_u16());
-            }
-            bail!("Update failed: {}", body.errors.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", "));
-        }
+        Self::check_api_response(status, &body, "Update")?;
 
         body.result.context("API returned success but no result")
     }

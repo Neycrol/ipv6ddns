@@ -43,7 +43,6 @@ pub enum NetlinkEvent {
 #[async_trait]
 pub trait Ipv6Monitor: Send + Sync {
     async fn next_event(&mut self) -> NetlinkEvent;
-    #[allow(dead_code)]
     fn is_event_driven(&self) -> bool;
 }
 
@@ -134,8 +133,11 @@ impl NetlinkImpl {
         let mut msg_offset = 0usize;
 
         while msg_offset + NLMSG_HDRLEN <= data.len() {
-            let nlmsg_len =
-                u32::from_ne_bytes(data[msg_offset..msg_offset + 4].try_into().unwrap()) as usize;
+            let nlmsg_len = if msg_offset + 4 <= data.len() {
+                u32::from_ne_bytes(data[msg_offset..msg_offset + 4].try_into().ok()?) as usize
+            } else {
+                break;
+            };
             if nlmsg_len < NLMSG_HDRLEN {
                 break;
             }
@@ -143,8 +145,11 @@ impl NetlinkImpl {
                 break;
             }
 
-            let nlmsg_type =
-                u16::from_ne_bytes(data[msg_offset + 4..msg_offset + 6].try_into().unwrap());
+            let nlmsg_type = if msg_offset + 6 <= data.len() {
+                u16::from_ne_bytes(data[msg_offset + 4..msg_offset + 6].try_into().ok()?)
+            } else {
+                break;
+            };
 
             if nlmsg_type == libc::NLMSG_DONE as u16 || nlmsg_type == libc::NLMSG_ERROR as u16 {
                 msg_offset += nlmsg_align(nlmsg_len);
@@ -281,7 +286,6 @@ impl PollingImpl {
 
 #[async_trait]
 impl Ipv6Monitor for PollingImpl {
-    #[allow(unused)]
     async fn next_event(&mut self) -> NetlinkEvent {
         loop {
             if !self.running.load(Ordering::Relaxed) {
@@ -360,9 +364,17 @@ impl NetlinkSocket {
 
 pub fn detect_global_ipv6() -> Option<String> {
     match netlink_dump_ipv6() {
-        Ok((stable, temporary)) => stable.or(temporary),
+        Ok((stable, temporary)) => {
+            stable
+                .filter(|ip| is_valid_ipv6(ip))
+                .or_else(|| temporary.filter(|ip| is_valid_ipv6(ip)))
+        }
         Err(_) => None,
     }
+}
+
+fn is_valid_ipv6(addr: &str) -> bool {
+    addr.parse::<std::net::Ipv6Addr>().is_ok()
 }
 
 fn nlmsg_align(len: usize) -> usize {
@@ -371,6 +383,65 @@ fn nlmsg_align(len: usize) -> usize {
 
 fn rta_align(len: usize) -> usize {
     (len + ALIGN_TO - 1) & !(ALIGN_TO - 1)
+}
+
+fn parse_rtm_newaddr(data: &[u8], msg_offset: usize, nlmsg_len: usize) -> Option<(String, bool)> {
+    let msg_end = (msg_offset + nlmsg_len).min(data.len());
+    if msg_end < msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN {
+        return None;
+    }
+
+    let ifa_offset = msg_offset + NLMSG_HDRLEN;
+    let ifa_family = data[ifa_offset];
+    let ifa_flags = data[ifa_offset + 2];
+    let ifa_scope = data[ifa_offset + 3];
+
+    if ifa_family != libc::AF_INET6 as u8
+        || ifa_scope != libc::RT_SCOPE_UNIVERSE as u8
+        || (ifa_flags as u32 & libc::IFA_F_TENTATIVE as u32) != 0
+        || (ifa_flags as u32 & libc::IFA_F_DADFAILED as u32) != 0
+        || (ifa_flags as u32 & libc::IFA_F_DEPRECATED as u32) != 0
+    {
+        return None;
+    }
+
+    let is_temp = (ifa_flags as u32 & libc::IFA_F_TEMPORARY as u32) != 0;
+
+    let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
+    while rta_offset + 4 <= msg_end {
+        let rta_len = u16::from_ne_bytes([
+            data[rta_offset],
+            data[rta_offset + 1],
+        ]) as usize;
+        if rta_len < 4 {
+            break;
+        }
+        let rta_type = u16::from_ne_bytes([
+            data[rta_offset + 2],
+            data[rta_offset + 3],
+        ]);
+        let payload_len = rta_len - 4;
+        let payload_offset = rta_offset + 4;
+        if payload_offset + payload_len > msg_end {
+            break;
+        }
+
+        if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL)
+            && payload_len == 16
+        {
+            let addr: [u8; 16] =
+                match data[payload_offset..payload_offset + 16].try_into() {
+                    Ok(a) => a,
+                    Err(_) => break,
+                };
+            let ip = std::net::Ipv6Addr::from(addr).to_string();
+            return Some((ip, is_temp));
+        }
+
+        rta_offset += rta_align(rta_len);
+    }
+
+    None
 }
 
 fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
@@ -450,14 +521,22 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
         let data = &recv_buf[..n as usize];
         let mut msg_offset = 0usize;
         while msg_offset + NLMSG_HDRLEN <= data.len() {
-            let nlmsg_len =
-                u32::from_ne_bytes(data[msg_offset..msg_offset + 4].try_into().unwrap()) as usize;
+            let nlmsg_len = if msg_offset + 4 <= data.len() {
+                u32::from_ne_bytes(data[msg_offset..msg_offset + 4].try_into().ok()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid netlink message length"))?) as usize
+            } else {
+                break;
+            };
             if nlmsg_len < NLMSG_HDRLEN || nlmsg_len == 0 {
                 break;
             }
 
-            let nlmsg_type =
-                u16::from_ne_bytes(data[msg_offset + 4..msg_offset + 6].try_into().unwrap());
+            let nlmsg_type = if msg_offset + 6 <= data.len() {
+                u16::from_ne_bytes(data[msg_offset + 4..msg_offset + 6].try_into().ok()
+                    .ok_or_else(|| anyhow::anyhow!("Invalid netlink message type"))?)
+            } else {
+                break;
+            };
             if nlmsg_type == libc::NLMSG_DONE as u16 {
                 unsafe { libc::close(fd) };
                 return Ok((stable, temporary));
@@ -468,61 +547,13 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
             }
 
             if nlmsg_type == RTM_NEWADDR_VAL {
-                let msg_end = (msg_offset + nlmsg_len).min(data.len());
-                if msg_end >= msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN {
-                    let ifa_offset = msg_offset + NLMSG_HDRLEN;
-                    let ifa_family = data[ifa_offset];
-                    let ifa_flags = data[ifa_offset + 2];
-                    let ifa_scope = data[ifa_offset + 3];
-
-                    if ifa_family == libc::AF_INET6 as u8
-                        && ifa_scope == libc::RT_SCOPE_UNIVERSE as u8
-                        && (ifa_flags as u32 & libc::IFA_F_TENTATIVE as u32) == 0
-                        && (ifa_flags as u32 & libc::IFA_F_DADFAILED as u32) == 0
-                        && (ifa_flags as u32 & libc::IFA_F_DEPRECATED as u32) == 0
-                    {
-                        let is_temp = (ifa_flags as u32 & libc::IFA_F_TEMPORARY as u32) != 0;
-
-                        let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
-                        while rta_offset + 4 <= msg_end {
-                            let rta_len = u16::from_ne_bytes([
-                                data[rta_offset],
-                                data[rta_offset + 1],
-                            ]) as usize;
-                            if rta_len < 4 {
-                                break;
-                            }
-                            let rta_type = u16::from_ne_bytes([
-                                data[rta_offset + 2],
-                                data[rta_offset + 3],
-                            ]);
-                            let payload_len = rta_len - 4;
-                            let payload_offset = rta_offset + 4;
-                            if payload_offset + payload_len > msg_end {
-                                break;
-                            }
-
-                            if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL)
-                                && payload_len == 16
-                            {
-                                let addr: [u8; 16] =
-                                    match data[payload_offset..payload_offset + 16].try_into() {
-                                        Ok(a) => a,
-                                        Err(_) => break,
-                                    };
-                                let ip = std::net::Ipv6Addr::from(addr).to_string();
-                                if is_temp {
-                                    if temporary.is_none() {
-                                        temporary = Some(ip);
-                                    }
-                                } else if stable.is_none() {
-                                    stable = Some(ip);
-                                }
-                                break;
-                            }
-
-                            rta_offset += rta_align(rta_len);
+                if let Some((ip, is_temp)) = parse_rtm_newaddr(data, msg_offset, nlmsg_len) {
+                    if is_temp {
+                        if temporary.is_none() {
+                            temporary = Some(ip);
                         }
+                    } else if stable.is_none() {
+                        stable = Some(ip);
                     }
                 }
             }
