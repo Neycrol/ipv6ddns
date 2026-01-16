@@ -71,16 +71,60 @@ const VERSION: &str = "1.0.0";
 /// assert!(redacted.contains("***REDACTED***"));
 /// ```
 fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
-    let mut sanitized = message.to_string();
+    let mut result = String::with_capacity(message.len());
+    let mut last_end = 0;
+
+    // Find all occurrences of secrets and replace them
+    let mut matches: Vec<(usize, usize)> = Vec::new();
 
     if !api_token.is_empty() {
-        sanitized = sanitized.replace(api_token, "***REDACTED***");
-    }
-    if !zone_id.is_empty() {
-        sanitized = sanitized.replace(zone_id, "***REDACTED***");
+        let mut start = 0;
+        while let Some(pos) = message[start..].find(api_token) {
+            matches.push((start + pos, start + pos + api_token.len()));
+            start += pos + 1;
+        }
     }
 
-    sanitized
+    if !zone_id.is_empty() {
+        let mut start = 0;
+        while let Some(pos) = message[start..].find(zone_id) {
+            matches.push((start + pos, start + pos + zone_id.len()));
+            start += pos + 1;
+        }
+    }
+
+    // Sort matches by position and merge overlapping ones
+    matches.sort();
+    let mut merged: Vec<(usize, usize)> = Vec::new();
+    for (start, end) in matches {
+        if let Some((last_start, last_end)) = merged.last_mut() {
+            if start <= *last_end {
+                *last_end = end.max(*last_end);
+                continue;
+            }
+        }
+        merged.push((start, end));
+    }
+
+    // Build result string with redactions
+    for (start, end) in merged {
+        if start > last_end {
+            result.push_str(&message[last_end..start]);
+        }
+        result.push_str("***REDACTED***");
+        last_end = end;
+    }
+
+    // Add remaining text
+    if last_end < message.len() {
+        result.push_str(&message[last_end..]);
+    }
+
+    if result.is_empty() {
+        message.to_string()
+    } else {
+        result
+    }
 }
 
 /// Configuration for the ipv6ddns daemon
