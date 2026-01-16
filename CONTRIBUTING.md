@@ -213,7 +213,7 @@ fn test_config_load() {
 #[serial]
 fn test_config_with_env_override() {
     let _env = EnvGuard::new();
-    std::env::set_var("API_TOKEN", "test_token");
+    std::env::set_var("CLOUDFLARE_API_TOKEN", "test_token");
     let config = Config::load(None).unwrap();
     assert_eq!(config.api_token, "test_token");
 }
