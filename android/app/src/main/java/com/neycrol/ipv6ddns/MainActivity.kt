@@ -32,6 +32,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.font.FontWeight
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -183,8 +187,17 @@ fun AppScreen() {
                     Text(
                         stringResource(
                             if (running) R.string.status_running else R.string.status_stopped
-                        )
+                        ),
+                        fontWeight = FontWeight.Bold
                     )
+                    if (config.lastSyncTime > 0) {
+                        val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                        val syncTime = dateFormat.format(Date(config.lastSyncTime))
+                        Text(
+                            stringResource(R.string.last_sync) + ": $syncTime",
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)

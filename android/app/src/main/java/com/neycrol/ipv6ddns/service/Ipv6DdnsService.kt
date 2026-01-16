@@ -78,7 +78,16 @@ class Ipv6DdnsService : Service() {
         val reader = BufferedReader(InputStreamReader(proc.inputStream))
         var line: String?
         while (reader.readLine().also { line = it } != null) {
-            Log.i(TAG, line ?: "")
+            val text = line ?: ""
+            Log.i(TAG, text)
+            if (text.contains("Synced (ID:")) {
+                runBlocking {
+                    ConfigStore.updateLastSyncTime(
+                        this@Ipv6DdnsService,
+                        System.currentTimeMillis()
+                    )
+                }
+            }
         }
         val exitCode = proc.waitFor()
         Log.w(TAG, "ipv6ddns exited with code $exitCode")

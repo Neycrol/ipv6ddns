@@ -21,6 +21,7 @@ object ConfigStore {
     private val KEY_VERBOSE = booleanPreferencesKey("verbose")
     private val KEY_MULTI = stringPreferencesKey("multi_record")
     private val KEY_RUNNING = booleanPreferencesKey("running")
+    private val KEY_LAST_SYNC = longPreferencesKey("last_sync_time")
 
     fun configFlow(context: Context): Flow<AppConfig> {
         return context.dataStore.data.map { prefs: Preferences ->
@@ -31,7 +32,8 @@ object ConfigStore {
                 timeoutSec = prefs[KEY_TIMEOUT] ?: 30,
                 pollIntervalSec = prefs[KEY_POLL] ?: 60,
                 verbose = prefs[KEY_VERBOSE] ?: false,
-                multiRecord = prefs[KEY_MULTI] ?: "error"
+                multiRecord = prefs[KEY_MULTI] ?: "error",
+                lastSyncTime = prefs[KEY_LAST_SYNC] ?: 0L
             )
         }
     }
@@ -49,6 +51,13 @@ object ConfigStore {
             prefs[KEY_POLL] = cfg.pollIntervalSec
             prefs[KEY_VERBOSE] = cfg.verbose
             prefs[KEY_MULTI] = cfg.multiRecord
+            prefs[KEY_LAST_SYNC] = cfg.lastSyncTime
+        }
+    }
+
+    suspend fun updateLastSyncTime(context: Context, timestamp: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LAST_SYNC] = timestamp
         }
     }
 
