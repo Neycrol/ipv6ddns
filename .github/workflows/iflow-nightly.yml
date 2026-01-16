@@ -25,6 +25,7 @@ jobs:
         run: |
           curl -fsSL https://sh.rustup.rs | sh -s -- -y
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          "$HOME/.cargo/bin/rustup" component add clippy rustfmt
 
       - name: Run cargo test
         run: cargo test --verbose
