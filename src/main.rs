@@ -30,10 +30,21 @@ use validation::validate_record_name;
 // Config
 //==============================================================================
 
+/// Environment variable name for Cloudflare API token
 const ENV_API_TOKEN: &str = "CLOUDFLARE_API_TOKEN";
+/// Environment variable name for Cloudflare zone ID
 const ENV_ZONE_ID: &str = "CLOUDFLARE_ZONE_ID";
+/// Environment variable name for DNS record name
 const ENV_RECORD_NAME: &str = "CLOUDFLARE_RECORD_NAME";
+/// Environment variable name for multi-record policy
 const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
+
+/// Default HTTP request timeout in seconds
+const DEFAULT_TIMEOUT_SECS: u64 = 30;
+/// Default polling interval in seconds (when netlink is unavailable)
+const DEFAULT_POLL_INTERVAL_SECS: u64 = 60;
+/// Application version
+const VERSION: &str = "1.0.0";
 
 /// Redacts sensitive data (API tokens and zone IDs) from log messages
 ///
@@ -53,7 +64,6 @@ const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
 /// # Examples
 ///
 /// ```text
-/// # use ipv6ddns::main::redact_secrets;
 /// let message = "API call with token secret123 and zone zone456";
 /// let redacted = redact_secrets(message, "secret123", "zone456");
 /// assert!(!redacted.contains("secret123"));
@@ -199,8 +209,8 @@ impl Config {
         let mut api_token = String::new();
         let mut zone_id = String::new();
         let mut record = String::new();
-        let mut timeout = 30u64;
-        let mut poll_interval = 60u64;
+        let mut timeout = DEFAULT_TIMEOUT_SECS;
+        let mut poll_interval = DEFAULT_POLL_INTERVAL_SECS;
         let mut verbose = false;
         let mut multi_record = MultiRecordPolicy::Error;
 
@@ -214,8 +224,8 @@ impl Config {
                 api_token = toml_config.api_token.unwrap_or_default();
                 zone_id = toml_config.zone_id.unwrap_or_default();
                 record = toml_config.record_name.unwrap_or_default();
-                timeout = toml_config.timeout.unwrap_or(30);
-                poll_interval = toml_config.poll_interval.unwrap_or(60);
+                timeout = toml_config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
+                poll_interval = toml_config.poll_interval.unwrap_or(DEFAULT_POLL_INTERVAL_SECS);
                 verbose = toml_config.verbose.unwrap_or(false);
                 if let Some(v) = toml_config.multi_record.as_deref() {
                     multi_record = parse_multi_record(v)?;
@@ -665,7 +675,7 @@ impl Daemon {
 
 #[derive(Debug, Parser)]
 #[command(name = "ipv6ddns")]
-#[command(version = "1.0.0")]
+#[command(version = VERSION)]
 struct Args {
     #[arg(short, long)]
     config: Option<PathBuf>,
