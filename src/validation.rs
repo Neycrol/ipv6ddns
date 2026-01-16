@@ -70,16 +70,18 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Validates that a string is a properly formatted IPv6 address
+/// Validates that a string is a properly formatted IPv6 address.
 ///
-/// This function checks that the address is syntactically valid AND
-/// filters out reserved/special IPv6 address ranges that are not suitable
-/// for DDNS:
+/// This function checks that the address is syntactically valid AND filters out
+/// reserved/special IPv6 address ranges that are not suitable for DDNS:
 /// - Unspecified address (::)
 /// - Loopback address (::1)
 /// - Link-local addresses (fe80::/10)
 /// - Multicast addresses (ff00::/8)
 /// - Documentation addresses (2001:db8::/32)
+///
+/// Note: unique-local addresses (fc00::/7) are allowed by design, since DDNS
+/// is often used on private networks.
 pub fn is_valid_ipv6(ip: &str) -> bool {
     let addr = match ip.parse::<std::net::Ipv6Addr>() {
         Ok(a) => a,
@@ -148,11 +150,44 @@ mod tests {
     }
 
     #[test]
+    fn test_validate_record_name_boundaries() {
+        let max_name = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(61)
+        );
+        assert_eq!(max_name.len(), 253);
+        assert!(validate_record_name(&max_name).is_ok());
+
+        let too_long = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(62)
+        );
+        assert_eq!(too_long.len(), 254);
+        assert!(validate_record_name(&too_long).is_err());
+
+        let max_label = format!("{}.com", "a".repeat(63));
+        assert!(validate_record_name(&max_label).is_ok());
+
+        let too_long_label = format!("{}.com", "a".repeat(64));
+        assert!(validate_record_name(&too_long_label).is_err());
+    }
+
+    #[test]
     fn test_is_valid_ipv6() {
         // Valid global unicast addresses
         assert!(is_valid_ipv6("2606:4700:4700::1111"));
         assert!(is_valid_ipv6("2001:4860:4860::8888"));
         assert!(is_valid_ipv6("2a00:1450:4001:81b::200e"));
+
+        // Unique-local addresses are allowed
+        assert!(is_valid_ipv6("fc00::1"));
+        assert!(is_valid_ipv6("fd12:3456:789a::1"));
 
         // Reserved addresses that should be rejected
         assert!(!is_valid_ipv6("::")); // Unspecified
