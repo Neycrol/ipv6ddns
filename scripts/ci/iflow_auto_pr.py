@@ -22,7 +22,20 @@ ALLOWED_TYPES = {
     "bugfix",
 }
 
-MAX_PRS = 10
+def parse_max_prs():
+    raw = os.environ.get("IFLOW_MAX_PRS", "10").strip().lower()
+    if raw in ("", "0", "-1", "none", "unlimited", "auto"):
+        return None
+    try:
+        value = int(raw)
+        if value <= 0:
+            return None
+        return value
+    except ValueError:
+        return 10
+
+
+MAX_PRS = parse_max_prs()
 MAX_FILES = 0
 MAX_REPAIR_ATTEMPTS = int(os.environ.get("IFLOW_REPAIR_ATTEMPTS", "1"))
 TOOL_FALLBACK = os.environ.get("IFLOW_TOOL_FALLBACK", "1") == "1"
@@ -62,8 +75,13 @@ def build_prompt():
     files_preview = "\n".join(top_level)
 
     allowed = ", ".join(sorted(ALLOWED_TYPES))
+    max_prs_line = (
+        "You may propose as many independent pull requests as needed."
+        if MAX_PRS is None
+        else f"You may propose up to {MAX_PRS} independent pull requests."
+    )
     prompt = """
-You are an automated refactoring bot for the repo at {root}. You may propose up to {max_prs} independent pull requests.
+You are an automated refactoring bot for the repo at {root}. {max_prs_line}
 Each PR must be ONE category only from: {allowed}.
 You can modify any text source file except secrets or generated artifacts.
 Do NOT touch: .git/, target/, dist/, build outputs, or any secrets/keys.
@@ -84,7 +102,7 @@ Top-level entries:
 {files_preview}
 """.format(
         root=ROOT,
-        max_prs=MAX_PRS,
+        max_prs_line=max_prs_line,
         allowed=allowed,
         files_preview=files_preview,
     )
@@ -556,7 +574,11 @@ def main():
         git("checkout", "main")
         git("reset", "--hard", "origin/main")
         git("clean", "-fd")
-        created = create_prs_from_file_lists(prs[:MAX_PRS], temp_branch, changed_files)
+        if MAX_PRS is None:
+            selected_prs = prs
+        else:
+            selected_prs = prs[:MAX_PRS]
+        created = create_prs_from_file_lists(selected_prs, temp_branch, changed_files)
         print(f"Created {created} PR(s).")
         return 0
 

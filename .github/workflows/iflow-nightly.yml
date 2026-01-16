@@ -101,6 +101,7 @@ jobs:
         env:
           IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
           IFLOW_MODEL: "glm-4.7"
+          IFLOW_MAX_PRS: "0"
           IFLOW_MAX_TURNS: "100"
           IFLOW_DEBUG: "1"
           IFLOW_PING: "1"
