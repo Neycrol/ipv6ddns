@@ -1145,7 +1145,7 @@ multi_record = "error"
 
     #[test]
     fn test_netlink_event_sequence() {
-        let events = vec![
+        let events = [
             NetlinkEvent::Ipv6Added("2001:db8::1".to_string()),
             NetlinkEvent::Ipv6Added("2001:db8::2".to_string()),
             NetlinkEvent::Ipv6Removed,
