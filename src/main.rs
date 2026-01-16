@@ -225,7 +225,9 @@ impl Config {
                 zone_id = toml_config.zone_id.unwrap_or_default();
                 record = toml_config.record_name.unwrap_or_default();
                 timeout = toml_config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
-                poll_interval = toml_config.poll_interval.unwrap_or(DEFAULT_POLL_INTERVAL_SECS);
+                poll_interval = toml_config
+                    .poll_interval
+                    .unwrap_or(DEFAULT_POLL_INTERVAL_SECS);
                 verbose = toml_config.verbose.unwrap_or(false);
                 if let Some(v) = toml_config.multi_record.as_deref() {
                     multi_record = parse_multi_record(v)?;
