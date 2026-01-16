@@ -14,6 +14,7 @@
     <string name="multi_record_all">All</string>
     <string name="status_running">Status: Running</string>
     <string name="status_stopped">Status: Stopped</string>
+    <string name="last_sync">Last sync</string>
     <string name="action_start">Start</string>
     <string name="action_stop">Stop</string>
 </resources>
