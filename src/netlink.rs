@@ -33,16 +33,47 @@ const ALIGN_TO: usize = 4;
 
 const POLL_INTERVAL_DEFAULT: Duration = Duration::from_secs(60);
 
+/// Represents a netlink event related to IPv6 address changes
+///
+/// This enum describes different types of events that can occur on
+/// the network interface, such as IPv6 addresses being added or removed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NetlinkEvent {
+    /// An IPv6 address was added or changed
+    ///
+    /// Contains the string representation of the IPv6 address
     Ipv6Added(String),
+    /// An IPv6 address was removed
+    ///
+    /// This event does not contain the specific address that was removed
     Ipv6Removed,
+    /// An unknown or unhandled netlink event
+    ///
+    /// This is used for events that don't match the above categories
     Unknown,
 }
 
+/// Trait for monitoring IPv6 address changes
+///
+/// This trait defines the interface for both event-driven (netlink) and
+/// polling-based IPv6 address monitoring implementations.
 #[async_trait]
 pub trait Ipv6Monitor: Send + Sync {
+    /// Waits for the next IPv6 address change event
+    ///
+    /// This method is async and will block until a new event is detected.
+    /// The method returns a `NetlinkEvent` describing what changed.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `NetlinkEvent` indicating the type of change detected
     async fn next_event(&mut self) -> NetlinkEvent;
+
+    /// Returns whether this monitor is event-driven or uses polling
+    ///
+    /// # Returns
+    ///
+    /// `true` if event-driven (netlink), `false` if polling-based
     #[allow(dead_code)]
     fn is_event_driven(&self) -> bool;
 }
@@ -318,12 +349,34 @@ impl Ipv6Monitor for PollingImpl {
     }
 }
 
+/// Socket for monitoring IPv6 address changes via netlink or polling
+///
+/// This struct provides a unified interface for IPv6 address monitoring,
+/// automatically falling back to polling if netlink is not available.
 pub struct NetlinkSocket {
     monitor: Box<dyn Ipv6Monitor>,
     is_event_driven: bool,
 }
 
 impl NetlinkSocket {
+    /// Creates a new netlink socket with optional polling fallback
+    ///
+    /// This method attempts to create an event-driven netlink socket for
+    /// real-time IPv6 address change detection. If netlink is not available,
+    /// it falls back to polling with the specified interval.
+    ///
+    /// # Arguments
+    ///
+    /// * `poll_interval` - Optional polling interval. Defaults to 60 seconds if None.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the `NetlinkSocket` or an error if initialization fails
+    ///
+    /// # Behavior
+    ///
+    /// - If netlink is available: Uses event-driven monitoring (zero CPU when idle)
+    /// - If netlink is unavailable: Falls back to polling with the specified interval
     pub fn new(poll_interval: Option<Duration>) -> Result<Self> {
         let interval = poll_interval.unwrap_or(POLL_INTERVAL_DEFAULT);
 
@@ -349,15 +402,42 @@ impl NetlinkSocket {
         }
     }
 
+    /// Receives the next IPv6 address change event
+    ///
+    /// This method is async and will block until a new event is detected.
+    /// It delegates to the underlying monitor implementation.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing a `NetlinkEvent` or an error
     pub async fn recv(&mut self) -> Result<NetlinkEvent> {
         Ok(self.monitor.next_event().await)
     }
 
+    /// Returns whether this socket is using event-driven monitoring
+    ///
+    /// # Returns
+    ///
+    /// `true` if using netlink (event-driven), `false` if using polling
     pub fn is_event_driven(&self) -> bool {
         self.is_event_driven
     }
 }
 
+/// Detects the current global IPv6 address on the system
+///
+/// This function queries the system for global IPv6 addresses, preferring
+/// stable addresses over temporary ones.
+///
+/// # Returns
+///
+/// /// Returns `Some(String)` containing the IPv6 address if found, `None` otherwise
+///
+/// # Behavior
+///
+/// - Returns stable IPv6 addresses if available
+/// - Falls back to temporary addresses if no stable address exists
+/// - Returns `None` if no global IPv6 address is found or an error occurs
 pub fn detect_global_ipv6() -> Option<String> {
     match netlink_dump_ipv6() {
         Ok((stable, temporary)) => stable.or(temporary),

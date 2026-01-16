@@ -17,14 +17,24 @@ const API_BASE: &str = "https://api.cloudflare.com/client/v4";
 // Types
 //==============================================================================
 
+/// Represents a DNS record from Cloudflare API
+///
+/// This struct contains the essential fields for a DNS record, including
+/// its ID, type, name, content, proxy status, and TTL.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DnsRecord {
+    /// The unique identifier for this DNS record
     pub id: String,
+    /// The type of DNS record (e.g., "AAAA" for IPv6)
     #[serde(rename = "type")]
     pub record_type: String,
+    /// The domain name for this record
     pub name: String,
+    /// The IP address or other content of the record
     pub content: String,
+    /// Whether Cloudflare proxy is enabled for this record
     pub proxied: bool,
+    /// Time-to-live value in seconds (1 = automatic)
     pub ttl: u64,
 }
 
@@ -62,12 +72,27 @@ impl std::fmt::Display for ApiError {
 // Client
 //==============================================================================
 
+/// Cloudflare API client for DNS operations
+///
+/// This client provides methods to interact with the Cloudflare API for
+/// managing DNS records, specifically AAAA records for IPv6 addresses.
+/// It uses reqwest with rustls for HTTP requests.
 pub struct CloudflareClient {
     api_token: String,
     client: reqwest::Client,
 }
 
 impl CloudflareClient {
+    /// Creates a new Cloudflare API client
+    ///
+    /// # Arguments
+    ///
+    /// * `api_token` - Cloudflare API token with DNS edit permissions
+    /// * `timeout` - HTTP request timeout duration
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the client or an error if client creation fails
     pub fn new(api_token: &str, timeout: Duration) -> Result<Self> {
         let client = reqwest::Client::builder()
             .connect_timeout(timeout)
@@ -82,7 +107,24 @@ impl CloudflareClient {
         })
     }
 
-    /// Get a DNS record by name (AAAA only)
+    /// Retrieves all AAAA records for a given record name in a zone
+    ///
+    /// # Arguments
+    ///
+    /// * `zone_id` - The Cloudflare zone ID
+    /// * `record_name` - The DNS record name to query
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing a vector of `DnsRecord` objects or an error
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The HTTP request fails
+    /// - The API returns an error response
+    /// - Rate limit is exceeded (429 status)
+    /// - Server error occurs (5xx status)
     pub async fn get_records(
         &self,
         zone_id: &str,
@@ -119,7 +161,30 @@ impl CloudflareClient {
         Ok(body.result.unwrap_or_default())
     }
 
-    /// Create or update an AAAA record
+    /// Creates or updates an AAAA record with the given IPv6 address
+    ///
+    /// This method implements an upsert operation: it will create a new record
+    /// if none exists, or update existing records according to the specified policy.
+    ///
+    /// # Arguments
+    ///
+    /// * `zone_id` - The Cloudflare zone ID
+    /// * `record_name` - The DNS record name
+    /// * `ipv6_addr` - The IPv6 address to set
+    /// * `policy` - The policy for handling multiple records
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the created or updated `DnsRecord` or an error
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - Multiple records exist and policy is `Error`
+    /// - The HTTP request fails
+    /// - The API returns an error response
+    /// - Rate limit is exceeded (429 status)
+    /// - Server error occurs (5xx status)
     pub async fn upsert_aaaa_record(
         &self,
         zone_id: &str,
@@ -283,10 +348,26 @@ impl CloudflareClient {
     }
 }
 
+/// Policy for handling multiple AAAA records with the same name
+///
+/// When multiple AAAA records exist for a given record name, this enum
+/// defines how the client should handle the update operation.
 #[derive(Debug, Clone, Copy)]
 pub enum MultiRecordPolicy {
+    /// Refuse to update if multiple records exist (default)
+    ///
+    /// This is the safest option as it prevents accidental updates to
+    /// unintended records. The operation will fail with an error.
     Error,
+    /// Update only the first record found
+    ///
+    /// This option is useful when you want to update a single record
+    /// but don't care which one is updated.
     UpdateFirst,
+    /// Update all matching AAAA records
+    ///
+    /// This option will update all AAAA records with the given name.
+    /// Be careful as this may affect multiple records.
     UpdateAll,
 }
 
