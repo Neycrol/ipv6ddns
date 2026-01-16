@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # Update Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "rust"
+    reviewers:
+      - "Neycrol"
+    assignees:
+      - "Neycrol"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "chore(deps-dev)"
+      include: "scope"
+
+  # Update GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "ci"
+    reviewers:
+      - "Neycrol"
+    assignees:
+      - "Neycrol"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
