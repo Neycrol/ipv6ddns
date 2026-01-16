@@ -20,9 +20,11 @@ use tracing_subscriber::EnvFilter;
 
 mod cloudflare;
 mod netlink;
+mod validation;
 
 use cloudflare::{CloudflareClient, MultiRecordPolicy};
 use netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
+use validation::validate_record_name;
 
 //==============================================================================
 // Config
@@ -45,75 +47,6 @@ fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
     }
 
     sanitized
-}
-
-/// Validates that a string is a reasonable DNS record name.
-///
-/// Allows common DNS conventions used for TXT/ACME and wildcard records:
-/// - `@` for apex
-/// - `_` in labels (e.g. `_acme-challenge`)
-/// - `*` as a whole label (e.g. `*.example.com`)
-/// - trailing dot (FQDN), which is ignored for validation
-fn validate_record_name(record_name: &str) -> Result<()> {
-    let trimmed = record_name.trim();
-    if trimmed.is_empty() {
-        return Err(anyhow::anyhow!("Record name cannot be empty"));
-    }
-    if trimmed == "@" {
-        return Ok(());
-    }
-    if trimmed.contains(' ') {
-        return Err(anyhow::anyhow!("Record name cannot contain spaces"));
-    }
-
-    let name = trimmed.strip_suffix('.').unwrap_or(trimmed);
-    if name.is_empty() {
-        return Err(anyhow::anyhow!("Record name cannot be empty"));
-    }
-    if name.len() > 253 {
-        return Err(anyhow::anyhow!(
-            "Record name too long (max 253 characters, got {})",
-            name.len()
-        ));
-    }
-    if name.starts_with('.') {
-        return Err(anyhow::anyhow!("Record name cannot start with a dot"));
-    }
-    if name.contains("..") {
-        return Err(anyhow::anyhow!(
-            "Record name cannot contain consecutive dots"
-        ));
-    }
-
-    for label in name.split('.') {
-        if label.is_empty() {
-            return Err(anyhow::anyhow!("Record name contains empty label"));
-        }
-        if label == "*" {
-            continue;
-        }
-        if label.len() > 63 {
-            return Err(anyhow::anyhow!(
-                "Record name label too long (max 63 characters, got {})",
-                label.len()
-            ));
-        }
-        if label.starts_with('-') || label.ends_with('-') {
-            return Err(anyhow::anyhow!(
-                "Record name label cannot start or end with hyphen"
-            ));
-        }
-        for ch in label.chars() {
-            if !ch.is_alphanumeric() && ch != '-' && ch != '_' {
-                return Err(anyhow::anyhow!(
-                    "Record name contains invalid character: '{}' (allowed: letters, digits, '-', '_', or wildcard labels)",
-                    ch
-                ));
-            }
-        }
-    }
-
-    Ok(())
 }
 
 #[derive(Debug, Clone)]
