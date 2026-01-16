@@ -316,7 +316,7 @@ impl Config {
         validate_record_name(&self.record)?;
 
         let timeout_secs = self.timeout.as_secs();
-        if timeout_secs < MIN_TIMEOUT_SECS || timeout_secs > MAX_TIMEOUT_SECS {
+        if !(MIN_TIMEOUT_SECS..=MAX_TIMEOUT_SECS).contains(&timeout_secs) {
             return Err(anyhow::anyhow!(
                 "timeout must be between {} and {} seconds, got {}",
                 MIN_TIMEOUT_SECS,
@@ -326,7 +326,7 @@ impl Config {
         }
 
         let poll_interval_secs = self.poll_interval.as_secs();
-        if poll_interval_secs < MIN_POLL_INTERVAL_SECS || poll_interval_secs > MAX_POLL_INTERVAL_SECS {
+        if !(MIN_POLL_INTERVAL_SECS..=MAX_POLL_INTERVAL_SECS).contains(&poll_interval_secs) {
             return Err(anyhow::anyhow!(
                 "poll_interval must be between {} and {} seconds, got {}",
                 MIN_POLL_INTERVAL_SECS,
