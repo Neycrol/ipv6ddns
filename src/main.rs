@@ -33,6 +33,36 @@ const ENV_ZONE_ID: &str = "CLOUDFLARE_ZONE_ID";
 const ENV_RECORD_NAME: &str = "CLOUDFLARE_RECORD_NAME";
 const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
 
+/// Redacts sensitive data (API tokens and zone IDs) from log messages
+///
+/// This function replaces API tokens and zone IDs with placeholders
+/// to prevent accidental exposure of secrets in logs.
+///
+/// # Arguments
+///
+/// * `message` - The log message to sanitize
+/// * `api_token` - The API token to redact (if present in message)
+/// * `zone_id` - The zone ID to redact (if present in message)
+///
+/// # Returns
+///
+/// Returns a sanitized string with sensitive data redacted
+fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
+    let mut sanitized = message.to_string();
+
+    // Redact API token
+    if !api_token.is_empty() {
+        sanitized = sanitized.replace(api_token, "***REDACTED***");
+    }
+
+    // Redact zone ID
+    if !zone_id.is_empty() {
+        sanitized = sanitized.replace(zone_id, "***REDACTED***");
+    }
+
+    sanitized
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub api_token: String,
@@ -224,6 +254,7 @@ impl Daemon {
         info!("Record: {}", self.config.record);
         info!("Mode: {}", if self.netlink.is_event_driven() { "event-driven (netlink)" } else { "polling" });
         info!("Multi-record policy: {:?}", self.config.multi_record);
+        debug!("Zone ID: {}", redact_secrets(&self.config.zone_id, &self.config.api_token, &self.config.zone_id));
 
         if let Some(ip) = detect_global_ipv6() {
             info!("Initial IPv6: {}", ip);
@@ -299,7 +330,8 @@ impl Daemon {
             }
         }
 
-        info!("Syncing {} -> {}", self.config.record, ip);
+        let redacted_zone = redact_secrets(&self.config.zone_id, &self.config.api_token, &self.config.zone_id);
+        info!("Syncing {} -> {} (zone: {})", self.config.record, ip, redacted_zone);
 
         let result = self
             .cf_client
