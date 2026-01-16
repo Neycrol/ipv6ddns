@@ -6,7 +6,6 @@
 
 use std::io::ErrorKind;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -105,7 +104,6 @@ pub trait Ipv6Monitor: Send + Sync {
     /// # Returns
     ///
     /// `true` if event-driven (netlink), `false` if polling-based
-    #[allow(dead_code)]
     fn is_event_driven(&self) -> bool;
 }
 
@@ -315,15 +313,13 @@ impl Ipv6Monitor for NetlinkImpl {
 
 struct PollingImpl {
     interval: Duration,
-    running: Arc<AtomicBool>,
     last_ip: Option<String>,
 }
 
 impl PollingImpl {
-    fn new(interval: Duration, running: Arc<AtomicBool>) -> Self {
+    fn new(interval: Duration) -> Self {
         Self {
             interval,
-            running,
             last_ip: None,
         }
     }
@@ -331,13 +327,8 @@ impl PollingImpl {
 
 #[async_trait]
 impl Ipv6Monitor for PollingImpl {
-    #[allow(unused)]
     async fn next_event(&mut self) -> NetlinkEvent {
         loop {
-            if !self.running.load(Ordering::Relaxed) {
-                return NetlinkEvent::Unknown;
-            }
-
             tokio::time::sleep(self.interval).await;
 
             let current_ip = detect_global_ipv6();
@@ -411,7 +402,7 @@ impl NetlinkSocket {
                 tracing::warn!("Netlink socket failed ({:#}), falling back to polling", e);
                 tracing::info!("Polling interval: {} seconds", interval.as_secs());
                 Ok(Self {
-                    monitor: Box::new(PollingImpl::new(interval, Arc::new(AtomicBool::new(true)))),
+                    monitor: Box::new(PollingImpl::new(interval)),
                     is_event_driven: false,
                 })
             }
