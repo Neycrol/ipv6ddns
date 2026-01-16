@@ -34,7 +34,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run cargo fmt check
-        run: cargo fmt --all-features -- --check
+        run: cargo fmt -- --check
 
   test-android:
     runs-on: ubuntu-latest
