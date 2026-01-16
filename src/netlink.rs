@@ -14,6 +14,8 @@ use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 use tokio::io::unix::AsyncFd;
 
+use crate::validation::is_valid_ipv6;
+
 // Netlink constants
 const NETLINK_ROUTE: i32 = libc::AF_NETLINK;
 const SOCK_RAW: i32 = libc::SOCK_RAW;
@@ -466,11 +468,6 @@ pub fn detect_global_ipv6() -> Option<String> {
     }
 }
 
-/// Validates that a string is a properly formatted IPv6 address
-fn is_valid_ipv6(ip: &str) -> bool {
-    ip.parse::<std::net::Ipv6Addr>().is_ok()
-}
-
 fn nlmsg_align(len: usize) -> usize {
     (len + ALIGN_TO - 1) & !(ALIGN_TO - 1)
 }
@@ -661,18 +658,6 @@ mod tests {
         assert_eq!(rta_align(4), 4);
         assert_eq!(rta_align(5), 8);
         assert_eq!(nlmsg_align(16), 16);
-    }
-
-    #[test]
-    fn test_is_valid_ipv6() {
-        assert!(is_valid_ipv6("2001:db8::1"));
-        assert!(is_valid_ipv6("::1"));
-        assert!(is_valid_ipv6("fe80::1"));
-        assert!(is_valid_ipv6("2001:0db8:0000:0000:0000:0000:0000:0001"));
-        assert!(!is_valid_ipv6("192.168.1.1"));
-        assert!(!is_valid_ipv6("invalid"));
-        assert!(!is_valid_ipv6(""));
-        assert!(!is_valid_ipv6("2001:db8::g"));
     }
 
     #[test]
