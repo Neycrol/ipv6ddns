@@ -655,4 +655,243 @@ record_name = "file.example.com"
         let redacted = redact_secrets(message, "", "");
         assert_eq!(redacted, message);
     }
+
+    // Integration tests for daemon lifecycle
+
+    #[test]
+    fn test_daemon_config_initialization() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 30
+poll_interval = 60
+verbose = false
+multi_record = "error"
+"#,
+        );
+
+        let config = Config::load(Some(path)).expect("config load");
+        assert_eq!(config.api_token, "test_token");
+        assert_eq!(config.zone_id, "test_zone");
+        assert_eq!(config.record, "test.example.com");
+        assert_eq!(config.timeout, Duration::from_secs(30));
+        assert_eq!(config.poll_interval, Duration::from_secs(60));
+        assert!(!config.verbose);
+        assert!(matches!(config.multi_record, MultiRecordPolicy::Error));
+    }
+
+    #[test]
+    fn test_daemon_config_validation_with_invalid_record() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "invalid record name with spaces"
+timeout = 30
+poll_interval = 60
+verbose = false
+multi_record = "error"
+"#,
+        );
+
+        let result = Config::load(Some(path));
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("spaces") || err.contains("invalid"));
+    }
+
+    #[test]
+    fn test_daemon_config_timeout_limits() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "test_token"
+zone_id = "test_zone"
+record_name = "test.example.com"
+timeout = 1
+poll_interval = 300
+verbose = false
+multi_record = "error"
+"#,
+        );
+
+        let config = Config::load(Some(path)).expect("config load");
+        assert_eq!(config.timeout, Duration::from_secs(1));
+        assert_eq!(config.poll_interval, Duration::from_secs(300));
+    }
+
+    // State machine transition tests
+
+    #[test]
+    fn test_state_machine_unknown_to_synced() {
+        let mut state = AppState::default();
+        assert_eq!(state.state, RecordState::Unknown);
+
+        state.mark_synced("2001:db8::1".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        assert!(state.last_sync.is_some());
+        assert_eq!(state.error_count, 0);
+        assert!(state.next_retry.is_none());
+    }
+
+    #[test]
+    fn test_state_machine_synced_to_error() {
+        let mut state = AppState::default();
+        state.mark_synced("2001:db8::1".to_string());
+
+        state.mark_error();
+        assert!(matches!(state.state, RecordState::Error(1)));
+        assert_eq!(state.error_count, 1);
+        assert!(state.next_retry.is_some());
+    }
+
+    #[test]
+    fn test_state_machine_error_to_synced() {
+        let mut state = AppState::default();
+        state.mark_synced("2001:db8::1".to_string());
+        state.mark_error();
+
+        state.mark_synced("2001:db8::2".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::2".to_string()));
+        assert_eq!(state.error_count, 0);
+        assert!(state.next_retry.is_none());
+    }
+
+    #[test]
+    fn test_state_machine_multiple_errors_increases_backoff() {
+        let mut state = AppState::default();
+
+        state.mark_error();
+        let retry1 = state.next_retry.unwrap();
+        assert_eq!(state.error_count, 1);
+
+        state.mark_error();
+        let retry2 = state.next_retry.unwrap();
+        assert_eq!(state.error_count, 2);
+
+        state.mark_error();
+        let retry3 = state.next_retry.unwrap();
+        assert_eq!(state.error_count, 3);
+
+        // Verify backoff increases exponentially
+        assert!(retry2 > retry1);
+        assert!(retry3 > retry2);
+
+        // Verify backoff delay calculation
+        let delay1 = retry1.duration_since(Instant::now());
+        let delay2 = retry2.duration_since(Instant::now());
+        let delay3 = retry3.duration_since(Instant::now());
+
+        // delay2 should be approximately 2x delay1
+        assert!(delay2.as_secs() >= delay1.as_secs() * 2 - 1);
+        // delay3 should be approximately 2x delay2
+        assert!(delay3.as_secs() >= delay2.as_secs() * 2 - 1);
+    }
+
+    #[test]
+    fn test_state_machine_backoff_max_limit() {
+        let mut state = AppState::default();
+
+        // Simulate many errors to hit max backoff
+        for _ in 0..20 {
+            state.mark_error();
+        }
+
+        let retry_time = state.next_retry.unwrap();
+        let delay = retry_time.duration_since(Instant::now());
+
+        // Verify backoff is capped at BACKOFF_MAX
+        assert!(delay.as_secs() <= BACKOFF_MAX.as_secs());
+        assert!(delay.as_secs() >= BACKOFF_MAX.as_secs() - 1);
+    }
+
+    #[test]
+    fn test_state_machine_sync_with_same_ip_no_change() {
+        let mut state = AppState::default();
+        state.mark_synced("2001:db8::1".to_string());
+
+        // Simulate sync with same IP (should be idempotent)
+        state.mark_synced("2001:db8::1".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        assert_eq!(state.error_count, 0);
+    }
+
+    #[test]
+    fn test_state_machine_sync_with_different_ip_updates() {
+        let mut state = AppState::default();
+        state.mark_synced("2001:db8::1".to_string());
+
+        // Sync with different IP
+        state.mark_synced("2001:db8::2".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::2".to_string()));
+        assert_eq!(state.error_count, 0);
+    }
+
+    // Netlink event simulation tests
+
+    #[test]
+    fn test_netlink_event_ipv6_added() {
+        let event = NetlinkEvent::Ipv6Added("2001:db8::1".to_string());
+        assert!(matches!(event, NetlinkEvent::Ipv6Added(_)));
+
+        if let NetlinkEvent::Ipv6Added(ip) = event {
+            assert_eq!(ip, "2001:db8::1".to_string());
+        }
+    }
+
+    #[test]
+    fn test_netlink_event_ipv6_removed() {
+        let event = NetlinkEvent::Ipv6Removed;
+        assert!(matches!(event, NetlinkEvent::Ipv6Removed));
+    }
+
+    #[test]
+    fn test_netlink_event_unknown() {
+        let event = NetlinkEvent::Unknown;
+        assert!(matches!(event, NetlinkEvent::Unknown));
+    }
+
+    #[test]
+    fn test_netlink_event_sequence() {
+        let events = vec![
+            NetlinkEvent::Ipv6Added("2001:db8::1".to_string()),
+            NetlinkEvent::Ipv6Added("2001:db8::2".to_string()),
+            NetlinkEvent::Ipv6Removed,
+            NetlinkEvent::Unknown,
+        ];
+
+        assert!(matches!(events[0], NetlinkEvent::Ipv6Added(_)));
+        assert!(matches!(events[1], NetlinkEvent::Ipv6Added(_)));
+        assert!(matches!(events[2], NetlinkEvent::Ipv6Removed));
+        assert!(matches!(events[3], NetlinkEvent::Unknown));
+    }
+
+    #[test]
+    fn test_ipv6_address_validation_for_events() {
+        let valid_ips = vec![
+            "2001:db8::1",
+            "::1",
+            "fe80::1",
+            "2001:0db8:0000:0000:0000:0000:0000:0001",
+        ];
+
+        for ip in valid_ips {
+            let event = NetlinkEvent::Ipv6Added(ip.to_string());
+            assert!(matches!(event, NetlinkEvent::Ipv6Added(_)));
+            assert!(ip.parse::<std::net::Ipv6Addr>().is_ok());
+        }
+    }
+
+    #[test]
+    fn test_ipv6_address_validation_rejects_invalid() {
+        let invalid_ips = vec!["192.168.1.1", "invalid", "", "2001:db8::g"];
+
+        for ip in invalid_ips {
+            assert!(ip.parse::<std::net::Ipv6Addr>().is_err());
+        }
+    }
 }
