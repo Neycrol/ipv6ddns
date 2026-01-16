@@ -191,6 +191,83 @@ fn test_config_load() {
 }
 ```
 
+### Testing Guidelines
+
+#### General Principles
+
+- **Test what matters**: Focus on testing business logic, error handling, and edge cases
+- **Keep tests independent**: Each test should be able to run in isolation
+- **Use descriptive test names**: Test names should clearly describe what they test
+- **Test both success and failure paths**: Ensure error cases are properly handled
+
+#### Rust Testing
+
+- Use `#[cfg(test)]` for test modules
+- Use `serial_test` for tests that require exclusive access to shared resources (e.g., environment variables)
+- Use `tempfile` for creating temporary files in tests
+- Test public APIs with realistic inputs and edge cases
+- Use `anyhow` context in error assertions for better debugging
+
+```rust
+#[test]
+#[serial]
+fn test_config_with_env_override() {
+    let _env = EnvGuard::new();
+    std::env::set_var("CLOUDFLARE_API_TOKEN", "test_token");
+    let config = Config::load(None).unwrap();
+    assert_eq!(config.api_token, "test_token");
+}
+```
+
+#### Android Testing
+
+- Unit tests should be in the standard `test` source set
+- Use JUnit 4 assertions and test annotations
+- Test data classes and business logic in isolation
+- Mock dependencies where appropriate
+
+```kotlin
+@Test
+fun testConfigValidation() {
+    val config = AppConfig(
+        apiToken = "test_token",
+        zoneId = "test_zone",
+        recordName = "test.example.com"
+    )
+    assertTrue(config.apiToken.isNotEmpty())
+}
+```
+
+#### Test Coverage
+
+- Aim for high coverage of core business logic
+- Focus on critical paths: config loading, API interactions, state management
+- Test error handling and edge cases thoroughly
+- Document any untestable code with comments explaining why
+
+#### Running Tests
+
+```bash
+# Run all Rust tests
+cargo test
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run specific test
+cargo test test_function_name
+
+# Run tests for a specific module
+cargo test cloudflare
+cargo test netlink
+
+# Run Android tests
+./gradlew -p android test
+
+# Run tests in CI
+# Tests are automatically run in CI on every PR
+```
+
 ## Security Considerations
 
 - Never commit secrets or API tokens
