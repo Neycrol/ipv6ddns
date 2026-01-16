@@ -47,6 +47,7 @@ jobs:
           IFLOW_PLAN_MODE: "1"
           IFLOW_DISABLE_SUDO: "1"
           IFLOW_WRITE_CONTEXT: "1"
+          IFLOW_DIRECT_GIT: "1"
           IFLOW_CONTEXT: |
             # iFlow Auto-PR Context
 
@@ -55,9 +56,10 @@ jobs:
             You run in GitHub Actions with no sudo and no interactive input.
             First read IFLOW_PLAN.md if it exists, then make concrete edits.
             Keep changes organized by category (docs/tests/ci/android-ui/packaging/bugfix/refactor/perf).
-            The automation will split PRs by file category and include a brief summary.
+            Write a plan file at .iflow_pr_plan.json describing how to split PRs.
+            You may run git/gh to create PRs yourself. Never push to main/master.
+            Use branches prefixed with iflow/.
             Tools are allowed, but only modify files within the repo.
-            Never push directly to main/master; only create PR branches.
           PYTHONUNBUFFERED: "1"
           GH_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}

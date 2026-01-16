@@ -28,6 +28,7 @@ MAX_REPAIR_ATTEMPTS = int(os.environ.get("IFLOW_REPAIR_ATTEMPTS", "1"))
 TOOL_FALLBACK = os.environ.get("IFLOW_TOOL_FALLBACK", "1") == "1"
 FORCE_EDIT = os.environ.get("IFLOW_FORCE_EDIT", "1") == "1"
 RUN_ID = os.environ.get("GITHUB_RUN_ID") or str(os.getpid())
+DIRECT_GIT = os.environ.get("IFLOW_DIRECT_GIT") == "1"
 
 
 def run(cmd, check=True, capture=False, text=True, **kwargs):
@@ -74,10 +75,10 @@ Do NOT output JSON or patches to stdout. Make concrete file edits only.
 
 Rules:
 - Tools are allowed, but only modify files within the repo workspace.
-- Do NOT run git commands or write patch files.
 - Never push directly to main/master; only create PR branches.
 - Keep changes organized by category: docs, tests, ci, android-ui, packaging, bugfix, refactor, perf.
-  The automation will split PRs by file categories, so keep related changes grouped by file type/path.
+- Write a plan file at .iflow_pr_plan.json with a list of PRs and their file lists. This is required.
+  The automation will use your plan to split PRs.
 
 Top-level entries:
 {files_preview}
@@ -87,7 +88,21 @@ Top-level entries:
         allowed=allowed,
         files_preview=files_preview,
     )
-    return textwrap.dedent(prompt).strip()
+    prompt = textwrap.dedent(prompt).strip()
+    if DIRECT_GIT:
+        prompt += (
+            "\n\nDirect Git Mode:\n"
+            "- You may run git/gh commands to create PRs yourself.\n"
+            "- Never push to main/master.\n"
+            "- Use branches prefixed with iflow/.\n"
+        )
+    else:
+        prompt += (
+            "\n\nManaged PR Mode:\n"
+            "- Do NOT run git commands or create PRs yourself.\n"
+            "- The automation will create PRs from .iflow_pr_plan.json.\n"
+        )
+    return prompt
 
 
 def extract_json(text):
@@ -232,6 +247,23 @@ def build_prs_from_categories(changed_files):
             "self_review": ["Reviewed diffs for scope; no functional review beyond category grouping."],
             "tests": ["Not run (automation)."],
         })
+    return prs
+
+
+def load_plan_prs():
+    plan_path = ROOT / ".iflow_pr_plan.json"
+    if not plan_path.exists():
+        return None
+    try:
+        data = json.loads(plan_path.read_text())
+    except json.JSONDecodeError:
+        return None
+    if isinstance(data, dict):
+        prs = data.get("prs")
+    else:
+        prs = data
+    if not isinstance(prs, list) or not prs:
+        return None
     return prs
 
 
@@ -505,12 +537,16 @@ def main():
         print("No changes detected.")
         return 0
 
+    if DIRECT_GIT:
+        print("Direct git mode enabled; leaving PR creation to iFlow.")
+        return 0
+
     if dry_run:
         print("DRY RUN: Working tree has changes.")
         return 0
 
     changed_files = [f for f in git("diff", "--name-only", capture=True).splitlines() if f.strip()]
-    prs = build_prs_from_categories(changed_files)
+    prs = load_plan_prs() or build_prs_from_categories(changed_files)
     if prs:
         temp_branch = f"iflow/workspace-temp-{os.getpid()}"
         git("checkout", "-b", temp_branch)
