@@ -6,7 +6,7 @@ Thank you for your interest in contributing to ipv6ddns! This document provides 
 
 ### Prerequisites
 
-- Rust 1.70 or later
+- Rust (latest stable, same as CI)
 - Linux with netlink support (for development and testing)
 - Cloudflare API Token with DNS edit permissions (for testing)
 - Git
