@@ -166,6 +166,155 @@ For detailed architecture documentation, see [ARCHITECTURE.md](ARCHITECTURE.md).
 journalctl -u ipv6ddns -f
 ```
 
+## Common Troubleshooting Scenarios
+
+### Scenario 1: IPv6 address not detected
+
+**Symptoms:**
+- Daemon reports "No IPv6 on startup"
+- DNS record is never updated
+
+**Possible causes:**
+1. No global IPv6 address assigned to the system
+2. IPv6 address is temporary, tentative, or deprecated
+3. Netlink socket is not available (fallback to polling)
+
+**Solutions:**
+```bash
+# Check for global IPv6 addresses
+ip -6 addr show scope global
+
+# If using polling, check the poll_interval setting
+cat /etc/ipv6ddns/config.toml
+
+# Verify netlink is working
+journalctl -u ipv6ddns | grep -i netlink
+```
+
+### Scenario 2: Cloudflare API authentication fails
+
+**Symptoms:**
+- "API error: Authentication error" in logs
+- DNS record is never updated
+
+**Possible causes:**
+1. Invalid API token
+2. API token lacks DNS edit permissions
+3. API token has expired
+
+**Solutions:**
+```bash
+# Verify API token has correct permissions
+# Go to: https://dash.cloudflare.com/profile/api-tokens
+# Required permission: Zone - DNS - Edit
+
+# Check if zone ID is correct
+curl -X GET "https://api.cloudflare.com/client/v4/zones/YOUR_ZONE_ID/dns_records" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+```
+
+### Scenario 3: Rate limiting from Cloudflare
+
+**Symptoms:**
+- "Rate limited by Cloudflare" errors in logs
+- DNS updates are delayed
+
+**Possible causes:**
+1. Too many API requests in a short time
+2. Multiple instances running simultaneously
+
+**Solutions:**
+- The daemon uses exponential backoff (max 10 minutes)
+- Wait for the backoff period to expire
+- Reduce IPv6 address change frequency if possible
+
+### Scenario 4: Multiple AAAA records exist
+
+**Symptoms:**
+- "Multiple AAAA records found" error in logs
+- DNS record is not updated
+
+**Possible causes:**
+1. Multiple AAAA records with the same name exist in Cloudflare
+2. Default policy refuses to update for safety
+
+**Solutions:**
+```toml
+# Update /etc/ipv6ddns/config.toml
+multi_record = "first"  # Update only the first record
+# or
+multi_record = "all"    # Update all matching records
+```
+
+### Scenario 5: Service won't start
+
+**Symptoms:**
+- Systemd service fails to start
+- Service exits immediately
+
+**Possible causes:**
+1. Config file is missing or invalid
+2. Required environment variables are not set
+3. Binary does not have execute permissions
+
+**Solutions:**
+```bash
+# Check service status
+sudo systemctl status ipv6ddns
+
+# View recent logs
+sudo journalctl -u ipv6ddns -n 50
+
+# Test config syntax
+cat /etc/ipv6ddns/config.toml
+
+# Verify environment variables
+sudo systemctl show ipv6ddns -p Environment
+```
+
+### Scenario 6: DNS record not updating
+
+**Symptoms:**
+- Daemon runs but DNS doesn't update
+- "Sync failed" errors in logs
+
+**Possible causes:**
+1. Record name doesn't match exactly
+2. Zone ID is incorrect
+3. Network connectivity issues
+
+**Solutions:**
+```bash
+# Enable verbose logging temporarily
+# Edit /etc/ipv6ddns/config.toml
+verbose = true
+
+# Restart service
+sudo systemctl restart ipv6ddns
+
+# Check logs for detailed error messages
+sudo journalctl -u ipv6ddns -f
+```
+
+### Scenario 7: Android app issues
+
+**Symptoms:**
+- Service stops unexpectedly
+- Binary verification fails
+- No IPv6 detected
+
+**Solutions:**
+```bash
+# Check logs
+adb logcat | grep ipv6ddns
+
+# Verify binary extraction
+adb shell ls -la /data/data/com.neycrol.ipv6ddns/files/bin/
+
+# Clear app data and reinstall
+adb shell pm clear com.neycrol.ipv6ddns
+```
+
 ## Troubleshooting
 
 ### Netlink socket fails
