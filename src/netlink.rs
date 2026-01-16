@@ -44,7 +44,7 @@ const IPV6_ADDR_BYTES: usize = 16;
 
 // Address family constants
 const AF_INET6: u8 = libc::AF_INET6 as u8;
-const RT_SCOPE_UNIVERSE: u8 = libc::RT_SCOPE_UNIVERSE as u8;
+const RT_SCOPE_UNIVERSE: u8 = libc::RT_SCOPE_UNIVERSE;
 
 // Address flag constants
 const IFA_F_TEMPORARY: u32 = libc::IFA_F_TEMPORARY;
@@ -122,8 +122,7 @@ impl NetlinkImpl {
         };
         if fd < 0 {
             return Err(std::io::Error::last_os_error())
-                .context("create netlink socket")
-                .map_err(Into::into);
+                .context("create netlink socket");
         }
 
         let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
@@ -141,23 +140,19 @@ impl NetlinkImpl {
         if res < 0 {
             let err = std::io::Error::last_os_error();
             unsafe { libc::close(fd) };
-            return Err(err)
-                .context("netlink bind")
-                .map_err(Into::into);
+            return Err(err).context("netlink bind");
         }
 
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
         if flags < 0 {
             unsafe { libc::close(fd) };
             return Err(std::io::Error::last_os_error())
-                .context("fcntl F_GETFL")
-                .map_err(Into::into);
+                .context("fcntl F_GETFL");
         }
         if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
             unsafe { libc::close(fd) };
             return Err(std::io::Error::last_os_error())
-                .context("fcntl F_SETFL")
-                .map_err(Into::into);
+                .context("fcntl F_SETFL");
         }
 
         let fd = unsafe { OwnedFd::from_raw_fd(fd) };
@@ -495,8 +490,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
     let fd = unsafe { libc::socket(NETLINK_ROUTE, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE_PROTOCOL) };
     if fd < 0 {
         return Err(std::io::Error::last_os_error())
-            .context("create netlink socket")
-            .map_err(Into::into);
+            .context("create netlink socket");
     }
 
     let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
@@ -514,9 +508,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
     if res < 0 {
         let err = std::io::Error::last_os_error();
         unsafe { libc::close(fd) };
-        return Err(err)
-            .context("netlink bind")
-            .map_err(Into::into);
+        return Err(err).context("netlink bind");
     }
 
     let seq = 1u32;
@@ -540,7 +532,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
     if send_res < 0 {
         let err = std::io::Error::last_os_error();
         unsafe { libc::close(fd) };
-        return Err(err).context("netlink send").map_err(Into::into);
+        return Err(err).context("netlink send");
     }
 
     let mut stable: Option<String> = None;
@@ -559,7 +551,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
         if n < 0 {
             let err = std::io::Error::last_os_error();
             unsafe { libc::close(fd) };
-            return Err(err).context("netlink recv").map_err(Into::into);
+            return Err(err).context("netlink recv");
         }
         if n == 0 {
             break;
