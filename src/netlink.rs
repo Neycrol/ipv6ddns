@@ -14,23 +14,52 @@ use anyhow::{Context as _, Result};
 use async_trait::async_trait;
 use tokio::io::unix::AsyncFd;
 
-const NETLINK_ROUTE: i32 = libc::AF_NETLINK as i32;
+// Netlink constants
+const NETLINK_ROUTE: i32 = libc::AF_NETLINK;
 const SOCK_RAW: i32 = libc::SOCK_RAW;
 const SOCK_CLOEXEC: i32 = libc::SOCK_CLOEXEC;
-const NETLINK_ROUTE_PROTOCOL: i32 = libc::NETLINK_ROUTE as i32;
+const NETLINK_ROUTE_PROTOCOL: i32 = libc::NETLINK_ROUTE;
 const RTMGRP_IPV6_ADDR: u32 = 1 << 1;
 const NLM_F_REQUEST: u16 = 0x0001;
 const NLM_F_DUMP: u16 = 0x0300;
 
-const RTM_NEWADDR_VAL: u16 = libc::RTM_NEWADDR as u16;
-const RTM_DELADDR_VAL: u16 = libc::RTM_DELADDR as u16;
-const RTM_GETADDR_VAL: u16 = libc::RTM_GETADDR as u16;
-const IFA_ADDRESS_VAL: u16 = libc::IFA_ADDRESS as u16;
-const IFA_LOCAL_VAL: u16 = libc::IFA_LOCAL as u16;
+// Netlink message types
+const RTM_NEWADDR_VAL: u16 = libc::RTM_NEWADDR;
+const RTM_DELADDR_VAL: u16 = libc::RTM_DELADDR;
+const RTM_GETADDR_VAL: u16 = libc::RTM_GETADDR;
+
+// Interface address attribute types
+const IFA_ADDRESS_VAL: u16 = libc::IFA_ADDRESS;
+const IFA_LOCAL_VAL: u16 = libc::IFA_LOCAL;
+
+// Netlink message structure constants
 const NLMSG_HDRLEN: usize = 16;
 const IFADDRMSG_LEN: usize = 8;
 const ALIGN_TO: usize = 4;
 
+// Buffer sizes for netlink operations
+const NETLINK_RECV_BUFFER_SIZE: usize = 8192;
+const NETLINK_DUMP_BUFFER_SIZE: usize = 16384;
+const IPV6_ADDR_BYTES: usize = 16;
+
+// Address family constants
+const AF_INET6: u8 = libc::AF_INET6 as u8;
+const RT_SCOPE_UNIVERSE: u8 = libc::RT_SCOPE_UNIVERSE as u8;
+
+// Address flag constants
+const IFA_F_TEMPORARY: u32 = libc::IFA_F_TEMPORARY;
+const IFA_F_TENTATIVE: u32 = libc::IFA_F_TENTATIVE;
+const IFA_F_DADFAILED: u32 = libc::IFA_F_DADFAILED;
+const IFA_F_DEPRECATED: u32 = libc::IFA_F_DEPRECATED;
+
+// Netlink message type constants
+const NLMSG_DONE: u16 = libc::NLMSG_DONE as u16;
+const NLMSG_ERROR: u16 = libc::NLMSG_ERROR as u16;
+
+// Attribute header size
+const RTA_HEADER_SIZE: usize = 4;
+
+// Default polling interval
 const POLL_INTERVAL_DEFAULT: Duration = Duration::from_secs(60);
 
 /// Represents a netlink event related to IPv6 address changes
@@ -137,7 +166,7 @@ impl NetlinkImpl {
     }
 
     fn recv_raw_io(&self) -> std::io::Result<Option<Vec<u8>>> {
-        let mut buf = vec![0u8; 8192];
+        let mut buf = vec![0u8; NETLINK_RECV_BUFFER_SIZE];
         let n = unsafe {
             libc::recv(
                 self.fd.as_raw_fd(),
@@ -177,7 +206,7 @@ impl NetlinkImpl {
             let nlmsg_type =
                 u16::from_ne_bytes(data[msg_offset + 4..msg_offset + 6].try_into().unwrap());
 
-            if nlmsg_type == libc::NLMSG_DONE as u16 || nlmsg_type == libc::NLMSG_ERROR as u16 {
+            if nlmsg_type == NLMSG_DONE || nlmsg_type == NLMSG_ERROR {
                 msg_offset += nlmsg_align(nlmsg_len);
                 continue;
             }
@@ -198,38 +227,38 @@ impl NetlinkImpl {
             let ifa_flags = data[ifa_offset + 2];
             let ifa_scope = data[ifa_offset + 3];
 
-            if ifa_family != libc::AF_INET6 as u8 {
+            if ifa_family != AF_INET6 {
                 msg_offset += nlmsg_align(nlmsg_len);
                 continue;
             }
-            if ifa_scope != libc::RT_SCOPE_UNIVERSE as u8 {
+            if ifa_scope != RT_SCOPE_UNIVERSE {
                 msg_offset += nlmsg_align(nlmsg_len);
                 continue;
             }
-            if (ifa_flags as u32) & (libc::IFA_F_TEMPORARY as u32) != 0 {
+            if (ifa_flags as u32) & IFA_F_TEMPORARY != 0 {
                 msg_offset += nlmsg_align(nlmsg_len);
                 continue;
             }
-            if (ifa_flags as u32) & (libc::IFA_F_TENTATIVE as u32) != 0 {
+            if (ifa_flags as u32) & IFA_F_TENTATIVE != 0 {
                 msg_offset += nlmsg_align(nlmsg_len);
                 continue;
             }
-            if (ifa_flags as u32) & (libc::IFA_F_DADFAILED as u32) != 0 {
+            if (ifa_flags as u32) & IFA_F_DADFAILED != 0 {
                 msg_offset += nlmsg_align(nlmsg_len);
                 continue;
             }
-            if (ifa_flags as u32) & (libc::IFA_F_DEPRECATED as u32) != 0 {
+            if (ifa_flags as u32) & IFA_F_DEPRECATED != 0 {
                 msg_offset += nlmsg_align(nlmsg_len);
                 continue;
             }
 
             let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
-            while rta_offset + 4 <= msg_end {
+            while rta_offset + RTA_HEADER_SIZE <= msg_end {
                 let rta_len = u16::from_ne_bytes([
                     data[rta_offset],
                     data[rta_offset + 1],
                 ]) as usize;
-                if rta_len < 4 {
+                if rta_len < RTA_HEADER_SIZE {
                     break;
                 }
                 let rta_type = u16::from_ne_bytes([
@@ -237,14 +266,14 @@ impl NetlinkImpl {
                     data[rta_offset + 3],
                 ]);
 
-                let payload_len = rta_len - 4;
-                let payload_offset = rta_offset + 4;
+                let payload_len = rta_len - RTA_HEADER_SIZE;
+                let payload_offset = rta_offset + RTA_HEADER_SIZE;
                 if payload_offset + payload_len > msg_end {
                     break;
                 }
 
-                if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL) && payload_len == 16 {
-                    let addr: [u8; 16] = match data[payload_offset..payload_offset + 16].try_into() {
+                if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL) && payload_len == IPV6_ADDR_BYTES {
+                    let addr: [u8; IPV6_ADDR_BYTES] = match data[payload_offset..payload_offset + IPV6_ADDR_BYTES].try_into() {
                         Ok(a) => a,
                         Err(_) => return None,
                     };
@@ -491,14 +520,14 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
     }
 
     let seq = 1u32;
-    let mut buf = vec![0u8; NLMSG_HDRLEN + IFADDRMSG_LEN];
+    let mut buf = [0u8; NLMSG_HDRLEN + IFADDRMSG_LEN];
     let nlmsg_len = (NLMSG_HDRLEN + IFADDRMSG_LEN) as u32;
     buf[0..4].copy_from_slice(&nlmsg_len.to_ne_bytes());
     buf[4..6].copy_from_slice(&RTM_GETADDR_VAL.to_ne_bytes());
     buf[6..8].copy_from_slice(&(NLM_F_REQUEST | NLM_F_DUMP).to_ne_bytes());
     buf[8..12].copy_from_slice(&seq.to_ne_bytes());
     buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
-    buf[16] = libc::AF_INET6 as u8;
+    buf[16] = AF_INET6;
 
     let send_res = unsafe {
         libc::send(
@@ -516,7 +545,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
 
     let mut stable: Option<String> = None;
     let mut temporary: Option<String> = None;
-    let mut recv_buf = vec![0u8; 16384];
+    let mut recv_buf = vec![0u8; NETLINK_DUMP_BUFFER_SIZE];
 
     loop {
         let n = unsafe {
@@ -547,11 +576,11 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
 
             let nlmsg_type =
                 u16::from_ne_bytes(data[msg_offset + 4..msg_offset + 6].try_into().unwrap());
-            if nlmsg_type == libc::NLMSG_DONE as u16 {
+            if nlmsg_type == NLMSG_DONE {
                 unsafe { libc::close(fd) };
                 return Ok((stable, temporary));
             }
-            if nlmsg_type == libc::NLMSG_ERROR as u16 {
+            if nlmsg_type == NLMSG_ERROR {
                 unsafe { libc::close(fd) };
                 return Err(anyhow::anyhow!("netlink error response"));
             }
@@ -564,38 +593,38 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
                     let ifa_flags = data[ifa_offset + 2];
                     let ifa_scope = data[ifa_offset + 3];
 
-                    if ifa_family == libc::AF_INET6 as u8
-                        && ifa_scope == libc::RT_SCOPE_UNIVERSE as u8
-                        && (ifa_flags as u32 & libc::IFA_F_TENTATIVE as u32) == 0
-                        && (ifa_flags as u32 & libc::IFA_F_DADFAILED as u32) == 0
-                        && (ifa_flags as u32 & libc::IFA_F_DEPRECATED as u32) == 0
+                    if ifa_family == AF_INET6
+                        && ifa_scope == RT_SCOPE_UNIVERSE
+                        && (ifa_flags as u32 & IFA_F_TENTATIVE) == 0
+                        && (ifa_flags as u32 & IFA_F_DADFAILED) == 0
+                        && (ifa_flags as u32 & IFA_F_DEPRECATED) == 0
                     {
-                        let is_temp = (ifa_flags as u32 & libc::IFA_F_TEMPORARY as u32) != 0;
+                        let is_temp = (ifa_flags as u32 & IFA_F_TEMPORARY) != 0;
 
                         let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
-                        while rta_offset + 4 <= msg_end {
+                        while rta_offset + RTA_HEADER_SIZE <= msg_end {
                             let rta_len = u16::from_ne_bytes([
                                 data[rta_offset],
                                 data[rta_offset + 1],
                             ]) as usize;
-                            if rta_len < 4 {
+                            if rta_len < RTA_HEADER_SIZE {
                                 break;
                             }
                             let rta_type = u16::from_ne_bytes([
                                 data[rta_offset + 2],
                                 data[rta_offset + 3],
                             ]);
-                            let payload_len = rta_len - 4;
-                            let payload_offset = rta_offset + 4;
+                            let payload_len = rta_len - RTA_HEADER_SIZE;
+                            let payload_offset = rta_offset + RTA_HEADER_SIZE;
                             if payload_offset + payload_len > msg_end {
                                 break;
                             }
 
                             if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL)
-                                && payload_len == 16
+                                && payload_len == IPV6_ADDR_BYTES
                             {
-                                let addr: [u8; 16] =
-                                    match data[payload_offset..payload_offset + 16].try_into() {
+                                let addr: [u8; IPV6_ADDR_BYTES] =
+                                    match data[payload_offset..payload_offset + IPV6_ADDR_BYTES].try_into() {
                                         Ok(a) => a,
                                         Err(_) => break,
                                     };
