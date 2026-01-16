@@ -29,6 +29,13 @@ jobs:
         with:
           node-version: 20
 
+      - name: Install git/gh helpers
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/microsoft-prod.list || true
+          sudo sed -i '/packages.microsoft.com/d' /etc/apt/sources.list.d/*.list || true
+          sudo apt-get update
+          sudo apt-get install -y gh jq
+
       - name: Install iFlow CLI
         run: npm i -g @iflow-ai/iflow-cli@latest
 
@@ -52,13 +59,17 @@ jobs:
             # iFlow Auto-PR Context
 
             You are an automated improvement bot for the ipv6ddns repository.
-            Be bold, creative, and insightful—but keep changes small and safe.
+            Be bold, creative, and insightful—keep changes correct and reviewable.
             You run in GitHub Actions with no sudo and no interactive input.
-            First read IFLOW_PLAN.md if it exists, then make concrete edits.
-            Keep changes organized by category (docs/tests/ci/android-ui/packaging/bugfix/refactor/perf).
-            Write a plan file at .iflow_pr_plan.json describing how to split PRs.
-            You may run git/gh to create PRs yourself. Never push to main/master.
-            Use branches prefixed with iflow/.
+            Read IFLOW_PLAN.md if it exists, then make concrete edits.
+            Group changes by category (docs/tests/ci/android-ui/packaging/bugfix/refactor/perf) into separate PRs.
+            You MUST create PRs yourself using git + gh:
+              - git checkout -b iflow/<category>-<n>
+              - git add <files>; git commit -m "<category>: <short>"
+              - git push -u origin iflow/<category>-<n>
+              - gh pr create --title "<category>: <short>" --body "<rationale/self-review/tests>"
+            Never push to main/master. Only use iflow/ branches.
+            If no valuable changes, exit without creating PRs.
             Tools are allowed, but only modify files within the repo.
           PYTHONUNBUFFERED: "1"
           GH_TOKEN: ${{ secrets.GH_PAT }}
