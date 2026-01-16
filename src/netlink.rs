@@ -839,7 +839,7 @@ mod tests {
         buf[ifa_offset] = AF_INET6;
         buf[ifa_offset + 1] = 64;
         buf[ifa_offset + 2] = 0;
-        buf[ifa_offset + 3] = libc::RT_SCOPE_LINK as u8; // Link scope, not universe
+        buf[ifa_offset + 3] = libc::RT_SCOPE_LINK; // Link scope, not universe
         let event = NetlinkImpl::parse_message(&buf);
 
         assert_eq!(event, None);
