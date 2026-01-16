@@ -47,6 +47,8 @@ jobs:
           IFLOW_DISABLE_SUDO: "1"
           IFLOW_WRITE_CONTEXT: "1"
           IFLOW_ALLOW_WORKFLOWS: "0"
+          IFLOW_VALIDATE_CMD: "cargo test"
+          IFLOW_FIX_RETRIES: "2"
           IFLOW_CONTEXT: |
             # iFlow Auto-PR Context
 

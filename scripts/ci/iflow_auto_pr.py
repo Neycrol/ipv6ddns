@@ -29,6 +29,8 @@ TOOL_FALLBACK = os.environ.get("IFLOW_TOOL_FALLBACK", "1") == "1"
 FORCE_EDIT = os.environ.get("IFLOW_FORCE_EDIT", "1") == "1"
 DISALLOW_WORKFLOWS = os.environ.get("IFLOW_ALLOW_WORKFLOWS") != "1"
 DISALLOWED_PREFIXES = [".github/workflows/"] if DISALLOW_WORKFLOWS else []
+VALIDATE_CMD = os.environ.get("IFLOW_VALIDATE_CMD")
+FIX_RETRIES = int(os.environ.get("IFLOW_FIX_RETRIES", "2"))
 
 
 def run(cmd, check=True, capture=False, text=True, **kwargs):
@@ -65,10 +67,39 @@ def filter_disallowed_files():
     blocked = [p for p in paths if any(p.startswith(pref) for pref in DISALLOWED_PREFIXES)]
     if not blocked:
         return
+    tracked = []
+    untracked = []
+    for line in lines:
+        parts = line.split()
+        if not parts:
+            continue
+        path = parts[-1]
+        if path not in blocked:
+            continue
+        if line.startswith("??"):
+            untracked.append(path)
+        else:
+            tracked.append(path)
     print(f"Reverting disallowed changes: {blocked}")
-    git("checkout", "--", *blocked)
-    git("reset", "--", *blocked)
-    git("clean", "-fd", "--", *blocked)
+    if tracked:
+        run(["git", "checkout", "--", *tracked], check=False)
+        run(["git", "reset", "--", *tracked], check=False)
+    if untracked:
+        run(["git", "clean", "-fd", "--", *untracked], check=False)
+
+
+def run_validation(cmd):
+    if not cmd:
+        return 0, ""
+    print(f"Running validation: {cmd}")
+    proc = subprocess.run(
+        cmd,
+        shell=True,
+        text=True,
+        capture_output=True,
+    )
+    output = (proc.stdout or "") + (proc.stderr or "")
+    return proc.returncode, output.strip()
 
 
 def build_prompt():
@@ -528,6 +559,39 @@ def main():
     if not status.strip():
         print("No changes detected after filtering disallowed files.")
         return 0
+
+    if VALIDATE_CMD:
+        for attempt in range(FIX_RETRIES + 1):
+            code, output = run_validation(VALIDATE_CMD)
+            if code == 0:
+                break
+            print(f"Validation failed (attempt {attempt + 1}/{FIX_RETRIES + 1}).")
+            if output:
+                print(output[:4000])
+            if attempt >= FIX_RETRIES:
+                break
+            fix_prompt = (
+                "Validation failed. Fix the errors and re-run the validation command.\n"
+                f"Command: {VALIDATE_CMD}\n"
+                f"Output (truncated):\n{output[:2000]}"
+            )
+            try:
+                run_iflow(
+                    fix_prompt,
+                    model,
+                    min(10, max_turns),
+                    min(900, timeout),
+                    "/tmp/iflow_fix.json",
+                )
+            except subprocess.CalledProcessError as exc:
+                print(f"iFlow fix run failed (exit {exc.returncode})")
+                if exc.output:
+                    print(exc.output[:4000])
+            filter_disallowed_files()
+            status = git("status", "--porcelain", capture=True)
+            if not status.strip():
+                print("No changes detected after fix attempt.")
+                return 0
 
     if dry_run:
         print("DRY RUN: Working tree has changes.")
