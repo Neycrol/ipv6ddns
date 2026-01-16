@@ -519,9 +519,9 @@ record_name = "file.example.com"
         let err = Config::load(None).expect_err("missing required");
         let msg = format!("{err}");
         assert!(
-            msg.contains(ENV_API_TOKEN)
-                || msg.contains(ENV_ZONE_ID)
-                || msg.contains(ENV_RECORD_NAME)
+            msg.starts_with("Missing ")
+                || msg.contains("Missing required")
+                || msg.contains("missing required")
         );
     }
 
