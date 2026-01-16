@@ -75,12 +75,41 @@ fun AppScreen() {
     var verbose by rememberSaveable { mutableStateOf(false) }
     var multiRecord by rememberSaveable { mutableStateOf("error") }
     var showMenu by remember { mutableStateOf(false) }
+    var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val multiRecordOptions = listOf(
         "error" to stringResource(R.string.multi_record_error),
         "first" to stringResource(R.string.multi_record_first),
         "all" to stringResource(R.string.multi_record_all)
     )
     val multiRecordLabel = multiRecordOptions.firstOrNull { it.first == multiRecord }?.second ?: multiRecord
+
+    // Validation constants
+    val minTimeout = 1L
+    val maxTimeout = 300L
+    val minPollInterval = 10L
+    val maxPollInterval = 3600L
+
+    // Validation function
+    fun validateConfig(): String? {
+        if (apiToken.trim().isEmpty()) {
+            return context.getString(R.string.validation_api_token_required)
+        }
+        if (zoneId.trim().isEmpty()) {
+            return context.getString(R.string.validation_zone_id_required)
+        }
+        if (recordName.trim().isEmpty()) {
+            return context.getString(R.string.validation_record_name_required)
+        }
+        val timeout = timeoutSec.toLongOrNull()
+        if (timeout == null || timeout < minTimeout || timeout > maxTimeout) {
+            return context.getString(R.string.validation_timeout_range, minTimeout, maxTimeout)
+        }
+        val pollInterval = pollIntervalSec.toLongOrNull()
+        if (pollInterval == null || pollInterval < minPollInterval || pollInterval > maxPollInterval) {
+            return context.getString(R.string.validation_poll_interval_range, minPollInterval, maxPollInterval)
+        }
+        return null
+    }
 
     LaunchedEffect(config) {
         apiToken = config.apiToken
@@ -198,6 +227,21 @@ fun AppScreen() {
                             style = androidx.compose.material3.MaterialTheme.typography.bodySmall
                         )
                     }
+                    errorMessage?.let { error ->
+                        androidx.compose.material3.Card(
+                            colors = androidx.compose.material3.CardDefaults.cardColors(
+                                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.errorContainer
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = error,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onErrorContainer,
+                                modifier = Modifier.padding(12.dp),
+                                style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -205,24 +249,27 @@ fun AppScreen() {
                         Button(
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                val cfg = AppConfig(
-                                    apiToken = apiToken.trim(),
-                                    zoneId = zoneId.trim(),
-                                    recordName = recordName.trim(),
-                                    timeoutSec = timeoutSec.toLongOrNull() ?: 30,
-                                    pollIntervalSec = pollIntervalSec.toLongOrNull() ?: 60,
-                                    verbose = verbose,
-                                    multiRecord = multiRecord
-                                )
-                                scope.launch(Dispatchers.IO) {
-                                    ConfigStore.saveConfig(context, cfg)
-                                    val configFile = ConfigToml.writeConfig(context, cfg)
-                                    withContext(Dispatchers.Main) {
-                                        val intent = Intent(context, Ipv6DdnsService::class.java).apply {
-                                            action = Ipv6DdnsService.ACTION_START
-                                            putExtra(Ipv6DdnsService.EXTRA_CONFIG_PATH, configFile.absolutePath)
+                                errorMessage = validateConfig()
+                                if (errorMessage == null) {
+                                    val cfg = AppConfig(
+                                        apiToken = apiToken.trim(),
+                                        zoneId = zoneId.trim(),
+                                        recordName = recordName.trim(),
+                                        timeoutSec = timeoutSec.toLong(),
+                                        pollIntervalSec = pollIntervalSec.toLong(),
+                                        verbose = verbose,
+                                        multiRecord = multiRecord
+                                    )
+                                    scope.launch(Dispatchers.IO) {
+                                        ConfigStore.saveConfig(context, cfg)
+                                        val configFile = ConfigToml.writeConfig(context, cfg)
+                                        withContext(Dispatchers.Main) {
+                                            val intent = Intent(context, Ipv6DdnsService::class.java).apply {
+                                                action = Ipv6DdnsService.ACTION_START
+                                                putExtra(Ipv6DdnsService.EXTRA_CONFIG_PATH, configFile.absolutePath)
+                                            }
+                                            context.startForegroundService(intent)
                                         }
-                                        context.startForegroundService(intent)
                                     }
                                 }
                             }
