@@ -27,6 +27,8 @@ MAX_FILES = 0
 MAX_REPAIR_ATTEMPTS = int(os.environ.get("IFLOW_REPAIR_ATTEMPTS", "1"))
 TOOL_FALLBACK = os.environ.get("IFLOW_TOOL_FALLBACK", "1") == "1"
 FORCE_EDIT = os.environ.get("IFLOW_FORCE_EDIT", "1") == "1"
+DISALLOW_WORKFLOWS = os.environ.get("IFLOW_ALLOW_WORKFLOWS") != "1"
+DISALLOWED_PREFIXES = [".github/workflows/"] if DISALLOW_WORKFLOWS else []
 
 
 def run(cmd, check=True, capture=False, text=True, **kwargs):
@@ -38,6 +40,35 @@ def run(cmd, check=True, capture=False, text=True, **kwargs):
 
 def git(*args, capture=False, **kwargs):
     return run(["git", *args], capture=capture, **kwargs)
+
+
+def status_lines():
+    raw = git("status", "--porcelain", capture=True)
+    return [line for line in raw.splitlines() if line.strip()]
+
+
+def status_paths(lines):
+    paths = []
+    for line in lines:
+        parts = line.split()
+        if not parts:
+            continue
+        paths.append(parts[-1])
+    return paths
+
+
+def filter_disallowed_files():
+    lines = status_lines()
+    if not lines:
+        return
+    paths = status_paths(lines)
+    blocked = [p for p in paths if any(p.startswith(pref) for pref in DISALLOWED_PREFIXES)]
+    if not blocked:
+        return
+    print(f"Reverting disallowed changes: {blocked}")
+    git("checkout", "--", *blocked)
+    git("reset", "--", *blocked)
+    git("clean", "-fd", "--", *blocked)
 
 
 def build_prompt():
@@ -276,8 +307,10 @@ def create_prs_from_file_lists(prs, temp_branch, changed_files):
             print(f"Skipping PR {idx}: missing files list")
             continue
         files = [f for f in files if f in changed_set]
+        if DISALLOWED_PREFIXES:
+            files = [f for f in files if not any(f.startswith(pref) for pref in DISALLOWED_PREFIXES)]
         if not files:
-            print(f"Skipping PR {idx}: files not in changed set")
+            print(f"Skipping PR {idx}: no allowed files to include")
             continue
         overlap = used.intersection(files)
         if overlap:
@@ -490,18 +523,7 @@ def main():
         print("No changes detected.")
         return 0
 
-    allow_workflows = os.environ.get("IFLOW_ALLOW_WORKFLOWS") == "1"
-    if not allow_workflows:
-        workflow_changes = [
-            f for f in status.splitlines()
-            if "/.github/workflows/" in f or f.strip().endswith(".github/workflows/")
-        ]
-        if workflow_changes:
-            workflow_files = [line.split()[-1] for line in workflow_changes]
-            print(f"Reverting workflow changes (disallowed): {workflow_files}")
-            git("checkout", "--", *workflow_files)
-            git("reset", "--", *workflow_files)
-
+    filter_disallowed_files()
     status = git("status", "--porcelain", capture=True)
     if not status.strip():
         print("No changes detected after filtering disallowed files.")
@@ -512,6 +534,11 @@ def main():
         return 0
 
     changed_files = [f for f in git("diff", "--name-only", capture=True).splitlines() if f.strip()]
+    if DISALLOWED_PREFIXES:
+        changed_files = [f for f in changed_files if not any(f.startswith(pref) for pref in DISALLOWED_PREFIXES)]
+        if not changed_files:
+            print("No changes detected after filtering disallowed files.")
+            return 0
 
     prs = build_prs_from_categories(changed_files)
     if prs:
