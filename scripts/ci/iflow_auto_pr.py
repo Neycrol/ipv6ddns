@@ -490,6 +490,23 @@ def main():
         print("No changes detected.")
         return 0
 
+    allow_workflows = os.environ.get("IFLOW_ALLOW_WORKFLOWS") == "1"
+    if not allow_workflows:
+        workflow_changes = [
+            f for f in status.splitlines()
+            if "/.github/workflows/" in f or f.strip().endswith(".github/workflows/")
+        ]
+        if workflow_changes:
+            workflow_files = [line.split()[-1] for line in workflow_changes]
+            print(f"Reverting workflow changes (disallowed): {workflow_files}")
+            git("checkout", "--", *workflow_files)
+            git("reset", "--", *workflow_files)
+
+    status = git("status", "--porcelain", capture=True)
+    if not status.strip():
+        print("No changes detected after filtering disallowed files.")
+        return 0
+
     if dry_run:
         print("DRY RUN: Working tree has changes.")
         return 0
