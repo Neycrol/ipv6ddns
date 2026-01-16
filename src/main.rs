@@ -129,6 +129,13 @@ pub struct Config {
 
 impl Config {
     pub fn load(config_path: Option<PathBuf>) -> Result<Self> {
+        let mut config = Self::load_from_file(config_path)?;
+        Self::override_with_env(&mut config)?;
+        Self::validate(&config)?;
+        Ok(config)
+    }
+
+    fn load_from_file(config_path: Option<PathBuf>) -> Result<Self> {
         let mut api_token = String::new();
         let mut zone_id = String::new();
         let mut record = String::new();
@@ -156,41 +163,6 @@ impl Config {
             }
         }
 
-        if let Ok(v) = env::var(ENV_API_TOKEN) {
-            if !v.is_empty() {
-                api_token = v;
-            }
-        }
-        if let Ok(v) = env::var(ENV_ZONE_ID) {
-            if !v.is_empty() {
-                zone_id = v;
-            }
-        }
-        if let Ok(v) = env::var(ENV_RECORD_NAME) {
-            if !v.is_empty() {
-                record = v;
-            }
-        }
-
-        if let Ok(v) = env::var(ENV_MULTI_RECORD) {
-            if !v.is_empty() {
-                multi_record = parse_multi_record(&v)?;
-            }
-        }
-
-        if api_token.is_empty() {
-            return Err(anyhow::anyhow!("Missing {}", ENV_API_TOKEN));
-        }
-        if zone_id.is_empty() {
-            return Err(anyhow::anyhow!("Missing {}", ENV_ZONE_ID));
-        }
-        if record.is_empty() {
-            return Err(anyhow::anyhow!("Missing {}", ENV_RECORD_NAME));
-        }
-
-        // Validate record_name format after required fields are present
-        validate_record_name(&record)?;
-
         Ok(Self {
             api_token,
             zone_id,
@@ -200,6 +172,44 @@ impl Config {
             verbose,
             multi_record,
         })
+    }
+
+    fn override_with_env(config: &mut Self) -> Result<()> {
+        if let Ok(v) = env::var(ENV_API_TOKEN) {
+            if !v.is_empty() {
+                config.api_token = v;
+            }
+        }
+        if let Ok(v) = env::var(ENV_ZONE_ID) {
+            if !v.is_empty() {
+                config.zone_id = v;
+            }
+        }
+        if let Ok(v) = env::var(ENV_RECORD_NAME) {
+            if !v.is_empty() {
+                config.record = v;
+            }
+        }
+        if let Ok(v) = env::var(ENV_MULTI_RECORD) {
+            if !v.is_empty() {
+                config.multi_record = parse_multi_record(&v)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn validate(&self) -> Result<()> {
+        if self.api_token.is_empty() {
+            return Err(anyhow::anyhow!("Missing {}", ENV_API_TOKEN));
+        }
+        if self.zone_id.is_empty() {
+            return Err(anyhow::anyhow!("Missing {}", ENV_ZONE_ID));
+        }
+        if self.record.is_empty() {
+            return Err(anyhow::anyhow!("Missing {}", ENV_RECORD_NAME));
+        }
+        validate_record_name(&self.record)?;
+        Ok(())
     }
 }
 
