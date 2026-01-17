@@ -122,8 +122,6 @@ def run_iflow(prompt, model, max_turns, timeout, out_path):
         model,
         "--thinking",
         "--yolo",
-        "--max-turns",
-        str(max_turns),
         "--timeout",
         str(timeout),
         "--checkpointing",
@@ -133,6 +131,9 @@ def run_iflow(prompt, model, max_turns, timeout, out_path):
         "-p",
         prompt,
     ]
+    if max_turns and max_turns > 0:
+        iflow_cmd.insert(5, str(max_turns))
+        iflow_cmd.insert(5, "--max-turns")
     if os.environ.get("IFLOW_DEBUG") == "1":
         iflow_cmd.insert(1, "--debug")
     cmd_str = shlex.join(iflow_cmd)
