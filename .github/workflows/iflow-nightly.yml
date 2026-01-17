@@ -55,6 +55,23 @@ jobs:
       - name: Run cargo-deny check
         run: cargo-deny check
 
+      - name: Install cargo-audit
+        run: |
+          cargo install --locked cargo-audit
+          cargo-audit --version
+
+      - name: Run cargo-audit security check
+        run: cargo-audit audit --db-fetch
+
+      - name: Verify Cargo.lock is up-to-date
+        run: |
+          cargo generate-lockfile
+          if ! git diff --quiet Cargo.lock; then
+            echo "Error: Cargo.lock is out of date. Please run 'cargo generate-lockfile' and commit the changes."
+            git diff Cargo.lock
+            exit 1
+          fi
+
   test-android:
     runs-on: ubuntu-latest
     steps:
