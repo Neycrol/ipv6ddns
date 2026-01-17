@@ -302,7 +302,8 @@ impl Config {
         }
         if let Ok(v) = env::var(ENV_ALLOW_LOOPBACK) {
             if !v.is_empty() {
-                config.allow_loopback = parse_bool_env(&v).context("Invalid IPV6DDNS_ALLOW_LOOPBACK value")?;
+                config.allow_loopback =
+                    parse_bool_env(&v).context("Invalid IPV6DDNS_ALLOW_LOOPBACK value")?;
             }
         }
         Ok(())
@@ -361,7 +362,9 @@ fn parse_bool_env(value: &str) -> Result<bool> {
     match value.trim().to_ascii_lowercase().as_str() {
         "1" | "true" | "yes" | "on" => Ok(true),
         "0" | "false" | "no" | "off" => Ok(false),
-        _ => Err(anyhow::anyhow!("expected boolean (true/false/1/0/yes/no/on/off)")),
+        _ => Err(anyhow::anyhow!(
+            "expected boolean (true/false/1/0/yes/no/on/off)"
+        )),
     }
 }
 

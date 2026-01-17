@@ -97,7 +97,6 @@ pub trait Ipv6Monitor: Send + Sync {
     ///
     /// Returns a `NetlinkEvent` indicating the type of change detected
     async fn next_event(&mut self) -> NetlinkEvent;
-
 }
 
 struct NetlinkImpl {
@@ -298,7 +297,6 @@ impl Ipv6Monitor for NetlinkImpl {
             }
         }
     }
-
 }
 
 struct PollingImpl {
@@ -345,7 +343,6 @@ impl Ipv6Monitor for PollingImpl {
             }
         }
     }
-
 }
 
 /// Socket for monitoring IPv6 address changes via netlink or polling
@@ -439,9 +436,21 @@ pub fn detect_global_ipv6(allow_loopback: bool) -> Option<String> {
         Ok((stable, temporary)) => {
             // Validate the IPv6 address format
             stable
-                .and_then(|ip| if is_valid_ipv6(&ip, allow_loopback) { Some(ip) } else { None })
+                .and_then(|ip| {
+                    if is_valid_ipv6(&ip, allow_loopback) {
+                        Some(ip)
+                    } else {
+                        None
+                    }
+                })
                 .or_else(|| {
-                    temporary.and_then(|ip| if is_valid_ipv6(&ip, allow_loopback) { Some(ip) } else { None })
+                    temporary.and_then(|ip| {
+                        if is_valid_ipv6(&ip, allow_loopback) {
+                            Some(ip)
+                        } else {
+                            None
+                        }
+                    })
                 })
         }
         Err(_) => None,
