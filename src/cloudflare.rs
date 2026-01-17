@@ -222,12 +222,14 @@ impl CloudflareClient {
                 403 => {
                     bail!(
                         "API error: Permission denied (403): {}. \
-                         Please verify your API token has 'Zone - DNS - Edit' permissions for zone '{}'",
+                         Please verify your API token has 'Zone - DNS - Edit' permissions. \
+                         Details: {}",
                         context,
                         body.errors
-                            .first()
-                            .map(|e| e.message.clone())
-                            .unwrap_or_else(|| "unknown".to_string())
+                            .iter()
+                            .map(|e| e.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     );
                 }
                 HTTP_STATUS_TOO_MANY_REQUESTS => {
