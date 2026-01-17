@@ -359,17 +359,7 @@ impl CloudflareClient {
         }
     }
 
-    /// Builds the JSON payload for an AAAA record
-///
-/// # Arguments
-///
-/// * `record_name` - The DNS record name
-/// * `ipv6_addr` - The IPv6 address
-///
-/// # Returns
-///
-/// Returns a `Result` containing the serialized JSON payload or an error
-/// Create a new AAAA record
+    /// Create a new AAAA record
     async fn create_record(
         &self,
         zone_id: &str,
