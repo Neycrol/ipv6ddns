@@ -6,7 +6,6 @@
 
 use std::io::ErrorKind;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
-use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
@@ -99,12 +98,6 @@ pub trait Ipv6Monitor: Send + Sync {
     /// Returns a `NetlinkEvent` indicating the type of change detected
     async fn next_event(&mut self) -> NetlinkEvent;
 
-    /// Returns whether this monitor is event-driven or uses polling
-    ///
-    /// # Returns
-    ///
-    /// `true` if event-driven (netlink), `false` if polling-based
-    fn is_event_driven(&self) -> bool;
 }
 
 struct NetlinkImpl {
@@ -306,9 +299,6 @@ impl Ipv6Monitor for NetlinkImpl {
         }
     }
 
-    fn is_event_driven(&self) -> bool {
-        true
-    }
 }
 
 struct PollingImpl {
@@ -356,9 +346,6 @@ impl Ipv6Monitor for PollingImpl {
         }
     }
 
-    fn is_event_driven(&self) -> bool {
-        false
-    }
 }
 
 /// Socket for monitoring IPv6 address changes via netlink or polling
