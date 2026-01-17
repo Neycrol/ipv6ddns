@@ -12,16 +12,8 @@ use tracing::{debug, error, info, warn};
 
 use crate::cloudflare::CloudflareClient;
 use crate::config::Config;
+use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, BACKOFF_MAX_EXPONENT};
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
-
-//==============================================================================
-// Constants
-//==============================================================================
-
-/// Base delay for exponential backoff (5 seconds)
-pub const BACKOFF_BASE: Duration = Duration::from_secs(5);
-/// Maximum delay for exponential backoff (10 minutes)
-pub const BACKOFF_MAX: Duration = Duration::from_secs(600);
 
 //==============================================================================
 // State Machine
@@ -118,11 +110,10 @@ impl AppState {
 /// assert_eq!(delay, Duration::from_secs(10));
 /// ```
 pub fn backoff_delay(error_count: u64) -> Duration {
-    let exp = error_count.saturating_sub(1).min(10);
-    let secs = BACKOFF_BASE
-        .as_secs()
+    let exp = error_count.saturating_sub(1).min(BACKOFF_MAX_EXPONENT);
+    let secs = BACKOFF_BASE_SECS
         .saturating_mul(1u64 << exp)
-        .min(BACKOFF_MAX.as_secs());
+        .min(BACKOFF_MAX_SECS);
     Duration::from_secs(secs)
 }
 
@@ -389,10 +380,10 @@ mod tests {
         assert_eq!(delay, Duration::from_secs(80));
 
         let delay = backoff_delay(10);
-        assert_eq!(delay, BACKOFF_MAX);
+        assert_eq!(delay, Duration::from_secs(BACKOFF_MAX_SECS));
 
         let delay = backoff_delay(100);
-        assert_eq!(delay, BACKOFF_MAX);
+        assert_eq!(delay, Duration::from_secs(BACKOFF_MAX_SECS));
     }
 
     #[test]
@@ -548,9 +539,9 @@ mod tests {
         let retry_time = state.next_retry.unwrap();
         let delay = retry_time.duration_since(Instant::now());
 
-        // Verify backoff is capped at BACKOFF_MAX
-        assert!(delay.as_secs() <= BACKOFF_MAX.as_secs());
-        assert!(delay.as_secs() >= BACKOFF_MAX.as_secs() - 1);
+        // Verify backoff is capped at BACKOFF_MAX_SECS
+        assert!(delay.as_secs() <= BACKOFF_MAX_SECS);
+        assert!(delay.as_secs() >= BACKOFF_MAX_SECS - 1);
     }
 
     #[test]

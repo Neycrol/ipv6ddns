@@ -49,16 +49,17 @@ use tracing::{debug, warn};
 use urlencoding::encode;
 use zeroize::ZeroizeOnDrop;
 
-/// Cloudflare API base URL
-const API_BASE: &str = "https://api.cloudflare.com/client/v4";
-/// User agent string for API requests
-const USER_AGENT: &str = "ipv6ddns/1.0";
-/// DNS record type for IPv6 addresses
-const DNS_RECORD_TYPE_AAAA: &str = "AAAA";
-/// TTL value for automatic TTL (1 second)
-const DNS_TTL_AUTO: u64 = 1;
-/// HTTP status code for rate limiting
-const HTTP_STATUS_TOO_MANY_REQUESTS: u16 = 429;
+use crate::constants::{
+    CLOUDFLARE_API_BASE,
+    CLOUDFLARE_USER_AGENT,
+    DNS_RECORD_TYPE_AAAA,
+    DNS_TTL_AUTO,
+    HTTP_STATUS_FORBIDDEN,
+    HTTP_STATUS_SERVER_ERROR_MAX,
+    HTTP_STATUS_SERVER_ERROR_MIN,
+    HTTP_STATUS_TOO_MANY_REQUESTS,
+    HTTP_STATUS_UNAUTHORIZED,
+};
 
 //==============================================================================
 // Types
@@ -181,7 +182,7 @@ impl CloudflareClient {
         let client = reqwest::Client::builder()
             .connect_timeout(timeout)
             .timeout(timeout)
-            .user_agent(USER_AGENT)
+            .user_agent(CLOUDFLARE_USER_AGENT)
             .build()
             .context("build reqwest client")?;
 
@@ -211,7 +212,7 @@ impl CloudflareClient {
         if !body.success {
             let status_code = status.as_u16();
             match status_code {
-                401 => {
+                HTTP_STATUS_UNAUTHORIZED => {
                     bail!(
                         "API error: Authentication failed (401): {}. \
                          Please verify your API token has 'Zone - DNS - Edit' permissions at \
@@ -219,7 +220,7 @@ impl CloudflareClient {
                         context
                     );
                 }
-                403 => {
+                HTTP_STATUS_FORBIDDEN => {
                     bail!(
                         "API error: Permission denied (403): {}. \
                          Please verify your API token has 'Zone - DNS - Edit' permissions. \
@@ -240,7 +241,7 @@ impl CloudflareClient {
                         context
                     );
                 }
-                code if (500..600).contains(&code) => {
+                code if (HTTP_STATUS_SERVER_ERROR_MIN..=HTTP_STATUS_SERVER_ERROR_MAX).contains(&code) => {
                     bail!(
                         "Cloudflare server error ({}): {}. \
                          This is a temporary issue on Cloudflare's side. \
@@ -289,7 +290,7 @@ impl CloudflareClient {
         let record_name = encode(record_name);
         let url = format!(
             "{}/zones/{}/dns_records?name={}&type=AAAA",
-            API_BASE, zone_id, record_name
+            CLOUDFLARE_API_BASE, zone_id, record_name
         );
 
         debug!("GET {} (record: {})", url, record_name);
@@ -412,7 +413,7 @@ impl CloudflareClient {
         record_name: &str,
         ipv6_addr: &str,
     ) -> Result<DnsRecord> {
-        let url = format!("{}/zones/{}/dns_records", API_BASE, zone_id);
+        let url = format!("{}/zones/{}/dns_records", CLOUDFLARE_API_BASE, zone_id);
         let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
 
         debug!("POST {} (record: {}, ip: {})", url, record_name, ipv6_addr);
@@ -457,7 +458,7 @@ impl CloudflareClient {
         record_name: &str,
         ipv6_addr: &str,
     ) -> Result<DnsRecord> {
-        let url = format!("{}/zones/{}/dns_records/{}", API_BASE, zone_id, record_id);
+        let url = format!("{}/zones/{}/dns_records/{}", CLOUDFLARE_API_BASE, zone_id, record_id);
         let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
 
         debug!(

@@ -10,35 +10,23 @@ use anyhow::{Context as _, Result};
 use zeroize::ZeroizeOnDrop;
 
 use crate::cloudflare::MultiRecordPolicy;
+use crate::constants::{
+    DEFAULT_POLL_INTERVAL_SECS,
+    DEFAULT_TIMEOUT_SECS,
+    ENV_ALLOW_LOOPBACK,
+    ENV_API_TOKEN,
+    ENV_MULTI_RECORD,
+    ENV_RECORD_NAME,
+    ENV_ZONE_ID,
+    MAX_POLL_INTERVAL_SECS,
+    MAX_TIMEOUT_SECS,
+    MIN_API_TOKEN_LENGTH,
+    MAX_ZONE_ID_LENGTH,
+    MIN_POLL_INTERVAL_SECS,
+    MIN_TIMEOUT_SECS,
+    MIN_ZONE_ID_LENGTH,
+};
 use crate::validation::validate_record_name;
-
-//==============================================================================
-// Constants
-//==============================================================================
-
-/// Environment variable name for Cloudflare API token
-pub const ENV_API_TOKEN: &str = "CLOUDFLARE_API_TOKEN";
-/// Environment variable name for Cloudflare zone ID
-pub const ENV_ZONE_ID: &str = "CLOUDFLARE_ZONE_ID";
-/// Environment variable name for DNS record name
-pub const ENV_RECORD_NAME: &str = "CLOUDFLARE_RECORD_NAME";
-/// Environment variable name for multi-record policy
-pub const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
-/// Environment variable name to allow loopback IPv6 (::1)
-pub const ENV_ALLOW_LOOPBACK: &str = "IPV6DDNS_ALLOW_LOOPBACK";
-
-/// Default HTTP request timeout in seconds
-pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
-/// Default polling interval in seconds (when netlink is unavailable)
-pub const DEFAULT_POLL_INTERVAL_SECS: u64 = 60;
-/// Minimum HTTP request timeout in seconds
-pub const MIN_TIMEOUT_SECS: u64 = 1;
-/// Maximum HTTP request timeout in seconds
-pub const MAX_TIMEOUT_SECS: u64 = 300;
-/// Minimum polling interval in seconds
-pub const MIN_POLL_INTERVAL_SECS: u64 = 10;
-/// Maximum polling interval in seconds
-pub const MAX_POLL_INTERVAL_SECS: u64 = 3600;
 
 //==============================================================================
 // Config
@@ -267,11 +255,12 @@ impl Config {
             return Err(anyhow::anyhow!("Missing {}", ENV_API_TOKEN));
         }
         // Cloudflare API tokens are typically 40+ characters
-        if self.api_token.as_str().len() < 32 {
+        if self.api_token.as_str().len() < MIN_API_TOKEN_LENGTH {
             return Err(anyhow::anyhow!(
-                "{} is too short ({} chars, minimum 32)",
+                "{} is too short ({} chars, minimum {})",
                 ENV_API_TOKEN,
-                self.api_token.as_str().len()
+                self.api_token.as_str().len(),
+                MIN_API_TOKEN_LENGTH
             ));
         }
         if self.zone_id.as_str().is_empty() {
@@ -285,11 +274,13 @@ impl Config {
                 self.zone_id.as_str()
             ));
         }
-        if self.zone_id.as_str().len() < 16 || self.zone_id.as_str().len() > 64 {
+        if self.zone_id.as_str().len() < MIN_ZONE_ID_LENGTH || self.zone_id.as_str().len() > MAX_ZONE_ID_LENGTH {
             return Err(anyhow::anyhow!(
-                "{} has invalid length ({} chars, expected 16-64)",
+                "{} has invalid length ({} chars, expected {}-{})",
                 ENV_ZONE_ID,
-                self.zone_id.as_str().len()
+                self.zone_id.as_str().len(),
+                MIN_ZONE_ID_LENGTH,
+                MAX_ZONE_ID_LENGTH
             ));
         }
         if self.record.is_empty() {
