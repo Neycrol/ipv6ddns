@@ -507,7 +507,7 @@ def main():
         plan_output = run_iflow(
             plan_prompt,
             model,
-            10 if max_turns <= 0 else min(10, max_turns),
+            0 if max_turns <= 0 else min(10, max_turns),
             min(600, timeout),
             "/tmp/iflow_plan.json",
         )
