@@ -83,8 +83,29 @@ object BinaryManager {
                         input.copyTo(output)
                     }
                 }
-                marker.writeText(versionMarker)
                 Log.i(TAG, "Copied binary from assets: $assetName (version: $versionMarker)")
+
+                // Verify checksum immediately after copy, before writing marker
+                val actualChecksum = computeSha256(dest)
+                if (actualChecksum != expectedChecksum) {
+                    Log.e(TAG, "Checksum mismatch for $assetName")
+                    Log.e(TAG, "Expected: $expectedChecksum")
+                    Log.e(TAG, "Actual: $actualChecksum")
+                    Log.e(TAG, "Binary file: ${dest.absolutePath} (size: ${dest.length()} bytes)")
+                    dest.delete()
+                    marker.delete()
+                    checksumMarker.delete()
+                    throw SecurityException(
+                        "Security check failed: Binary checksum mismatch. " +
+                        "This may indicate a corrupted installation. " +
+                        "Please clear app data and reinstall: Settings > Apps > ipv6ddns > Clear data."
+                    )
+                }
+                Log.i(TAG, "Checksum verified for $assetName: $actualChecksum")
+                checksumMarker.writeText(actualChecksum)
+
+                // Only write marker after successful checksum verification
+                marker.writeText(versionMarker)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to copy binary from assets: $assetName", e)
                 dest.delete()
@@ -95,25 +116,26 @@ object BinaryManager {
                     "Please ensure the app has sufficient storage space and try reinstalling."
                 )
             }
+        } else {
+            // Verify checksum even if no copy was needed (e.g., app update scenario)
+            val actualChecksum = computeSha256(dest)
+            if (actualChecksum != expectedChecksum) {
+                Log.e(TAG, "Checksum mismatch for $assetName (re-verification)")
+                Log.e(TAG, "Expected: $expectedChecksum")
+                Log.e(TAG, "Actual: $actualChecksum")
+                Log.e(TAG, "Binary file: ${dest.absolutePath} (size: ${dest.length()} bytes)")
+                dest.delete()
+                marker.delete()
+                checksumMarker.delete()
+                throw SecurityException(
+                    "Security check failed: Binary checksum mismatch. " +
+                    "This may indicate a corrupted installation. " +
+                    "Please clear app data and reinstall: Settings > Apps > ipv6ddns > Clear data."
+                )
+            }
+            Log.i(TAG, "Checksum verified for $assetName: $actualChecksum")
+            checksumMarker.writeText(actualChecksum)
         }
-
-        val actualChecksum = computeSha256(dest)
-        if (actualChecksum != expectedChecksum) {
-            Log.e(TAG, "Checksum mismatch for $assetName")
-            Log.e(TAG, "Expected: $expectedChecksum")
-            Log.e(TAG, "Actual: $actualChecksum")
-            Log.e(TAG, "Binary file: ${dest.absolutePath} (size: ${dest.length()} bytes)")
-            dest.delete()
-            marker.delete()
-            checksumMarker.delete()
-            throw SecurityException(
-                "Security check failed: Binary checksum mismatch. " +
-                "This may indicate a corrupted installation. " +
-                "Please clear app data and reinstall: Settings > Apps > ipv6ddns > Clear data."
-            )
-        }
-        Log.i(TAG, "Checksum verified for $assetName: $actualChecksum")
-        checksumMarker.writeText(actualChecksum)
         try {
             Os.chmod(dest.absolutePath, 0x1C0)
         } catch (e: Exception) {

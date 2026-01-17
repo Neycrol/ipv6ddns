@@ -150,6 +150,7 @@ pub fn backoff_delay(error_count: u64) -> Duration {
 /// assert!(!redacted.contains("zone456"));
 /// assert!(redacted.contains("***REDACTED***"));
 /// ```
+#[must_use]
 pub fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
     let mut sanitized = message.to_string();
 

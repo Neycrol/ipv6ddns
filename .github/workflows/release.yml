@@ -218,6 +218,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: 8.7
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Assemble release APK
         env:
           ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
