@@ -61,7 +61,7 @@ jobs:
           cargo-audit --version
 
       - name: Run cargo-audit security check
-        run: cargo-audit audit --db-fetch
+        run: cargo-audit audit
 
       - name: Verify Cargo.lock is up-to-date
         run: |
