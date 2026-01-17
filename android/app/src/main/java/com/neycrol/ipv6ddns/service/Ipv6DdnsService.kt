@@ -23,6 +23,8 @@ import java.io.InputStreamReader
 class Ipv6DdnsService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var process: Process? = null
+    private var restartAttempts = 0
+    private val maxRestartAttempts = 5
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -73,6 +75,7 @@ class Ipv6DdnsService : Service() {
             )
             builder.redirectErrorStream(true)
             process = builder.start()
+            restartAttempts = 0 // Reset restart counter on successful start
             runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, true) }
             streamLogs(process!!)
         } catch (e: SecurityException) {
@@ -115,8 +118,24 @@ class Ipv6DdnsService : Service() {
         Log.w(TAG, "ipv6ddns exited with code $exitCode")
         runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
         process = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+
+        // Implement exponential backoff for restarts
+        if (restartAttempts < maxRestartAttempts) {
+            restartAttempts++
+            val backoffDelayMs = (1000L * (1 shl (restartAttempts - 1))).coerceAtMost(60000L)
+            Log.w(TAG, "Attempting restart $restartAttempts/$maxRestartAttempts after ${backoffDelayMs}ms delay")
+            Thread.sleep(backoffDelayMs)
+            // Attempt to restart by sending a start intent
+            val configPath = intent?.getStringExtra(EXTRA_CONFIG_PATH)
+            if (configPath != null) {
+                scope.launch { startProcess(File(configPath)) }
+            }
+        } else {
+            Log.e(TAG, "Max restart attempts ($maxRestartAttempts) reached, stopping service")
+            restartAttempts = 0
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     @Synchronized
@@ -124,6 +143,7 @@ class Ipv6DdnsService : Service() {
         try {
             process?.destroy()
             process = null
+            restartAttempts = 0 // Reset restart counter on manual stop
             runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
         } catch (e: Exception) {
             Log.w(TAG, "Stop failed: ${e.message}")
