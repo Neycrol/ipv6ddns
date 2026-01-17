@@ -129,6 +129,7 @@ jobs:
           IFLOW_MAX_PRS: "0"
           IFLOW_MAX_TURNS: "0"
           IFLOW_TIMEOUT: "3600"
+          IFLOW_OUTER_TIMEOUT: "3600"
           IFLOW_DEBUG: "1"
           IFLOW_PING: "1"
           IFLOW_PLAN_MODE: "1"
