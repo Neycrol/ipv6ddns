@@ -1,6 +1,44 @@
 //! Cloudflare API client for DNS operations
 //!
-//! Uses reqwest with rustls for HTTP requests.
+//! This module provides a client for interacting with the Cloudflare API to manage
+//! DNS records, specifically AAAA records for IPv6 addresses. It uses reqwest with
+//! rustls for HTTP requests.
+//!
+//! # Features
+//!
+//! - Automatic retry with exponential backoff on rate limiting
+//! - Support for multiple AAAA records with configurable policies
+//! - Automatic record creation (upsert operation)
+//! - Comprehensive error handling with detailed context
+//!
+//! # Usage
+//!
+//! ```text
+//! use ipv6ddns::cloudflare::{CloudflareClient, MultiRecordPolicy};
+//! use std::time::Duration;
+//!
+//! let client = CloudflareClient::new("your-api-token", Duration::from_secs(30))?;
+//! let record = client.upsert_aaaa_record(
+//!     "zone-id",
+//!     "example.com",
+//!     "2001:db8::1",
+//!     MultiRecordPolicy::Error
+//! ).await?;
+//! ```
+//!
+//! # Error Handling
+//!
+//! The client returns detailed errors for:
+//! - Authentication failures (401 errors)
+//! - Rate limiting (429 errors)
+//! - Server errors (5xx errors)
+//! - Invalid input or malformed requests
+//!
+//! # Rate Limiting
+//!
+//! Cloudflare has rate limits on API requests. This client implements exponential
+//! backoff when rate limited, with a maximum delay of 10 minutes. The backoff
+//! is handled at the application level in the daemon.
 
 use std::fmt;
 use std::time::Duration;

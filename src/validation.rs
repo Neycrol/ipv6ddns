@@ -2,6 +2,32 @@
 //!
 //! This module provides validation functions for various inputs including
 //! DNS record names and IPv6 addresses.
+//!
+//! # Functions
+//!
+//! - `validate_record_name`: Validates DNS record names according to RFC standards
+//! - `is_valid_ipv6`: Validates IPv6 addresses and filters out reserved ranges
+//!
+//! # DNS Record Name Validation
+//!
+//! The `validate_record_name` function validates DNS record names according to
+//! RFC 1035 and RFC 1123, with support for:
+//! - Apex records (@)
+//! - Wildcard records (*.example.com)
+//! - ACME challenge records (_acme-challenge.example.com)
+//! - FQDNs with trailing dots (example.com.)
+//!
+//! # IPv6 Address Validation
+//!
+//! The `is_valid_ipv6` function validates IPv6 addresses and filters out:
+//! - Unspecified address (::)
+//! - Loopback address (::1, unless allow_loopback is true)
+//! - Link-local addresses (fe80::/10)
+//! - Multicast addresses (ff00::/8)
+//! - Documentation addresses (2001:db8::/32)
+//!
+//! Unique-local addresses (fc00::/7) are allowed by design, since DDNS is often
+//! used on private networks.
 
 use anyhow::{anyhow, Result};
 
