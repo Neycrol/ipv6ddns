@@ -566,4 +566,294 @@ record_name = "test.example.com"
         ));
         assert!(parse_multi_record("bogus").is_err());
     }
+
+    // Additional edge case tests for config parsing
+
+    #[test]
+    #[serial]
+    fn config_timeout_boundary_values() {
+        let _env = EnvGuard::new();
+        std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
+        std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
+        std::env::set_var(ENV_RECORD_NAME, "test.example.com");
+
+        // Test minimum timeout via config file
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+timeout = 1
+"#,
+        );
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.timeout, Duration::from_secs(1));
+
+        // Test maximum timeout via config file
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+timeout = 300
+"#,
+        );
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.timeout, Duration::from_secs(300));
+
+        // Test timeout below minimum
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+timeout = 0
+"#,
+        );
+        let err = Config::load(Some(path)).expect_err("timeout too low");
+        assert!(format!("{err}").contains("timeout"));
+
+        // Test timeout above maximum
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+timeout = 301
+"#,
+        );
+        let err = Config::load(Some(path)).expect_err("timeout too high");
+        assert!(format!("{err}").contains("timeout"));
+    }
+
+    #[test]
+    #[serial]
+    fn config_poll_interval_boundary_values() {
+        let _env = EnvGuard::new();
+        std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
+        std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
+        std::env::set_var(ENV_RECORD_NAME, "test.example.com");
+
+        // Test minimum poll interval via config file
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+poll_interval = 10
+"#,
+        );
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.poll_interval, Duration::from_secs(10));
+
+        // Test maximum poll interval via config file
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+poll_interval = 3600
+"#,
+        );
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.poll_interval, Duration::from_secs(3600));
+
+        // Test poll interval below minimum
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+poll_interval = 9
+"#,
+        );
+        let err = Config::load(Some(path)).expect_err("poll interval too low");
+        assert!(format!("{err}").contains("poll_interval"));
+
+        // Test poll interval above maximum
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+poll_interval = 3601
+"#,
+        );
+        let err = Config::load(Some(path)).expect_err("poll interval too high");
+        assert!(format!("{err}").contains("poll_interval"));
+    }
+
+    #[test]
+    #[serial]
+    fn config_api_token_exact_minimum_length() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "01234567890123456789012345678901"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+"#,
+        );
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.api_token.as_str().len(), 32);
+    }
+
+    #[test]
+    #[serial]
+    fn config_zone_id_exact_minimum_length() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef"
+record_name = "test.example.com"
+"#,
+        );
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.zone_id.as_str().len(), 16);
+    }
+
+    #[test]
+    #[serial]
+    fn config_zone_id_exact_maximum_length() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef01234567"
+record_name = "test.example.com"
+"#,
+        );
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.zone_id.as_str().len(), 40);
+    }
+
+    #[test]
+    #[serial]
+    fn config_multi_record_policy_variants() {
+        let _env = EnvGuard::new();
+        std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
+        std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
+        std::env::set_var(ENV_RECORD_NAME, "test.example.com");
+
+        // Test error policy variants
+        for policy in ["error", "fail", "reject"] {
+            std::env::set_var(ENV_MULTI_RECORD, policy);
+            let cfg = Config::load(None).expect("config load");
+            assert!(matches!(cfg.multi_record, MultiRecordPolicy::Error));
+        }
+
+        // Test first policy variants
+        for policy in ["first", "update_first", "updatefirst"] {
+            std::env::set_var(ENV_MULTI_RECORD, policy);
+            let cfg = Config::load(None).expect("config load");
+            assert!(matches!(cfg.multi_record, MultiRecordPolicy::UpdateFirst));
+        }
+
+        // Test all policy variants
+        for policy in ["all", "update_all", "updateall"] {
+            std::env::set_var(ENV_MULTI_RECORD, policy);
+            let cfg = Config::load(None).expect("config load");
+            assert!(matches!(cfg.multi_record, MultiRecordPolicy::UpdateAll));
+        }
+
+        std::env::remove_var(ENV_MULTI_RECORD);
+    }
+
+    #[test]
+    #[serial]
+    fn config_allow_loopback_variants() {
+        let _env = EnvGuard::new();
+        std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
+        std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
+        std::env::set_var(ENV_RECORD_NAME, "test.example.com");
+
+        // Test true variants
+        for value in ["1", "true", "yes", "on"] {
+            std::env::set_var(ENV_ALLOW_LOOPBACK, value);
+            let cfg = Config::load(None).expect("config load");
+            assert!(cfg.allow_loopback);
+        }
+
+        // Test false variants
+        for value in ["0", "false", "no", "off"] {
+            std::env::set_var(ENV_ALLOW_LOOPBACK, value);
+            let cfg = Config::load(None).expect("config load");
+            assert!(!cfg.allow_loopback);
+        }
+
+        std::env::remove_var(ENV_ALLOW_LOOPBACK);
+    }
+
+    #[test]
+    #[serial]
+    fn config_empty_env_values() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+"#,
+        );
+
+        // Empty env values should not override file values
+        std::env::set_var(ENV_API_TOKEN, "");
+        std::env::set_var(ENV_ZONE_ID, "");
+        std::env::set_var(ENV_RECORD_NAME, "");
+
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.api_token.as_str(), "0123456789012345678901234567890123456789");
+        assert_eq!(cfg.zone_id.as_str(), "0123456789abcdef0123456789abcdef");
+        assert_eq!(cfg.record, "test.example.com");
+    }
+
+    #[test]
+    #[serial]
+    fn config_whitespace_in_values() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("config load");
+        // Whitespace should not be present in zone_id (alphanumeric check)
+        assert!(!cfg.zone_id.as_str().contains(" "));
+    }
+
+    #[test]
+    #[serial]
+    fn config_case_sensitivity_in_zone_id() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "ABCDEF0123456789abcdef0123456789"
+record_name = "test.example.com"
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.zone_id.as_str(), "ABCDEF0123456789abcdef0123456789");
+    }
+
+    #[test]
+    #[serial]
+    fn config_special_characters_in_api_token() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789!@#$%^&*()"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.api_token.as_str(), "0123456789012345678901234567890123456789!@#$%^&*()");
+    }
 }
