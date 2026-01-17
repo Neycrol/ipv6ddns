@@ -238,12 +238,13 @@ impl CloudflareClient {
                         context
                     );
                 }
-                code if code >= 500 && code < 600 => {
+                code if (500..600).contains(&code) => {
                     bail!(
                         "Cloudflare server error ({}): {}. \
                          This is a temporary issue on Cloudflare's side. \
                          The daemon will automatically retry with exponential backoff.",
-                        code, context
+                        code,
+                        context
                     );
                 }
                 _ => {
