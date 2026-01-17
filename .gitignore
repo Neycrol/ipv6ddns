@@ -15,6 +15,7 @@ android/app/build/
 config.toml
 !etc/config.toml
 *.log
+.iflow_review_*.json
 
 # OS
 .DS_Store
