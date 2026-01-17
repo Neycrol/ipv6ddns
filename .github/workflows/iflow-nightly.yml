@@ -151,6 +151,8 @@ jobs:
               - git add <files>; git commit -m "<category>: <short>"
               - git push -u origin iflow/<category>-<n>
               - gh pr create --title "<category>: <short>" --body "<rationale/self-review/tests>"
+            After each PR is created, you MUST leave a review report comment:
+              - gh pr comment <number> --body "<what changed + tests + risks/notes>"
             Never push to main/master. Only use iflow/ branches.
             Before creating any PR, you MUST run the relevant tests locally and ensure they pass.
             For Rust changes: run `cargo test`.
@@ -228,6 +230,10 @@ jobs:
             Focus on correctness, readability, and test coverage.
             Do NOT touch .github/workflows/ and do NOT create new branches or PRs.
             Apply improvements directly to the current branch and run relevant tests.
+            After finishing, leave a review report comment on the PR with:
+              - summary of changes
+              - tests run (or why skipped)
+              - any remaining risks
             If tests fail, revert your changes and stop.
           PYTHONUNBUFFERED: "1"
           GH_TOKEN: ${{ secrets.GH_PAT }}
