@@ -1,8 +1,8 @@
 # Contributor: Neycrol <neycrol@users.noreply.github.com>
 # Maintainer: Neycrol <neycrol@users.noreply.github.com>
 pkgname=ipv6ddns-git
-pkgver=1.0.0_git
-pkgrel=0
+pkgver=0
+pkgrel=1
 pkgdesc="Event-driven IPv6 DDNS client for Cloudflare"
 url="https://github.com/Neycrol/ipv6ddns"
 arch="x86_64 aarch64"
@@ -10,10 +10,19 @@ license="MIT"
 provides="ipv6ddns"
 conflicts="ipv6ddns"
 depends="ca-certificates"
-makedepends="cargo"
-_commit=${_commit:-main}
-source="ipv6ddns-${_commit}.tar.gz::https://github.com/Neycrol/ipv6ddns/archive/${_commit}.tar.gz"
-builddir="$srcdir/ipv6ddns-${_commit}"
+makedepends="cargo git"
+_commit=${_commit:-HEAD}
+source="git+https://github.com/Neycrol/ipv6ddns.git#commit=${_commit}"
+builddir="$srcdir/ipv6ddns"
+
+pkgver() {
+	cd "$builddir"
+	# Generate version based on date and commit count
+	local date=$(git show -s --format=%cd --date=format=%Y%m%d HEAD)
+	local count=$(git rev-list --count HEAD)
+	local short=$(git rev-parse --short HEAD)
+	echo "${date}.r${count}.g${short}"
+}
 
 build() {
 	cd "$builddir"
