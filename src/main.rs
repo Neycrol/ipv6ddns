@@ -47,7 +47,7 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|_| EnvFilter::new(if config.verbose { "debug" } else { "info" }));
     tracing_subscriber::fmt().with_env_filter(filter).init();
 
-    let cf_client = CloudflareClient::new(&config.api_token, config.timeout)
+    let cf_client = CloudflareClient::new(config.api_token.as_str(), config.timeout)
         .context("Cloudflare client failed")?;
 
     let netlink = NetlinkSocket::new(Some(config.poll_interval), config.allow_loopback)

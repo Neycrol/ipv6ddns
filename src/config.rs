@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
+use zeroize::ZeroizeOnDrop;
 
 use crate::cloudflare::MultiRecordPolicy;
 use crate::validation::validate_record_name;
@@ -47,6 +48,8 @@ pub const MAX_POLL_INTERVAL_SECS: u64 = 3600;
 ///
 /// This struct holds all configuration parameters needed to run the daemon,
 /// including Cloudflare API credentials, DNS record settings, and runtime options.
+/// Sensitive fields (api_token and zone_id) are wrapped in `Zeroizing` to ensure
+/// they are securely cleared from memory when dropped.
 ///
 /// # Fields
 ///
@@ -65,45 +68,53 @@ pub const MAX_POLL_INTERVAL_SECS: u64 = 3600;
 /// 1. Environment variables (highest priority)
 /// 2. Config file (`/etc/ipv6ddns/config.toml` or custom path)
 /// 3. Defaults (lowest priority)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, ZeroizeOnDrop)]
 pub struct Config {
     /// Cloudflare API token with DNS edit permissions
     ///
     /// This token should have the `Zone:DNS:Edit` permission.
     /// It can be set via the `CLOUDFLARE_API_TOKEN` environment variable.
-    pub api_token: String,
+    #[zeroize(skip)]
+    pub api_token: zeroize::Zeroizing<String>,
     /// Cloudflare zone ID for the domain
     ///
     /// The zone ID can be found in the Cloudflare dashboard under your domain's DNS settings.
     /// It can be set via the `CLOUDFLARE_ZONE_ID` environment variable.
-    pub zone_id: String,
+    #[zeroize(skip)]
+    pub zone_id: zeroize::Zeroizing<String>,
     /// DNS record name to update (e.g., "home.example.com")
     ///
     /// This is the full DNS record name including subdomain if applicable.
     /// It can be set via the `CLOUDFLARE_RECORD_NAME` environment variable.
+    #[zeroize(skip)]
     pub record: String,
     /// HTTP request timeout in seconds
     ///
     /// Default: 30 seconds
+    #[zeroize(skip)]
     pub timeout: Duration,
     /// Polling interval in seconds (fallback when netlink unavailable)
     ///
     /// Default: 60 seconds
     /// This is only used when netlink socket creation fails.
+    #[zeroize(skip)]
     pub poll_interval: Duration,
     /// Enable verbose logging
     ///
     /// Default: false
+    #[zeroize(skip)]
     pub verbose: bool,
     /// Policy for handling multiple AAAA records
     ///
     /// Default: `MultiRecordPolicy::Error`
     /// Can be set via the `CLOUDFLARE_MULTI_RECORD` environment variable.
+    #[zeroize(skip)]
     pub multi_record: MultiRecordPolicy,
     /// Allow loopback IPv6 address (::1) to be used for DDNS updates
     ///
     /// Default: false
     /// Can be set via the `IPV6DDNS_ALLOW_LOOPBACK` environment variable.
+    #[zeroize(skip)]
     pub allow_loopback: bool,
 }
 
@@ -185,8 +196,8 @@ impl Config {
         }
 
         Ok(Self {
-            api_token,
-            zone_id,
+            api_token: zeroize::Zeroizing::new(api_token),
+            zone_id: zeroize::Zeroizing::new(zone_id),
             record,
             timeout: Duration::from_secs(timeout),
             poll_interval: Duration::from_secs(poll_interval),
@@ -211,12 +222,12 @@ impl Config {
     fn override_with_env(config: &mut Self) -> Result<()> {
         if let Ok(v) = env::var(ENV_API_TOKEN) {
             if !v.is_empty() {
-                config.api_token = v;
+                config.api_token = zeroize::Zeroizing::new(v);
             }
         }
         if let Ok(v) = env::var(ENV_ZONE_ID) {
             if !v.is_empty() {
-                config.zone_id = v;
+                config.zone_id = zeroize::Zeroizing::new(v);
             }
         }
         if let Ok(v) = env::var(ENV_RECORD_NAME) {
@@ -252,33 +263,33 @@ impl Config {
     /// - Timeout is out of valid range
     /// - Poll interval is out of valid range
     fn validate(&self) -> Result<()> {
-        if self.api_token.is_empty() {
+        if self.api_token.as_str().is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_API_TOKEN));
         }
         // Cloudflare API tokens are typically 40+ characters
-        if self.api_token.len() < 32 {
+        if self.api_token.as_str().len() < 32 {
             return Err(anyhow::anyhow!(
                 "{} is too short ({} chars, minimum 32)",
                 ENV_API_TOKEN,
-                self.api_token.len()
+                self.api_token.as_str().len()
             ));
         }
-        if self.zone_id.is_empty() {
+        if self.zone_id.as_str().is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_ZONE_ID));
         }
         // Zone IDs are alphanumeric and typically 32 characters
-        if !self.zone_id.chars().all(|c| c.is_alphanumeric()) {
+        if !self.zone_id.as_str().chars().all(|c| c.is_alphanumeric()) {
             return Err(anyhow::anyhow!(
                 "{} must be alphanumeric, got: {}",
                 ENV_ZONE_ID,
-                self.zone_id
+                self.zone_id.as_str()
             ));
         }
-        if self.zone_id.len() < 16 || self.zone_id.len() > 64 {
+        if self.zone_id.as_str().len() < 16 || self.zone_id.as_str().len() > 64 {
             return Err(anyhow::anyhow!(
                 "{} has invalid length ({} chars, expected 16-64)",
                 ENV_ZONE_ID,
-                self.zone_id.len()
+                self.zone_id.as_str().len()
             ));
         }
         if self.record.is_empty() {
@@ -445,8 +456,8 @@ allow_loopback = true
         );
 
         let cfg = Config::load(Some(path)).expect("config load");
-        assert_eq!(cfg.api_token, "file_token_123456789012345678901234567890");
-        assert_eq!(cfg.zone_id, "0123456789abcdef0123456789abcdef");
+        assert_eq!(cfg.api_token.as_str(), "file_token_123456789012345678901234567890");
+        assert_eq!(cfg.zone_id.as_str(), "0123456789abcdef0123456789abcdef");
         assert_eq!(cfg.record, "file.example.com");
         assert_eq!(cfg.timeout, Duration::from_secs(45));
         assert_eq!(cfg.poll_interval, Duration::from_secs(90));
@@ -474,8 +485,8 @@ allow_loopback = false
         std::env::set_var(ENV_ALLOW_LOOPBACK, "true");
 
         let cfg = Config::load(Some(path)).expect("config load");
-        assert_eq!(cfg.api_token, "env_token_123456789012345678901234567890");
-        assert_eq!(cfg.zone_id, "envzone0123456789abcdef0123456789ab");
+        assert_eq!(cfg.api_token.as_str(), "env_token_123456789012345678901234567890");
+        assert_eq!(cfg.zone_id.as_str(), "envzone0123456789abcdef0123456789ab");
         assert_eq!(cfg.record, "env.example.com");
         assert!(cfg.allow_loopback);
     }

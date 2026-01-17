@@ -228,9 +228,9 @@ impl Daemon {
         debug!(
             "Zone ID: {}",
             redact_secrets(
-                &self.config.zone_id,
-                &self.config.api_token,
-                &self.config.zone_id
+                self.config.zone_id.as_str(),
+                self.config.api_token.as_str(),
+                self.config.zone_id.as_str()
             )
         );
 
@@ -330,9 +330,9 @@ impl Daemon {
         }
 
         let redacted_zone = redact_secrets(
-            &self.config.zone_id,
-            &self.config.api_token,
-            &self.config.zone_id,
+            self.config.zone_id.as_str(),
+            self.config.api_token.as_str(),
+            self.config.zone_id.as_str(),
         );
         info!(
             "Syncing {} -> {} (zone: {})",
@@ -342,7 +342,7 @@ impl Daemon {
         let result = self
             .cf_client
             .upsert_aaaa_record(
-                &self.config.zone_id,
+                self.config.zone_id.as_str(),
                 &self.config.record,
                 ip,
                 self.config.multi_record,
