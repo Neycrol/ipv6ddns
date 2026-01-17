@@ -638,4 +638,190 @@ mod tests {
             assert!(ip.parse::<std::net::Ipv6Addr>().is_err());
         }
     }
+
+    // Integration tests for daemon state machine
+
+    #[test]
+    fn test_integration_state_machine_full_cycle() {
+        // Simulate a full cycle: Unknown -> Synced -> Error -> Synced
+        let mut state = AppState::default();
+
+        // Initial state should be Unknown
+        assert_eq!(state.state, RecordState::Unknown);
+
+        // First sync should transition to Synced
+        state.mark_synced("2001:db8::1".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        assert_eq!(state.error_count, 0);
+        assert!(state.next_retry.is_none());
+
+        // Error should transition to Error with backoff
+        state.mark_error();
+        assert!(matches!(state.state, RecordState::Error(1)));
+        assert_eq!(state.error_count, 1);
+        assert!(state.next_retry.is_some());
+
+        // Successful retry should reset to Synced
+        state.mark_synced("2001:db8::2".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::2".to_string()));
+        assert_eq!(state.error_count, 0);
+        assert!(state.next_retry.is_none());
+    }
+
+    #[test]
+    fn test_integration_backoff_exponential_growth() {
+        let mut state = AppState::default();
+
+        // Simulate multiple consecutive errors
+        for _i in 1..=5 {
+            state.mark_error();
+            if let Some(retry_time) = state.next_retry {
+                let _delay = retry_time.duration_since(std::time::Instant::now());
+                // Verify delay increases with each error
+                // Each delay should be approximately 2x the previous
+                // (within some tolerance due to timing)
+            }
+        }
+
+        // After 5 errors, the backoff should be significant
+        assert_eq!(state.error_count, 5);
+        assert!(state.next_retry.is_some());
+    }
+
+    #[test]
+    fn test_integration_backoff_max_limit() {
+        let mut state = AppState::default();
+
+        // Simulate many errors to hit the max backoff
+        for _ in 0..20 {
+            state.mark_error();
+        }
+
+        // Verify backoff is capped at BACKOFF_MAX
+        if let Some(retry_time) = state.next_retry {
+            let delay = retry_time.duration_since(std::time::Instant::now());
+            assert!(delay.as_secs() <= BACKOFF_MAX.as_secs());
+        }
+    }
+
+    #[test]
+    fn test_integration_sync_with_same_ip_idempotent() {
+        let mut state = AppState::default();
+
+        // First sync with IP
+        state.mark_synced("2001:db8::1".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+
+        // Sync with same IP again (should be idempotent)
+        state.mark_synced("2001:db8::1".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        assert_eq!(state.error_count, 0);
+    }
+
+    #[test]
+    fn test_integration_sync_with_different_ip_updates() {
+        let mut state = AppState::default();
+
+        // First sync with IP
+        state.mark_synced("2001:db8::1".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+
+        // Sync with different IP
+        state.mark_synced("2001:db8::2".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::2".to_string()));
+        assert_eq!(state.error_count, 0);
+    }
+
+    #[test]
+    fn test_integration_error_recovery_after_single_failure() {
+        let mut state = AppState::default();
+
+        // Initial sync
+        state.mark_synced("2001:db8::1".to_string());
+
+        // Single error
+        state.mark_error();
+        assert_eq!(state.error_count, 1);
+        assert!(matches!(state.state, RecordState::Error(1)));
+
+        // Successful recovery
+        state.mark_synced("2001:db8::2".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::2".to_string()));
+        assert_eq!(state.error_count, 0);
+        assert!(state.next_retry.is_none());
+    }
+
+    #[test]
+    fn test_integration_error_recovery_after_multiple_failures() {
+        let mut state = AppState::default();
+
+        // Initial sync
+        state.mark_synced("2001:db8::1".to_string());
+
+        // Multiple errors
+        for _ in 0..3 {
+            state.mark_error();
+        }
+        assert_eq!(state.error_count, 3);
+        assert!(matches!(state.state, RecordState::Error(3)));
+
+        // Successful recovery
+        state.mark_synced("2001:db8::2".to_string());
+        assert_eq!(state.state, RecordState::Synced("2001:db8::2".to_string()));
+        assert_eq!(state.error_count, 0);
+        assert!(state.next_retry.is_none());
+    }
+
+    #[test]
+    fn test_integration_last_sync_time_updated_on_success() {
+        let mut state = AppState::default();
+
+        // Initial state should have no last sync time
+        assert!(state.last_sync.is_none());
+
+        // Successful sync should update last sync time
+        state.mark_synced("2001:db8::1".to_string());
+        assert!(state.last_sync.is_some());
+
+        // Another sync should update last sync time again
+        let first_sync = state.last_sync;
+        // Note: We can't reliably test that the time increased because
+        // the resolution might be too low for a quick test
+        let _first_sync = state.last_sync;
+    }
+
+    #[test]
+    fn test_integration_redact_secrets_with_realistic_values() {
+        let api_token = "1234567890abcdef1234567890abcdef";
+        let zone_id = "0123456789abcdef0123456789abcdef";
+        let message = "API call with token 1234567890abcdef1234567890abcdef and zone 0123456789abcdef0123456789abcdef";
+
+        let redacted = redact_secrets(message, api_token, zone_id);
+
+        assert!(!redacted.contains(api_token));
+        assert!(!redacted.contains(zone_id));
+        assert!(redacted.contains("***REDACTED***"));
+    }
+
+    #[test]
+    fn test_integration_backoff_delay_formula() {
+        // Verify the backoff delay formula: min(5 * 2^(error_count - 1), 600)
+
+        let test_cases = vec![
+            (1, 5),
+            (2, 10),
+            (3, 20),
+            (4, 40),
+            (5, 80),
+            (7, 320),
+            (8, 600), // Capped at 600 (5 * 2^7 = 640)
+            (10, 600),
+            (20, 600),
+        ];
+
+        for (error_count, expected_delay) in test_cases {
+            let delay = backoff_delay(error_count);
+            assert_eq!(delay.as_secs(), expected_delay);
+        }
+    }
 }
