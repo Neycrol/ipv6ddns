@@ -222,14 +222,20 @@ jobs:
             Be concise.
             If unsure, say so.
             Prefer minimal, safe changes.
-            Run relevant tests or explain why not.
+            You MUST run and pass:
+              - cargo fmt -- --check
+              - cargo clippy --all-targets --all-features -- -D warnings
+            If they fail, fix and re-run before pushing.
+            If no Rust changes, state explicitly why you skipped.
           IFLOW_CONTEXT: |
             # iFlow Post-Review Context
 
             You are performing a post-review pass on an existing iflow PR branch.
             Focus on correctness, readability, and test coverage.
             Do NOT touch .github/workflows/ and do NOT create new branches or PRs.
-            Apply improvements directly to the current branch and run relevant tests.
+            Apply improvements directly to the current branch and run required checks:
+              - cargo fmt -- --check (auto-fix with cargo fmt if needed)
+              - cargo clippy --all-targets --all-features -- -D warnings
             After finishing, leave a review report comment on the PR with:
               - summary of changes
               - tests run (or why skipped)
