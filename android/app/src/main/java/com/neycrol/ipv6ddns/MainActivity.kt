@@ -1,7 +1,11 @@
 package com.neycrol.ipv6ddns
 
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
@@ -50,10 +54,40 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val TAG = "ipv6ddns/MainActivity"
+
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { AppScreen() }
+    }
+
+}
+
+private fun isBatteryOptimizationEnabled(context: android.content.Context): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+        return !pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+    return false
+}
+
+private fun requestBatteryOptimizationExemption(context: android.content.Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        try {
+            val intent = Intent().apply {
+                action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                data = Uri.parse("package:${context.packageName}")
+                if (context !is android.app.Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            }
+            context.startActivity(intent)
+            Log.i(TAG, "Requested battery optimization exemption")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to request battery optimization exemption", e)
+        }
     }
 }
 
@@ -228,6 +262,38 @@ fun AppScreen() {
                                         showMenu = false
                                     }
                                 )
+                            }
+                        }
+                    }
+
+                    // Battery optimization exemption button
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isBatteryOptimizationEnabled(context)) {
+                        androidx.compose.material3.Card(
+                            colors = androidx.compose.material3.CardDefaults.cardColors(
+                                containerColor = androidx.compose.material3.MaterialTheme.colorScheme.tertiaryContainer
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    "Battery optimization is enabled",
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onTertiaryContainer,
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                                )
+                                Text(
+                                    "This may cause the service to stop unexpectedly. We recommend disabling battery optimization for this app.",
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onTertiaryContainer,
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                                )
+                                Button(
+                                    onClick = { requestBatteryOptimizationExemption(context) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Disable Battery Optimization")
+                                }
                             }
                         }
                     }
