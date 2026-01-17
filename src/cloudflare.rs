@@ -209,21 +209,57 @@ impl CloudflareClient {
         context: &str,
     ) -> Result<()> {
         if !body.success {
-            if status.as_u16() == HTTP_STATUS_TOO_MANY_REQUESTS {
-                bail!("Rate limited by Cloudflare: {}", context);
+            let status_code = status.as_u16();
+            match status_code {
+                401 => {
+                    bail!(
+                        "API error: Authentication failed (401): {}. \
+                         Please verify your API token has 'Zone - DNS - Edit' permissions at \
+                         https://dash.cloudflare.com/profile/api-tokens",
+                        context
+                    );
+                }
+                403 => {
+                    bail!(
+                        "API error: Permission denied (403): {}. \
+                         Please verify your API token has 'Zone - DNS - Edit' permissions for zone '{}'",
+                        context,
+                        body.errors
+                            .first()
+                            .map(|e| e.message.clone())
+                            .unwrap_or_else(|| "unknown".to_string())
+                    );
+                }
+                HTTP_STATUS_TOO_MANY_REQUESTS => {
+                    bail!(
+                        "Rate limited by Cloudflare (429): {}. \
+                         The daemon will automatically retry with exponential backoff. \
+                         Please wait before retrying manually.",
+                        context
+                    );
+                }
+                code if code >= 500 && code < 600 => {
+                    bail!(
+                        "Cloudflare server error ({}): {}. \
+                         This is a temporary issue on Cloudflare's side. \
+                         The daemon will automatically retry with exponential backoff.",
+                        code, context
+                    );
+                }
+                _ => {
+                    bail!(
+                        "API error ({}): {}: {}. \
+                         For more information, see https://developers.cloudflare.com/api/troubleshooting/",
+                        status_code,
+                        context,
+                        body.errors
+                            .iter()
+                            .map(|e| e.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                }
             }
-            if status.is_server_error() {
-                bail!("Cloudflare server error {}: {}", status.as_u16(), context);
-            }
-            bail!(
-                "API error: {}: {}",
-                context,
-                body.errors
-                    .iter()
-                    .map(|e| e.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
         }
         Ok(())
     }
