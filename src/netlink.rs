@@ -446,6 +446,53 @@ fn rta_align(len: usize) -> usize {
     (len + ALIGN_TO - 1) & !(ALIGN_TO - 1)
 }
 
+/// Parses RTA attributes to extract an IPv6 address
+///
+/// This helper function iterates through the RTA attributes in a netlink message
+/// and returns the first valid IPv6 address found.
+///
+/// # Arguments
+///
+/// * `data` - The raw netlink message data
+/// * `msg_offset` - Offset to the start of the netlink message
+/// * `msg_end` - End offset of the netlink message
+///
+/// # Returns
+///
+/// Returns `Some(String)` containing the IPv6 address if found, `None` otherwise
+fn parse_rta_ipv6_address(data: &[u8], msg_offset: usize, msg_end: usize) -> Option<String> {
+    let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
+    while rta_offset + RTA_HEADER_SIZE <= msg_end {
+        let rta_len = u16::from_ne_bytes([data[rta_offset], data[rta_offset + 1]]) as usize;
+        if rta_len < RTA_HEADER_SIZE {
+            break;
+        }
+        let rta_type = u16::from_ne_bytes([data[rta_offset + 2], data[rta_offset + 3]]);
+
+        let payload_len = rta_len - RTA_HEADER_SIZE;
+        let payload_offset = rta_offset + RTA_HEADER_SIZE;
+        if payload_offset + payload_len > msg_end {
+            break;
+        }
+
+        // Check for IFA_ADDRESS or IFA_LOCAL attribute with correct payload size
+        if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL)
+            && payload_len == IPV6_ADDR_BYTES
+        {
+            let addr: [u8; IPV6_ADDR_BYTES] =
+                match data[payload_offset..payload_offset + IPV6_ADDR_BYTES].try_into() {
+                    Ok(a) => a,
+                    Err(_) => return None,
+                };
+            return Some(std::net::Ipv6Addr::from(addr).to_string());
+        }
+
+        rta_offset += rta_align(rta_len);
+    }
+
+    None
+}
+
 /// Extracts an IPv6 address from a netlink interface address message
 ///
 /// This helper function parses the netlink message to extract IPv6 addresses,
@@ -498,39 +545,13 @@ fn extract_ipv6_from_ifaddrmsg(
     }
 
     // Parse RTA attributes to find the IPv6 address
-    let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
-    while rta_offset + RTA_HEADER_SIZE <= msg_end {
-        let rta_len = u16::from_ne_bytes([data[rta_offset], data[rta_offset + 1]]) as usize;
-        if rta_len < RTA_HEADER_SIZE {
-            break;
-        }
-        let rta_type = u16::from_ne_bytes([data[rta_offset + 2], data[rta_offset + 3]]);
-
-        let payload_len = rta_len - RTA_HEADER_SIZE;
-        let payload_offset = rta_offset + RTA_HEADER_SIZE;
-        if payload_offset + payload_len > msg_end {
-            break;
-        }
-
-        // Check for IFA_ADDRESS or IFA_LOCAL attribute with correct payload size
-        if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL)
-            && payload_len == IPV6_ADDR_BYTES
-        {
-            let addr: [u8; IPV6_ADDR_BYTES] =
-                match data[payload_offset..payload_offset + IPV6_ADDR_BYTES].try_into() {
-                    Ok(a) => a,
-                    Err(_) => return None,
-                };
-            let ip = std::net::Ipv6Addr::from(addr);
-            let event = match nlmsg_type {
-                RTM_NEWADDR_VAL => NetlinkEvent::Ipv6Added(ip.to_string()),
-                RTM_DELADDR_VAL => NetlinkEvent::Ipv6Removed,
-                _ => NetlinkEvent::Unknown,
-            };
-            return Some(event);
-        }
-
-        rta_offset += rta_align(rta_len);
+    if let Some(ip) = parse_rta_ipv6_address(data, msg_offset, msg_end) {
+        let event = match nlmsg_type {
+            RTM_NEWADDR_VAL => NetlinkEvent::Ipv6Added(ip),
+            RTM_DELADDR_VAL => NetlinkEvent::Ipv6Removed,
+            _ => NetlinkEvent::Unknown,
+        };
+        return Some(event);
     }
 
     None
@@ -587,38 +608,12 @@ fn extract_ipv6_addresses_for_dump(
     let is_temp = (ifa_flags as u32 & IFA_F_TEMPORARY) != 0;
 
     // Parse RTA attributes to find the IPv6 address
-    let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
-    while rta_offset + RTA_HEADER_SIZE <= msg_end {
-        let rta_len = u16::from_ne_bytes([data[rta_offset], data[rta_offset + 1]]) as usize;
-        if rta_len < RTA_HEADER_SIZE {
-            break;
+    if let Some(ip) = parse_rta_ipv6_address(data, msg_offset, msg_end) {
+        if is_temp {
+            return Some((None, Some(ip)));
+        } else {
+            return Some((Some(ip), None));
         }
-        let rta_type = u16::from_ne_bytes([data[rta_offset + 2], data[rta_offset + 3]]);
-
-        let payload_len = rta_len - RTA_HEADER_SIZE;
-        let payload_offset = rta_offset + RTA_HEADER_SIZE;
-        if payload_offset + payload_len > msg_end {
-            break;
-        }
-
-        // Check for IFA_ADDRESS or IFA_LOCAL attribute with correct payload size
-        if (rta_type == IFA_ADDRESS_VAL || rta_type == IFA_LOCAL_VAL)
-            && payload_len == IPV6_ADDR_BYTES
-        {
-            let addr: [u8; IPV6_ADDR_BYTES] =
-                match data[payload_offset..payload_offset + IPV6_ADDR_BYTES].try_into() {
-                    Ok(a) => a,
-                    Err(_) => return None,
-                };
-            let ip = std::net::Ipv6Addr::from(addr).to_string();
-            if is_temp {
-                return Some((None, Some(ip)));
-            } else {
-                return Some((Some(ip), None));
-            }
-        }
-
-        rta_offset += rta_align(rta_len);
     }
 
     None
