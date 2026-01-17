@@ -31,6 +31,8 @@
 
 use anyhow::{anyhow, Result};
 
+use crate::constants::{MAX_LABEL_LENGTH, MAX_RECORD_NAME_LENGTH};
+
 /// Validates that a string is a reasonable DNS record name.
 ///
 /// Allows common DNS conventions used for TXT/ACME and wildcard records:
@@ -54,7 +56,7 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
     if name.is_empty() {
         return Err(anyhow!("Record name cannot be empty"));
     }
-    if name.len() > 253 {
+    if name.len() > MAX_RECORD_NAME_LENGTH {
         return Err(anyhow!(
             "Record name too long (max 253 characters, got {})",
             name.len()
@@ -74,7 +76,7 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
         if label == "*" {
             continue;
         }
-        if label.len() > 63 {
+        if label.len() > MAX_LABEL_LENGTH {
             return Err(anyhow!(
                 "Record name label too long (max 63 characters, got {})",
                 label.len()
@@ -321,8 +323,8 @@ mod tests {
         assert!(validate_record_name("*.example.com").is_ok());
         assert!(validate_record_name("*.sub.example.com").is_ok());
         assert!(validate_record_name("*").is_ok());
-        assert!(!validate_record_name("**.example.com").is_ok()); // Double wildcard
-        assert!(!validate_record_name("a*.example.com").is_ok()); // Partial wildcard
+        assert!(validate_record_name("**.example.com").is_err()); // Double wildcard
+        assert!(validate_record_name("a*.example.com").is_err()); // Partial wildcard
     }
 
     #[test]
