@@ -139,6 +139,8 @@ def run_iflow(prompt, model, max_turns, timeout, out_path):
     cmd_str = shlex.join(iflow_cmd)
     outer_timeout = int(os.environ.get("IFLOW_OUTER_TIMEOUT", str(timeout + 120)))
     env = os.environ.copy()
+    if not max_turns or max_turns <= 0:
+        env.pop("IFLOW_MAX_TURNS", None)
     env.setdefault("GIT_TERMINAL_PROMPT", "0")
     env.setdefault("SUDO_ASKPASS", "/bin/false")
     env.setdefault("SUDO_ASKPASS_REQUIRE", "force")
