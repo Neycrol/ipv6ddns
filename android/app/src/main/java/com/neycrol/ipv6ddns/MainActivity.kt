@@ -8,7 +8,6 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -55,46 +54,39 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class MainActivity : ComponentActivity() {
-    private val TAG = "ipv6ddns/MainActivity"
+private const val TAG = "ipv6ddns/MainActivity"
 
-    // Activity result launcher for battery optimization exemption request
-    private val batteryOptimizationLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { /* Result is handled by system */ }
+class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent { AppScreen() }
     }
 
-    /**
-     * Checks if battery optimization is enabled for this app
-     */
-    private fun isBatteryOptimizationEnabled(): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            val packageName = packageName
-            val pm = getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
-            return !pm.isIgnoringBatteryOptimizations(packageName)
-        }
-        return false
-    }
+}
 
-    /**
-     * Requests battery optimization exemption
-     */
-    private fun requestBatteryOptimizationExemption() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            try {
-                val intent = Intent().apply {
-                    action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-                    data = Uri.parse("package:$packageName")
+private fun isBatteryOptimizationEnabled(context: android.content.Context): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+        return !pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+    return false
+}
+
+private fun requestBatteryOptimizationExemption(context: android.content.Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        try {
+            val intent = Intent().apply {
+                action = Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+                data = Uri.parse("package:${context.packageName}")
+                if (context !is android.app.Activity) {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                batteryOptimizationLauncher.launch(intent)
-                Log.i(TAG, "Requested battery optimization exemption")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to request battery optimization exemption", e)
             }
+            context.startActivity(intent)
+            Log.i(TAG, "Requested battery optimization exemption")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to request battery optimization exemption", e)
         }
     }
 }
@@ -275,7 +267,7 @@ fun AppScreen() {
                     }
 
                     // Battery optimization exemption button
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isBatteryOptimizationEnabled()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isBatteryOptimizationEnabled(context)) {
                         androidx.compose.material3.Card(
                             colors = androidx.compose.material3.CardDefaults.cardColors(
                                 containerColor = androidx.compose.material3.MaterialTheme.colorScheme.tertiaryContainer
@@ -297,7 +289,7 @@ fun AppScreen() {
                                     style = androidx.compose.material3.MaterialTheme.typography.bodySmall
                                 )
                                 Button(
-                                    onClick = { (context as MainActivity).requestBatteryOptimizationExemption() },
+                                    onClick = { requestBatteryOptimizationExemption(context) },
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text("Disable Battery Optimization")
