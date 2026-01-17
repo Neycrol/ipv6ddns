@@ -1,0 +1,64 @@
+name: iflow-council-auto-pr
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 04:00 China Standard Time (UTC+8) == 20:00 UTC (previous day)
+    - cron: "0 20 * * *"
+
+concurrency:
+  group: iflow-council-auto-pr
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  council:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install git/gh helpers
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/microsoft-prod.list || true
+          sudo sed -i '/packages.microsoft.com/d' /etc/apt/sources.list.d/*.list || true
+          sudo apt-get update
+          sudo apt-get install -y gh jq
+
+      - name: Install iFlow CLI
+        run: npm i -g @iflow-ai/iflow-cli@latest
+
+      - name: Configure git
+        run: |
+          git config user.name "iflow-bot"
+          git config user.email "iflow-bot@users.noreply.github.com"
+
+      - name: Run iFlow council
+        env:
+          IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
+          IFLOW_DEBUG: "1"
+          IFLOW_DISABLE_SUDO: "1"
+          IFLOW_TIMEOUT: "3600"
+          IFLOW_OUTER_TIMEOUT: "3600"
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          mkdir -p ~/.iflow
+          cat > ~/.iflow/settings.json <<EOF
+          {
+            "apiKey": "${IFLOW_API_KEY}",
+            "baseUrl": "https://apis.iflow.cn/v1"
+          }
+          EOF
+          iflow -m "glm-4.7" --thinking --yolo --max-turns 0 --timeout 3600 -p "根据 IFLOW.md，从 A 阶段开始行动，并按要求落盘证据与状态"
