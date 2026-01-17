@@ -1,8 +1,51 @@
 //! IPv6 address monitoring using netlink socket or polling fallback
 //!
-//! Primary method: NETLINK_ROUTE to receive RTM_NEWADDR/RTM_DELADDR events
-//! Fallback: Periodic polling with configurable interval
-//! Event-driven design means zero CPU usage when no network changes occur.
+//! This module provides two methods for monitoring IPv6 address changes:
+//!
+//! 1. **Event-driven (netlink)**: Uses NETLINK_ROUTE to receive RTM_NEWADDR/RTM_DELADDR
+//!    events. This is the preferred method as it has zero CPU usage when no network
+//!    changes occur.
+//!
+//! 2. **Polling fallback**: Periodic polling with configurable interval. This is used
+//!    when netlink is not available (e.g., in some containerized environments).
+//!
+//! # Features
+//!
+//! - Automatic filtering of temporary, tentative, deprecated, and DAD-failed addresses
+//! - Automatic fallback to polling if netlink is unavailable
+//! - Zero CPU usage when idle (event-driven mode)
+//! - Configurable polling interval
+//! - Support for loopback addresses (optional)
+//!
+//! # Usage
+//!
+//! ```text
+//! use ipv6ddns::netlink::NetlinkSocket;
+//! use std::time::Duration;
+//!
+//! let socket = NetlinkSocket::new(Some(Duration::from_secs(60)), false)?;
+//! loop {
+//!     match socket.recv().await? {
+//!         NetlinkEvent::Ipv6Added(ip) => println!("IPv6 added: {}", ip),
+//!         NetlinkEvent::Ipv6Removed => println!("IPv6 removed"),
+//!         NetlinkEvent::Unknown => {},
+//!     }
+//! }
+//! ```
+//!
+//! # Address Filtering
+//!
+//! The module automatically filters out:
+//! - Temporary addresses (privacy extensions)
+//! - Tentative addresses (still undergoing DAD)
+//! - Deprecated addresses
+//! - DAD-failed addresses
+//! - Non-global scope addresses (unless loopback is allowed)
+//!
+//! # Netlink Protocol
+//!
+//! The module uses the NETLINK_ROUTE protocol to subscribe to RTMGRP_IPV6_ADDR
+//! multicast group, which receives notifications for IPv6 address changes.
 
 use std::io::ErrorKind;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
