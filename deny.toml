@@ -1,23 +1,11 @@
-# cargo-deny configuration
+# cargo-deny configuration (minimal)
 
 [advisories]
-db-path = "~/.cargo/advisory-db"
-db-urls = ["https://github.com/RustSec/advisory-db"]
-vulnerability = "warn"
-unmaintained = "all"
-yanked = "warn"
-notice = "warn"
+db-path = "$CARGO_HOME/advisory-dbs"
+db-urls = ["https://github.com/rustsec/advisory-db"]
 ignore = []
 
-[bans]
-multiple-versions = "warn"
-wildcards = "allow"
-deny = []
-skip = []
-skip-tree = []
-
 [licenses]
-unlicensed = "warn"
 allow = [
   "Apache-2.0",
   "MIT",
@@ -28,12 +16,26 @@ allow = [
   "Zlib",
   "OpenSSL",
 ]
-deny = []
-copyleft = "warn"
-allow-osi-fsf-free = "both"
+confidence-threshold = 0.8
 exceptions = []
+
+[licenses.private]
+ignore = false
+registries = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+skip = []
+skip-tree = []
 
 [sources]
 unknown-registry = "warn"
 unknown-git = "warn"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[sources.allow-org]
+github = []
+gitlab = []
+bitbucket = []
