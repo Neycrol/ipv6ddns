@@ -1,0 +1,11 @@
+{
+  "session-id": "session-efa3200a-fa9a-4892-84e2-fec5bba2fea5",
+  "conversation-id": "9324f47c-ebc5-4bdc-95c6-e476f2084a8b",
+  "assistantRounds": 15,
+  "executionTimeMs": 232579,
+  "tokenUsage": {
+    "input": 39542,
+    "output": 822,
+    "total": 40364
+  }
+}
