@@ -220,8 +220,9 @@ impl NetlinkImpl {
         let mut msg_offset = 0usize;
 
         while msg_offset + NLMSG_HDRLEN <= data.len() {
-            let nlmsg_len =
-                u32::from_ne_bytes(data[msg_offset..msg_offset + 4].try_into().unwrap()) as usize;
+            // Safely extract nlmsg_len with bounds checking
+            let nlmsg_len_bytes = data.get(msg_offset..msg_offset + 4)?;
+            let nlmsg_len = u32::from_ne_bytes(nlmsg_len_bytes.try_into().ok()?) as usize;
             if nlmsg_len < NLMSG_HDRLEN {
                 break;
             }
@@ -229,8 +230,9 @@ impl NetlinkImpl {
                 break;
             }
 
-            let nlmsg_type =
-                u16::from_ne_bytes(data[msg_offset + 4..msg_offset + 6].try_into().unwrap());
+            // Safely extract nlmsg_type with bounds checking
+            let nlmsg_type_bytes = data.get(msg_offset + 4..msg_offset + 6)?;
+            let nlmsg_type = u16::from_ne_bytes(nlmsg_type_bytes.try_into().ok()?);
 
             if nlmsg_type == NLMSG_DONE || nlmsg_type == NLMSG_ERROR {
                 msg_offset += nlmsg_align(nlmsg_len);
@@ -691,14 +693,22 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
         let data = &recv_buf[..n as usize];
         let mut msg_offset = 0usize;
         while msg_offset + NLMSG_HDRLEN <= data.len() {
-            let nlmsg_len =
-                u32::from_ne_bytes(data[msg_offset..msg_offset + 4].try_into().unwrap()) as usize;
+            // Safely extract nlmsg_len with bounds checking
+            let nlmsg_len_bytes = data.get(msg_offset..msg_offset + 4);
+            let nlmsg_len = match nlmsg_len_bytes {
+                Some(bytes) => u32::from_ne_bytes(bytes.try_into().unwrap_or([0; 4])) as usize,
+                None => break,
+            };
             if nlmsg_len < NLMSG_HDRLEN || nlmsg_len == 0 {
                 break;
             }
 
-            let nlmsg_type =
-                u16::from_ne_bytes(data[msg_offset + 4..msg_offset + 6].try_into().unwrap());
+            // Safely extract nlmsg_type with bounds checking
+            let nlmsg_type_bytes = data.get(msg_offset + 4..msg_offset + 6);
+            let nlmsg_type = match nlmsg_type_bytes {
+                Some(bytes) => u16::from_ne_bytes(bytes.try_into().unwrap_or([0; 2])),
+                None => break,
+            };
             if nlmsg_type == NLMSG_DONE {
                 unsafe { libc::close(fd) };
                 return Ok((stable, temporary));
