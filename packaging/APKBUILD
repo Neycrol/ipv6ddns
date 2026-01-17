@@ -1,8 +1,8 @@
 # Contributor: Neycrol <neycrol@users.noreply.github.com>
 # Maintainer: Neycrol <neycrol@users.noreply.github.com>
 pkgname=ipv6ddns-git
-pkgver=1.0.0_git
-pkgrel=0
+pkgver=0
+pkgrel=1
 pkgdesc="Event-driven IPv6 DDNS client for Cloudflare"
 url="https://github.com/Neycrol/ipv6ddns"
 arch="x86_64 aarch64"
@@ -12,8 +12,8 @@ conflicts="ipv6ddns"
 depends="ca-certificates"
 makedepends="cargo git"
 _commit=${_commit:-HEAD}
-source="ipv6ddns-${_commit}.tar.gz::https://github.com/Neycrol/ipv6ddns/archive/${_commit}.tar.gz"
-builddir="$srcdir/ipv6ddns-${_commit}"
+source="git+https://github.com/Neycrol/ipv6ddns.git#commit=${_commit}"
+builddir="$srcdir/ipv6ddns"
 
 pkgver() {
 	cd "$builddir"
