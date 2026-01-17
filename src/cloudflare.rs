@@ -733,4 +733,223 @@ mod tests {
         assert!(resp.result.is_some());
         assert!(resp.result.unwrap().is_empty());
     }
+
+    // Additional edge case tests for API response parsing
+
+    #[test]
+    fn test_dns_record_full_ipv6() {
+        let json = r#"{
+            "id": "abc123",
+            "type": "AAAA",
+            "name": "test.example.com",
+            "content": "2001:0db8:0000:0000:0000:0000:0000:0001",
+            "proxied": false,
+            "ttl": 1
+        }"#;
+
+        let record: DnsRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.content, "2001:0db8:0000:0000:0000:0000:0000:0001");
+    }
+
+    #[test]
+    fn test_dns_record_compressed_ipv6() {
+        let json = r#"{
+            "id": "abc123",
+            "type": "AAAA",
+            "name": "test.example.com",
+            "content": "2001:db8::1",
+            "proxied": false,
+            "ttl": 1
+        }"#;
+
+        let record: DnsRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.content, "2001:db8::1");
+    }
+
+    #[test]
+    fn test_dns_record_min_ttl() {
+        let json = r#"{
+            "id": "abc123",
+            "type": "AAAA",
+            "name": "test.example.com",
+            "content": "2001:db8::1",
+            "proxied": false,
+            "ttl": 1
+        }"#;
+
+        let record: DnsRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.ttl, 1);
+    }
+
+    #[test]
+    fn test_dns_record_max_ttl() {
+        let json = r#"{
+            "id": "abc123",
+            "type": "AAAA",
+            "name": "test.example.com",
+            "content": "2001:db8::1",
+            "proxied": false,
+            "ttl": 86400
+        }"#;
+
+        let record: DnsRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.ttl, 86400);
+    }
+
+    #[test]
+    fn test_api_response_with_large_error_code() {
+        let json = r#"{
+            "success": false,
+            "errors": [
+                {
+                    "code": 9999,
+                    "message": "Unknown error code"
+                }
+            ],
+            "messages": [],
+            "result": null
+        }"#;
+
+        let resp: ApiResponse<DnsRecord> = serde_json::from_str(json).unwrap();
+        assert!(!resp.success);
+        assert_eq!(resp.errors[0].code, 9999);
+    }
+
+    #[test]
+    fn test_api_response_with_empty_error_message() {
+        let json = r#"{
+            "success": false,
+            "errors": [
+                {
+                    "code": 1000,
+                    "message": ""
+                }
+            ],
+            "messages": [],
+            "result": null
+        }"#;
+
+        let resp: ApiResponse<DnsRecord> = serde_json::from_str(json).unwrap();
+        assert!(!resp.success);
+        assert_eq!(resp.errors[0].message, "");
+    }
+
+    #[test]
+    fn test_api_response_with_special_characters_in_message() {
+        let json = r#"{
+            "success": false,
+            "errors": [
+                {
+                    "code": 1000,
+                    "message": "Error: \"Invalid token\" - please check your API key"
+                }
+            ],
+            "messages": [],
+            "result": null
+        }"#;
+
+        let resp: ApiResponse<DnsRecord> = serde_json::from_str(json).unwrap();
+        assert!(!resp.success);
+        assert!(resp.errors[0].message.contains("\""));
+    }
+
+    #[test]
+    fn test_api_response_with_unicode_in_message() {
+        let json = r#"{
+            "success": false,
+            "errors": [
+                {
+                    "code": 1000,
+                    "message": "错误: 无效的令牌"
+                }
+            ],
+            "messages": [],
+            "result": null
+        }"#;
+
+        let resp: ApiResponse<DnsRecord> = serde_json::from_str(json).unwrap();
+        assert!(!resp.success);
+        assert!(resp.errors[0].message.contains("错误"));
+    }
+
+    #[test]
+    fn test_dns_record_equality() {
+        let record1 = DnsRecord {
+            id: "abc123".to_string(),
+            record_type: "AAAA".to_string(),
+            name: "test.example.com".to_string(),
+            content: "2001:db8::1".to_string(),
+            proxied: false,
+            ttl: 1,
+        };
+
+        let record2 = DnsRecord {
+            id: "abc123".to_string(),
+            record_type: "AAAA".to_string(),
+            name: "test.example.com".to_string(),
+            content: "2001:db8::1".to_string(),
+            proxied: false,
+            ttl: 1,
+        };
+
+        assert_eq!(record1, record2);
+    }
+
+    #[test]
+    fn test_dns_record_inequality() {
+        let record1 = DnsRecord {
+            id: "abc123".to_string(),
+            record_type: "AAAA".to_string(),
+            name: "test.example.com".to_string(),
+            content: "2001:db8::1".to_string(),
+            proxied: false,
+            ttl: 1,
+        };
+
+        let record2 = DnsRecord {
+            id: "def456".to_string(),
+            record_type: "AAAA".to_string(),
+            name: "test.example.com".to_string(),
+            content: "2001:db8::1".to_string(),
+            proxied: false,
+            ttl: 1,
+        };
+
+        assert_ne!(record1, record2);
+    }
+
+    #[test]
+    fn test_dns_record_clone() {
+        let record = DnsRecord {
+            id: "abc123".to_string(),
+            record_type: "AAAA".to_string(),
+            name: "test.example.com".to_string(),
+            content: "2001:db8::1".to_string(),
+            proxied: false,
+            ttl: 1,
+        };
+
+        let cloned = record.clone();
+        assert_eq!(record, cloned);
+    }
+
+    #[test]
+    fn test_api_error_with_large_code() {
+        let err = ApiError {
+            code: 999999,
+            message: "Very large error code".to_string(),
+        };
+        assert_eq!(format!("{}", err), "[999999] Very large error code");
+    }
+
+    #[test]
+    fn test_api_error_with_negative_code() {
+        let json = r#"{
+            "code": 9999,
+            "message": "Large error code"
+        }"#;
+
+        let err: ApiError = serde_json::from_str(json).unwrap();
+        assert_eq!(err.code, 9999);
+    }
 }

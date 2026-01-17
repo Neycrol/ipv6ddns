@@ -236,4 +236,132 @@ mod tests {
         assert!(is_valid_ipv6("::1", true));
         assert!(!is_valid_ipv6("::", true));
     }
+
+    // Additional edge case tests for IPv6 validation
+
+    #[test]
+    fn test_ipv6_compression_variants() {
+        // Valid compressed addresses (not in documentation range)
+        assert!(is_valid_ipv6("2001:4860::8888", false));
+        assert!(is_valid_ipv6("2001:4860:0:0:0:0:0:8888", false));
+        assert!(is_valid_ipv6("2001::", false));
+    }
+
+    #[test]
+    fn test_ipv6_with_port() {
+        // IPv6 addresses with port notation should be rejected
+        assert!(!is_valid_ipv6("[2001:db8::1]:8080", false));
+    }
+
+    #[test]
+    fn test_ipv6_zone_id() {
+        // IPv6 addresses with zone ID should be rejected
+        assert!(!is_valid_ipv6("fe80::1%eth0", false));
+    }
+
+    #[test]
+    fn test_ipv6_max_compression() {
+        assert!(!is_valid_ipv6("::", false)); // Fully compressed - unspecified, rejected
+        assert!(is_valid_ipv6("2001::", false)); // Trailing zeroes
+        assert!(!is_valid_ipv6("::1", false)); // Leading zeroes - loopback, rejected
+    }
+
+    #[test]
+    fn test_ipv6_boundary_values() {
+        // Minimum valid IPv6 (all zeros)
+        assert!(!is_valid_ipv6("::", false)); // Unspecified, rejected
+        // Maximum valid IPv6 (all F's)
+        assert!(!is_valid_ipv6("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", false)); // Multicast-ish
+    }
+
+    #[test]
+    fn test_ipv6_partial_compression() {
+        assert!(is_valid_ipv6("2001:4860:0:0:1:0:0:1", false));
+        assert!(is_valid_ipv6("2001:4860::1:0:0:1", false));
+        assert!(is_valid_ipv6("2001:4860:0:0:1::1", false));
+    }
+
+    #[test]
+    fn test_ipv6_multiple_double_colon() {
+        // Only one :: is allowed
+        assert!(!is_valid_ipv6("2001::db8::1", false));
+    }
+
+    #[test]
+    fn test_ipv6_leading_trailing_colons() {
+        assert!(!is_valid_ipv6(":2001:db8::1", false));
+        assert!(!is_valid_ipv6("2001:db8::1:", false));
+    }
+
+    #[test]
+    fn test_ipv6_invalid_characters() {
+        assert!(!is_valid_ipv6("2001:db8::g", false));
+        assert!(!is_valid_ipv6("2001:db8::1.2.3.4", false));
+        assert!(!is_valid_ipv6("2001:db8::12345", false)); // Too many digits
+    }
+
+    // Additional edge case tests for DNS record name validation
+
+    #[test]
+    fn test_validate_record_name_single_label() {
+        assert!(validate_record_name("example").is_ok());
+        assert!(validate_record_name("a").is_ok());
+        assert!(validate_record_name(&"a".repeat(63)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_record_name_multiple_underscores() {
+        assert!(validate_record_name("_test.example.com").is_ok());
+        assert!(validate_record_name("__test__.example.com").is_ok());
+        assert!(validate_record_name("a_b.c_d.example.com").is_ok());
+    }
+
+    #[test]
+    fn test_validate_record_name_wildcard_variations() {
+        assert!(validate_record_name("*.example.com").is_ok());
+        assert!(validate_record_name("*.sub.example.com").is_ok());
+        assert!(validate_record_name("*").is_ok());
+        assert!(!validate_record_name("**.example.com").is_ok()); // Double wildcard
+        assert!(!validate_record_name("a*.example.com").is_ok()); // Partial wildcard
+    }
+
+    #[test]
+    fn test_validate_record_name_trailing_dots() {
+        assert!(validate_record_name("example.com.").is_ok());
+        assert!(validate_record_name("example.com..").is_err()); // Double trailing dot
+        assert!(validate_record_name(".example.com").is_err()); // Leading dot
+    }
+
+    #[test]
+    fn test_validate_record_name_special_characters() {
+        assert!(validate_record_name("a-b.example.com").is_ok());
+        assert!(validate_record_name("a_b.example.com").is_ok());
+        assert!(validate_record_name("a.b@example.com").is_err()); // @ not allowed
+        assert!(validate_record_name("a$b.example.com").is_err()); // $ not allowed
+        assert!(validate_record_name("a%b.example.com").is_err()); // % not allowed
+    }
+
+    #[test]
+    fn test_validate_record_name_numeric_only() {
+        assert!(validate_record_name("123.example.com").is_ok());
+        assert!(validate_record_name("123.456.789.012").is_ok());
+    }
+
+    #[test]
+    fn test_validate_record_name_mixed_case() {
+        assert!(validate_record_name("Example.Com").is_ok());
+        assert!(validate_record_name("EXAMPLE.COM").is_ok());
+        assert!(validate_record_name("eXaMpLe.CoM").is_ok());
+    }
+
+    #[test]
+    fn test_validate_record_name_whitespace() {
+        // Leading/trailing whitespace is trimmed, so these should pass
+        assert!(validate_record_name(" example.com").is_ok()); // Leading space (trimmed)
+        assert!(validate_record_name("example.com ").is_ok()); // Trailing space (trimmed)
+        // Internal whitespace should fail
+        assert!(validate_record_name("ex ample.com").is_err()); // Internal space
+        assert!(validate_record_name("example\t.com").is_err()); // Tab
+        assert!(validate_record_name("example\n.com").is_err()); // Newline
+    }
 }
