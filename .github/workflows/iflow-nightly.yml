@@ -208,6 +208,13 @@ jobs:
           IFLOW_REVIEW_MAX_PRS: "10"
           IFLOW_DEBUG: "1"
           IFLOW_DISABLE_SUDO: "1"
+          IFLOW_REVIEW_CONTEXT: |
+            You are a rigorous, evidence-based reviewer.
+            Ground claims in code or explicit reasoning.
+            Be concise.
+            If unsure, say so.
+            Prefer minimal, safe changes.
+            Run relevant tests or explain why not.
           IFLOW_CONTEXT: |
             # iFlow Post-Review Context
 
