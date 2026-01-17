@@ -4,6 +4,7 @@ version = "1.0.0"
 edition = "2021"
 description = "Event-driven IPv6 DDNS client for Cloudflare"
 authors = ["xishaoa"]
+license = "MIT"
 
 [dependencies]
 tokio = { version = "1.35", features = ["rt-multi-thread", "net", "time", "macros", "signal", "sync", "fs"] }
