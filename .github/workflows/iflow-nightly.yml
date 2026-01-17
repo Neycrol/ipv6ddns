@@ -49,8 +49,7 @@ jobs:
 
       - name: Install cargo-deny
         run: |
-          curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/0.14.18/cargo-deny-0.14.18-x86_64-unknown-linux-musl.tar.gz | tar xz
-          sudo mv cargo-deny-0.14.18-x86_64-unknown-linux-musl/cargo-deny /usr/local/bin/
+          cargo install --locked cargo-deny
           cargo-deny --version
 
       - name: Run cargo-deny check
