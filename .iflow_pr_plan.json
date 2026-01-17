@@ -1,0 +1,48 @@
+{
+  "prs": [
+    {
+      "category": "refactor",
+      "title": "refactor: extract config module from main.rs",
+      "description": "Extract Config struct and related functions from main.rs into a dedicated config.rs module. This improves code organization and maintainability by reducing main.rs from ~1255 lines to a more manageable size.",
+      "files": [
+        "src/config.rs",
+        "src/main.rs"
+      ]
+    },
+    {
+      "category": "refactor",
+      "title": "refactor: extract daemon module from main.rs",
+      "description": "Extract Daemon struct and related functions from main.rs into a dedicated daemon.rs module. This continues the effort to reduce main.rs size and improve code organization.",
+      "files": [
+        "src/daemon.rs",
+        "src/main.rs"
+      ]
+    },
+    {
+      "category": "tests",
+      "title": "tests: add integration tests for daemon lifecycle",
+      "description": "Add integration tests for daemon lifecycle including start, stop, restart, and state machine transitions. This improves test coverage and ensures daemon behavior is correct across different scenarios.",
+      "files": [
+        "src/main.rs",
+        "src/daemon.rs"
+      ]
+    },
+    {
+      "category": "docs",
+      "title": "docs: improve API documentation with doc comments",
+      "description": "Add comprehensive doc comments to public APIs in cloudflare.rs and netlink.rs. Document error conditions, edge cases, and provide usage examples. This improves developer experience and makes the codebase easier to understand.",
+      "files": [
+        "src/cloudflare.rs",
+        "src/netlink.rs"
+      ]
+    },
+    {
+      "category": "ci",
+      "title": "ci: add cargo-deny security scanning to CI",
+      "description": "Add cargo-deny security scanning to the CI workflow to automatically detect security vulnerabilities, license issues, and dependency advisories. This improves security posture by catching issues early in the development cycle.",
+      "files": [
+        ".github/workflows/iflow-nightly.yml"
+      ]
+    }
+  ]
+}
