@@ -243,7 +243,8 @@ impl NetlinkImpl {
             }
 
             // Use the helper function to extract IPv6 address
-            if let Some(event) = extract_ipv6_from_ifaddrmsg(data, msg_offset, nlmsg_len, nlmsg_type)
+            if let Some(event) =
+                extract_ipv6_from_ifaddrmsg(data, msg_offset, nlmsg_len, nlmsg_type)
             {
                 return Some(event);
             }
