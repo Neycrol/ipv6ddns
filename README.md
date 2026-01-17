@@ -320,6 +320,68 @@ adb shell ls -la /data/data/com.neycrol.ipv6ddns/files/bin/
 adb shell pm clear com.neycrol.ipv6ddns
 ```
 
+### Scenario 8: Android binary extraction issues
+
+**Symptoms:**
+- "Security check failed: Binary checksum mismatch" error
+- "Security check failed: Checksum file missing" error
+- "Failed to extract binary" error
+- Service fails to start
+
+**Possible causes:**
+1. Corrupted APK download
+2. Incomplete app installation
+3. Storage space issues
+4. Device architecture incompatibility
+
+**Solutions:**
+
+**Checksum mismatch error:**
+```bash
+# This indicates the binary file on disk doesn't match the expected checksum
+# Clear app data and reinstall:
+adb shell pm clear com.neycrol.ipv6ddns
+# Then reinstall the APK from a fresh download
+```
+
+**Checksum file missing error:**
+```bash
+# This indicates the .sha256 file is missing from the APK
+# Reinstall the app from the official release page
+# Verify the APK download completed successfully
+```
+
+**Failed to extract binary error:**
+```bash
+# Check available storage space
+adb shell df -h /data/data/com.neycrol.ipv6ddns/
+
+# If storage is low, free up space and retry
+# Clear app data:
+adb shell pm clear com.neycrol.ipv6ddns
+```
+
+**Architecture incompatibility:**
+```bash
+# Check device architecture
+adb shell getprop ro.product.cpu.abi
+
+# Supported architectures: arm64-v8a, x86_64
+# If your device uses a different architecture, the app won't work
+```
+
+**General troubleshooting steps:**
+1. Uninstall the app completely
+2. Clear app data: `adb shell pm clear com.neycrol.ipv6ddns`
+3. Download a fresh copy of the APK from the official releases page
+4. Reinstall the APK
+5. Grant necessary permissions (foreground service, network access)
+6. Configure the app and start the service
+
+**Binary verification details:**
+The app uses SHA-256 checksums to verify the integrity of the extracted binary. The checksum file (e.g., `ipv6ddns-arm64-v8a.sha256`) must be present in the app assets and contain the correct checksum. If verification fails, the app will refuse to run the binary for security reasons.
+```
+
 ## License
 
 MIT
