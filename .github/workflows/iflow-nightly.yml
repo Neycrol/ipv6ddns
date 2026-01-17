@@ -166,3 +166,65 @@ jobs:
           }
           EOF
           python -u scripts/ci/iflow_auto_pr.py
+
+  post-review:
+    needs: [auto-pr]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install git/gh helpers
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/microsoft-prod.list || true
+          sudo sed -i '/packages.microsoft.com/d' /etc/apt/sources.list.d/*.list || true
+          sudo apt-get update
+          sudo apt-get install -y gh jq
+
+      - name: Install iFlow CLI
+        run: npm i -g @iflow-ai/iflow-cli@latest
+
+      - name: Configure git
+        run: |
+          git config user.name "iflow-bot"
+          git config user.email "iflow-bot@users.noreply.github.com"
+
+      - name: Run iFlow post-review
+        env:
+          IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
+          IFLOW_MODEL: "deepseek-v3.2-chat"
+          IFLOW_MAX_TURNS: "60"
+          IFLOW_TIMEOUT: "1200"
+          IFLOW_OUTER_TIMEOUT: "1440"
+          IFLOW_REVIEW_HOURS: "24"
+          IFLOW_REVIEW_MAX_PRS: "10"
+          IFLOW_DEBUG: "1"
+          IFLOW_DISABLE_SUDO: "1"
+          IFLOW_CONTEXT: |
+            # iFlow Post-Review Context
+
+            You are performing a post-review pass on an existing iflow PR branch.
+            Focus on correctness, readability, and test coverage.
+            Do NOT touch .github/workflows/ and do NOT create new branches or PRs.
+            Apply improvements directly to the current branch and run relevant tests.
+            If tests fail, revert your changes and stop.
+          PYTHONUNBUFFERED: "1"
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          mkdir -p ~/.iflow
+          cat > ~/.iflow/settings.json <<EOF
+          {
+            "apiKey": "${IFLOW_API_KEY}",
+            "baseUrl": "https://apis.iflow.cn/v1"
+          }
+          EOF
+          python -u scripts/ci/iflow_post_review.py
