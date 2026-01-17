@@ -245,8 +245,8 @@ impl Config {
     /// # Returns
     ///
     /// Returns `Ok(())` or an error if:
-    /// - API token is missing
-    /// - Zone ID is missing
+    /// - API token is missing or too short
+    /// - Zone ID is missing or invalid format
     /// - Record name is missing
     /// - Record name is invalid
     /// - Timeout is out of valid range
@@ -255,8 +255,31 @@ impl Config {
         if self.api_token.is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_API_TOKEN));
         }
+        // Cloudflare API tokens are typically 40+ characters
+        if self.api_token.len() < 32 {
+            return Err(anyhow::anyhow!(
+                "{} is too short ({} chars, minimum 32)",
+                ENV_API_TOKEN,
+                self.api_token.len()
+            ));
+        }
         if self.zone_id.is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_ZONE_ID));
+        }
+        // Zone IDs are alphanumeric and typically 32 characters
+        if !self.zone_id.chars().all(|c| c.is_alphanumeric()) {
+            return Err(anyhow::anyhow!(
+                "{} must be alphanumeric, got: {}",
+                ENV_ZONE_ID,
+                self.zone_id
+            ));
+        }
+        if self.zone_id.len() < 16 || self.zone_id.len() > 64 {
+            return Err(anyhow::anyhow!(
+                "{} has invalid length ({} chars, expected 16-64)",
+                ENV_ZONE_ID,
+                self.zone_id.len()
+            ));
         }
         if self.record.is_empty() {
             return Err(anyhow::anyhow!("Missing {}", ENV_RECORD_NAME));
@@ -410,8 +433,8 @@ mod tests {
         let _env = EnvGuard::new();
         let (_dir, path) = write_config(
             r#"
-api_token = "file_token"
-zone_id = "file_zone"
+api_token = "file_token_123456789012345678901234567890"
+zone_id = "0123456789abcdef0123456789abcdef"
 record_name = "file.example.com"
 timeout = 45
 poll_interval = 90
@@ -422,8 +445,8 @@ allow_loopback = true
         );
 
         let cfg = Config::load(Some(path)).expect("config load");
-        assert_eq!(cfg.api_token, "file_token");
-        assert_eq!(cfg.zone_id, "file_zone");
+        assert_eq!(cfg.api_token, "file_token_123456789012345678901234567890");
+        assert_eq!(cfg.zone_id, "0123456789abcdef0123456789abcdef");
         assert_eq!(cfg.record, "file.example.com");
         assert_eq!(cfg.timeout, Duration::from_secs(45));
         assert_eq!(cfg.poll_interval, Duration::from_secs(90));
@@ -438,21 +461,21 @@ allow_loopback = true
         let _env = EnvGuard::new();
         let (_dir, path) = write_config(
             r#"
-api_token = "file_token"
-zone_id = "file_zone"
+api_token = "file_token_123456789012345678901234567890"
+zone_id = "0123456789abcdef0123456789abcdef"
 record_name = "file.example.com"
 allow_loopback = false
 "#,
         );
 
-        std::env::set_var(ENV_API_TOKEN, "env_token");
-        std::env::set_var(ENV_ZONE_ID, "env_zone");
+        std::env::set_var(ENV_API_TOKEN, "env_token_123456789012345678901234567890");
+        std::env::set_var(ENV_ZONE_ID, "envzone0123456789abcdef0123456789ab");
         std::env::set_var(ENV_RECORD_NAME, "env.example.com");
         std::env::set_var(ENV_ALLOW_LOOPBACK, "true");
 
         let cfg = Config::load(Some(path)).expect("config load");
-        assert_eq!(cfg.api_token, "env_token");
-        assert_eq!(cfg.zone_id, "env_zone");
+        assert_eq!(cfg.api_token, "env_token_123456789012345678901234567890");
+        assert_eq!(cfg.zone_id, "envzone0123456789abcdef0123456789ab");
         assert_eq!(cfg.record, "env.example.com");
         assert!(cfg.allow_loopback);
     }
@@ -468,6 +491,54 @@ allow_loopback = false
                 || msg.contains("Missing required")
                 || msg.contains("missing required")
         );
+    }
+
+    #[test]
+    #[serial]
+    fn config_api_token_too_short() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "short"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "test.example.com"
+"#,
+        );
+        let err = Config::load(Some(path)).expect_err("token too short");
+        let msg = format!("{err}");
+        assert!(msg.contains("too short"));
+    }
+
+    #[test]
+    #[serial]
+    fn config_zone_id_invalid_format() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "invalid-zone-id!"
+record_name = "test.example.com"
+"#,
+        );
+        let err = Config::load(Some(path)).expect_err("zone id invalid");
+        let msg = format!("{err}");
+        assert!(msg.contains("alphanumeric"));
+    }
+
+    #[test]
+    #[serial]
+    fn config_zone_id_invalid_length() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "short"
+record_name = "test.example.com"
+"#,
+        );
+        let err = Config::load(Some(path)).expect_err("zone id length");
+        let msg = format!("{err}");
+        assert!(msg.contains("invalid length"));
     }
 
     #[test]
