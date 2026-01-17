@@ -31,7 +31,16 @@ class Ipv6DdnsService : Service() {
             ACTION_START -> {
                 val configPath = intent.getStringExtra(EXTRA_CONFIG_PATH)
                 if (configPath != null) {
-                    startForeground(NOTIFICATION_ID, buildNotification())
+                    // Android 14+ requires explicit foreground service type
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        startForeground(
+                            NOTIFICATION_ID,
+                            buildNotification(),
+                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+                        )
+                    } else {
+                        startForeground(NOTIFICATION_ID, buildNotification())
+                    }
                     scope.launch { startProcess(File(configPath)) }
                 } else {
                     Log.e(TAG, "Missing config path")
@@ -66,7 +75,20 @@ class Ipv6DdnsService : Service() {
             process = builder.start()
             runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, true) }
             streamLogs(process!!)
+        } catch (e: SecurityException) {
+            // Handle binary extraction/security failures
+            Log.e(TAG, "Binary security check failed: ${e.message}", e)
+            runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        } catch (e: java.io.IOException) {
+            // Handle I/O errors (e.g., binary not found, permission denied)
+            Log.e(TAG, "Failed to start ipv6ddns (I/O error): ${e.message}", e)
+            runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         } catch (e: Exception) {
+            // Handle other errors
             Log.e(TAG, "Failed to start ipv6ddns: ${e.message}", e)
             runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
             stopForeground(STOP_FOREGROUND_REMOVE)
