@@ -219,7 +219,6 @@ fun AppScreen() {
                 running = running,
                 config = config,
                 errorMessage = errorMessage,
-                clearError = clearError,
                 onStartClick = {
                     errorMessage = validateConfig()
                     if (errorMessage == null) {
@@ -417,7 +416,6 @@ fun StatusCard(
     running: Boolean,
     config: AppConfig,
     errorMessage: String?,
-    clearError: () -> Unit,
     onStartClick: () -> Unit,
     onStopClick: () -> Unit
 ) {
