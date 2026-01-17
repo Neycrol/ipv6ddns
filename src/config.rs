@@ -1,0 +1,481 @@
+//! Configuration module for ipv6ddns
+//!
+//! This module handles loading and validating configuration from files and environment variables.
+
+use std::env;
+use std::path::PathBuf;
+use std::time::Duration;
+
+use anyhow::{Context as _, Result};
+
+use crate::cloudflare::MultiRecordPolicy;
+use crate::validation::validate_record_name;
+
+//==============================================================================
+// Constants
+//==============================================================================
+
+/// Environment variable name for Cloudflare API token
+pub const ENV_API_TOKEN: &str = "CLOUDFLARE_API_TOKEN";
+/// Environment variable name for Cloudflare zone ID
+pub const ENV_ZONE_ID: &str = "CLOUDFLARE_ZONE_ID";
+/// Environment variable name for DNS record name
+pub const ENV_RECORD_NAME: &str = "CLOUDFLARE_RECORD_NAME";
+/// Environment variable name for multi-record policy
+pub const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
+/// Environment variable name to allow loopback IPv6 (::1)
+pub const ENV_ALLOW_LOOPBACK: &str = "IPV6DDNS_ALLOW_LOOPBACK";
+
+/// Default HTTP request timeout in seconds
+pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
+/// Default polling interval in seconds (when netlink is unavailable)
+pub const DEFAULT_POLL_INTERVAL_SECS: u64 = 60;
+/// Minimum HTTP request timeout in seconds
+pub const MIN_TIMEOUT_SECS: u64 = 1;
+/// Maximum HTTP request timeout in seconds
+pub const MAX_TIMEOUT_SECS: u64 = 300;
+/// Minimum polling interval in seconds
+pub const MIN_POLL_INTERVAL_SECS: u64 = 10;
+/// Maximum polling interval in seconds
+pub const MAX_POLL_INTERVAL_SECS: u64 = 3600;
+
+//==============================================================================
+// Config
+//==============================================================================
+
+/// Configuration for the ipv6ddns daemon
+///
+/// This struct holds all configuration parameters needed to run the daemon,
+/// including Cloudflare API credentials, DNS record settings, and runtime options.
+///
+/// # Fields
+///
+/// - `api_token`: Cloudflare API token with DNS edit permissions
+/// - `zone_id`: Cloudflare zone ID for the domain
+/// - `record`: DNS record name to update (e.g., "home.example.com")
+/// - `timeout`: HTTP request timeout in seconds
+/// - `poll_interval`: Polling interval in seconds (fallback when netlink unavailable)
+/// - `verbose`: Enable verbose logging
+/// - `multi_record`: Policy for handling multiple AAAA records
+/// - `allow_loopback`: Allow loopback IPv6 (::1) as a valid address
+///
+/// # Configuration Loading Priority
+///
+/// Configuration is loaded from multiple sources in order of precedence:
+/// 1. Environment variables (highest priority)
+/// 2. Config file (`/etc/ipv6ddns/config.toml` or custom path)
+/// 3. Defaults (lowest priority)
+#[derive(Debug, Clone)]
+pub struct Config {
+    /// Cloudflare API token with DNS edit permissions
+    ///
+    /// This token should have the `Zone:DNS:Edit` permission.
+    /// It can be set via the `CLOUDFLARE_API_TOKEN` environment variable.
+    pub api_token: String,
+    /// Cloudflare zone ID for the domain
+    ///
+    /// The zone ID can be found in the Cloudflare dashboard under your domain's DNS settings.
+    /// It can be set via the `CLOUDFLARE_ZONE_ID` environment variable.
+    pub zone_id: String,
+    /// DNS record name to update (e.g., "home.example.com")
+    ///
+    /// This is the full DNS record name including subdomain if applicable.
+    /// It can be set via the `CLOUDFLARE_RECORD_NAME` environment variable.
+    pub record: String,
+    /// HTTP request timeout in seconds
+    ///
+    /// Default: 30 seconds
+    pub timeout: Duration,
+    /// Polling interval in seconds (fallback when netlink unavailable)
+    ///
+    /// Default: 60 seconds
+    /// This is only used when netlink socket creation fails.
+    pub poll_interval: Duration,
+    /// Enable verbose logging
+    ///
+    /// Default: false
+    pub verbose: bool,
+    /// Policy for handling multiple AAAA records
+    ///
+    /// Default: `MultiRecordPolicy::Error`
+    /// Can be set via the `CLOUDFLARE_MULTI_RECORD` environment variable.
+    pub multi_record: MultiRecordPolicy,
+    /// Allow loopback IPv6 address (::1) to be used for DDNS updates
+    ///
+    /// Default: false
+    /// Can be set via the `IPV6DDNS_ALLOW_LOOPBACK` environment variable.
+    pub allow_loopback: bool,
+}
+
+impl Config {
+    /// Loads configuration from file and environment variables
+    ///
+    /// This method loads configuration in the following order:
+    /// 1. Loads from the specified config file (if provided and exists)
+    /// 2. Overrides with environment variables (if set)
+    /// 3. Validates the final configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `config_path` - Optional path to a TOML config file
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the loaded `Config` or an error if:
+    /// - The config file cannot be read or parsed
+    /// - Required fields are missing after loading
+    /// - The record name is invalid
+    ///
+    /// # Environment Variables
+    ///
+    /// The following environment variables can override config file values:
+    /// - `CLOUDFLARE_API_TOKEN` - Cloudflare API token
+    /// - `CLOUDFLARE_ZONE_ID` - Cloudflare zone ID
+    /// - `CLOUDFLARE_RECORD_NAME` - DNS record name
+    /// - `CLOUDFLARE_MULTI_RECORD` - Multi-record policy (error|first|all)
+    pub fn load(config_path: Option<PathBuf>) -> Result<Self> {
+        let mut config = Self::load_from_file(config_path)?;
+        Self::override_with_env(&mut config)?;
+        Self::validate(&config)?;
+        Ok(config)
+    }
+
+    /// Loads configuration from a TOML file
+    ///
+    /// # Arguments
+    ///
+    /// * `config_path` - Optional path to a TOML config file
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the loaded `Config` with default values
+    /// for any missing fields.
+    fn load_from_file(config_path: Option<PathBuf>) -> Result<Self> {
+        let mut api_token = String::new();
+        let mut zone_id = String::new();
+        let mut record = String::new();
+        let mut timeout = DEFAULT_TIMEOUT_SECS;
+        let mut poll_interval = DEFAULT_POLL_INTERVAL_SECS;
+        let mut verbose = false;
+        let mut multi_record = MultiRecordPolicy::Error;
+        let mut allow_loopback = false;
+
+        if let Some(path) = config_path {
+            if path.exists() {
+                let content = std::fs::read_to_string(&path)
+                    .with_context(|| format!("Failed to read config: {}", path.display()))?;
+                let toml_config: TomlConfig =
+                    toml::from_str(&content).with_context(|| "Failed to parse config file")?;
+
+                api_token = toml_config.api_token.unwrap_or_default();
+                zone_id = toml_config.zone_id.unwrap_or_default();
+                record = toml_config.record_name.unwrap_or_default();
+                timeout = toml_config.timeout.unwrap_or(DEFAULT_TIMEOUT_SECS);
+                poll_interval = toml_config
+                    .poll_interval
+                    .unwrap_or(DEFAULT_POLL_INTERVAL_SECS);
+                verbose = toml_config.verbose.unwrap_or(false);
+                if let Some(v) = toml_config.multi_record.as_deref() {
+                    multi_record = parse_multi_record(v)?;
+                }
+                if let Some(v) = toml_config.allow_loopback {
+                    allow_loopback = v;
+                }
+            }
+        }
+
+        Ok(Self {
+            api_token,
+            zone_id,
+            record,
+            timeout: Duration::from_secs(timeout),
+            poll_interval: Duration::from_secs(poll_interval),
+            verbose,
+            multi_record,
+            allow_loopback,
+        })
+    }
+
+    /// Overrides configuration values with environment variables
+    ///
+    /// This method checks for environment variables and updates the config
+    /// if they are set and non-empty.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Mutable reference to the config to update
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` or an error if the multi-record policy is invalid.
+    fn override_with_env(config: &mut Self) -> Result<()> {
+        if let Ok(v) = env::var(ENV_API_TOKEN) {
+            if !v.is_empty() {
+                config.api_token = v;
+            }
+        }
+        if let Ok(v) = env::var(ENV_ZONE_ID) {
+            if !v.is_empty() {
+                config.zone_id = v;
+            }
+        }
+        if let Ok(v) = env::var(ENV_RECORD_NAME) {
+            if !v.is_empty() {
+                config.record = v;
+            }
+        }
+        if let Ok(v) = env::var(ENV_MULTI_RECORD) {
+            if !v.is_empty() {
+                config.multi_record = parse_multi_record(&v)?;
+            }
+        }
+        if let Ok(v) = env::var(ENV_ALLOW_LOOPBACK) {
+            if !v.is_empty() {
+                config.allow_loopback =
+                    parse_bool_env(&v).context("Invalid IPV6DDNS_ALLOW_LOOPBACK value")?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates the configuration
+    ///
+    /// Ensures that all required fields are present and valid.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(())` or an error if:
+    /// - API token is missing
+    /// - Zone ID is missing
+    /// - Record name is missing
+    /// - Record name is invalid
+    /// - Timeout is out of valid range
+    /// - Poll interval is out of valid range
+    fn validate(&self) -> Result<()> {
+        if self.api_token.is_empty() {
+            return Err(anyhow::anyhow!("Missing {}", ENV_API_TOKEN));
+        }
+        if self.zone_id.is_empty() {
+            return Err(anyhow::anyhow!("Missing {}", ENV_ZONE_ID));
+        }
+        if self.record.is_empty() {
+            return Err(anyhow::anyhow!("Missing {}", ENV_RECORD_NAME));
+        }
+        validate_record_name(&self.record)?;
+
+        let timeout_secs = self.timeout.as_secs();
+        if !(MIN_TIMEOUT_SECS..=MAX_TIMEOUT_SECS).contains(&timeout_secs) {
+            return Err(anyhow::anyhow!(
+                "timeout must be between {} and {} seconds, got {}",
+                MIN_TIMEOUT_SECS,
+                MAX_TIMEOUT_SECS,
+                timeout_secs
+            ));
+        }
+
+        let poll_interval_secs = self.poll_interval.as_secs();
+        if !(MIN_POLL_INTERVAL_SECS..=MAX_POLL_INTERVAL_SECS).contains(&poll_interval_secs) {
+            return Err(anyhow::anyhow!(
+                "poll_interval must be between {} and {} seconds, got {}",
+                MIN_POLL_INTERVAL_SECS,
+                MAX_POLL_INTERVAL_SECS,
+                poll_interval_secs
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+/// Parses a boolean value from an environment variable
+///
+/// This function accepts multiple string representations of boolean values:
+/// - `true`: "1", "true", "yes", "on"
+/// - `false`: "0", "false", "no", "off"
+///
+/// # Arguments
+///
+/// * `value` - The string value to parse
+///
+/// # Returns
+///
+/// Returns a `Result` containing the parsed boolean or an error if invalid
+fn parse_bool_env(value: &str) -> Result<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Ok(true),
+        "0" | "false" | "no" | "off" => Ok(false),
+        _ => Err(anyhow::anyhow!(
+            "expected boolean (true/false/1/0/yes/no/on/off)"
+        )),
+    }
+}
+
+/// TOML configuration file structure
+#[derive(Debug, serde::Deserialize)]
+struct TomlConfig {
+    api_token: Option<String>,
+    zone_id: Option<String>,
+    #[serde(rename = "record_name")]
+    record_name: Option<String>,
+    timeout: Option<u64>,
+    #[serde(rename = "poll_interval")]
+    poll_interval: Option<u64>,
+    verbose: Option<bool>,
+    multi_record: Option<String>,
+    allow_loopback: Option<bool>,
+}
+
+/// Parses a multi-record policy string into a `MultiRecordPolicy` enum
+///
+/// This function accepts multiple aliases for each policy type:
+/// - `Error`: "error", "fail", "reject"
+/// - `UpdateFirst`: "first", "update_first", "updatefirst"
+/// - `UpdateAll`: "all", "update_all", "updateall"
+///
+/// # Arguments
+///
+/// * `value` - The policy string to parse
+///
+/// # Returns
+///
+/// Returns a `Result` containing the parsed `MultiRecordPolicy` or an error
+/// if the value is invalid.
+pub fn parse_multi_record(value: &str) -> Result<MultiRecordPolicy> {
+    let normalized = value.trim().to_ascii_lowercase();
+    match normalized.as_str() {
+        "error" | "fail" | "reject" => Ok(MultiRecordPolicy::Error),
+        "first" | "update_first" | "updatefirst" => Ok(MultiRecordPolicy::UpdateFirst),
+        "all" | "update_all" | "updateall" => Ok(MultiRecordPolicy::UpdateAll),
+        _ => Err(anyhow::anyhow!(
+            "Invalid multi_record policy: '{}'. Use: error|first|all",
+            value
+        )),
+    }
+}
+
+//==============================================================================
+// Tests
+//==============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serial_test::serial;
+    use tempfile::TempDir;
+
+    struct EnvGuard {
+        saved: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn new() -> Self {
+            let keys = [
+                ENV_API_TOKEN,
+                ENV_ZONE_ID,
+                ENV_RECORD_NAME,
+                ENV_MULTI_RECORD,
+                ENV_ALLOW_LOOPBACK,
+            ];
+            let mut saved = Vec::with_capacity(keys.len());
+            for key in keys {
+                saved.push((key, std::env::var(key).ok()));
+                std::env::remove_var(key);
+            }
+            Self { saved }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, value) in self.saved.drain(..) {
+                if let Some(val) = value {
+                    std::env::set_var(key, val);
+                } else {
+                    std::env::remove_var(key);
+                }
+            }
+        }
+    }
+
+    fn write_config(contents: &str) -> (TempDir, PathBuf) {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, contents).expect("write config");
+        (dir, path)
+    }
+
+    #[test]
+    #[serial]
+    fn config_load_from_file() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "file_token"
+zone_id = "file_zone"
+record_name = "file.example.com"
+timeout = 45
+poll_interval = 90
+verbose = true
+multi_record = "all"
+allow_loopback = true
+"#,
+        );
+
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.api_token, "file_token");
+        assert_eq!(cfg.zone_id, "file_zone");
+        assert_eq!(cfg.record, "file.example.com");
+        assert_eq!(cfg.timeout, Duration::from_secs(45));
+        assert_eq!(cfg.poll_interval, Duration::from_secs(90));
+        assert!(cfg.verbose);
+        assert!(matches!(cfg.multi_record, MultiRecordPolicy::UpdateAll));
+        assert!(cfg.allow_loopback);
+    }
+
+    #[test]
+    #[serial]
+    fn config_env_overrides_file() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "file_token"
+zone_id = "file_zone"
+record_name = "file.example.com"
+allow_loopback = false
+"#,
+        );
+
+        std::env::set_var(ENV_API_TOKEN, "env_token");
+        std::env::set_var(ENV_ZONE_ID, "env_zone");
+        std::env::set_var(ENV_RECORD_NAME, "env.example.com");
+        std::env::set_var(ENV_ALLOW_LOOPBACK, "true");
+
+        let cfg = Config::load(Some(path)).expect("config load");
+        assert_eq!(cfg.api_token, "env_token");
+        assert_eq!(cfg.zone_id, "env_zone");
+        assert_eq!(cfg.record, "env.example.com");
+        assert!(cfg.allow_loopback);
+    }
+
+    #[test]
+    #[serial]
+    fn config_missing_required_fields() {
+        let _env = EnvGuard::new();
+        let err = Config::load(None).expect_err("missing required");
+        let msg = format!("{err}");
+        assert!(
+            msg.starts_with("Missing ")
+                || msg.contains("Missing required")
+                || msg.contains("missing required")
+        );
+    }
+
+    #[test]
+    fn parse_multi_record_valid_and_invalid() {
+        assert!(matches!(
+            parse_multi_record("first").unwrap(),
+            MultiRecordPolicy::UpdateFirst
+        ));
+        assert!(parse_multi_record("bogus").is_err());
+    }
+}
