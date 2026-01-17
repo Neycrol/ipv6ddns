@@ -25,6 +25,7 @@ class Ipv6DdnsService : Service() {
     private var process: Process? = null
     private var restartAttempts = 0
     private val maxRestartAttempts = 5
+    private var currentConfigFile: File? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -66,6 +67,7 @@ class Ipv6DdnsService : Service() {
     @Synchronized
     private fun startProcess(configFile: File) {
         if (process != null) return
+        currentConfigFile = configFile
         try {
             val bin = BinaryManager.ensureBinary(this)
             val builder = ProcessBuilder(
@@ -126,13 +128,14 @@ class Ipv6DdnsService : Service() {
             Log.w(TAG, "Attempting restart $restartAttempts/$maxRestartAttempts after ${backoffDelayMs}ms delay")
             Thread.sleep(backoffDelayMs)
             // Attempt to restart by sending a start intent
-            val configPath = intent?.getStringExtra(EXTRA_CONFIG_PATH)
-            if (configPath != null) {
-                scope.launch { startProcess(File(configPath)) }
+            val configFile = currentConfigFile
+            if (configFile != null) {
+                scope.launch { startProcess(configFile) }
             }
         } else {
             Log.e(TAG, "Max restart attempts ($maxRestartAttempts) reached, stopping service")
             restartAttempts = 0
+            currentConfigFile = null
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -144,6 +147,7 @@ class Ipv6DdnsService : Service() {
             process?.destroy()
             process = null
             restartAttempts = 0 // Reset restart counter on manual stop
+            currentConfigFile = null
             runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
         } catch (e: Exception) {
             Log.w(TAG, "Stop failed: ${e.message}")
