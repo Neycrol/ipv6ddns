@@ -127,7 +127,8 @@ jobs:
           IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
           IFLOW_MODEL: "glm-4.7"
           IFLOW_MAX_PRS: "0"
-          IFLOW_MAX_TURNS: "100"
+          IFLOW_MAX_TURNS: "0"
+          IFLOW_TIMEOUT: "3600"
           IFLOW_DEBUG: "1"
           IFLOW_PING: "1"
           IFLOW_PLAN_MODE: "1"
@@ -201,9 +202,9 @@ jobs:
         env:
           IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
           IFLOW_MODEL: "deepseek-v3.2-chat"
-          IFLOW_MAX_TURNS: "60"
-          IFLOW_TIMEOUT: "1200"
-          IFLOW_OUTER_TIMEOUT: "1440"
+          IFLOW_MAX_TURNS: "0"
+          IFLOW_TIMEOUT: "3600"
+          IFLOW_OUTER_TIMEOUT: "3900"
           IFLOW_REVIEW_HOURS: "24"
           IFLOW_REVIEW_MAX_PRS: "10"
           IFLOW_DEBUG: "1"
