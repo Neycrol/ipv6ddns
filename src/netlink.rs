@@ -49,6 +49,7 @@
 
 use std::io::ErrorKind;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
@@ -56,6 +57,62 @@ use async_trait::async_trait;
 use tokio::io::unix::AsyncFd;
 
 use crate::validation::is_valid_ipv6;
+
+//==============================================================================
+// RAII Socket Wrapper
+//==============================================================================
+
+/// RAII wrapper for netlink socket file descriptors
+///
+/// This wrapper ensures that the file descriptor is properly closed when
+/// the wrapper is dropped, even if a panic occurs or there's an early return.
+struct NetlinkFd(i32);
+
+impl NetlinkFd {
+    /// Creates a new netlink socket with proper error handling
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(NetlinkFd)` containing the wrapped fd or an error if socket creation fails
+    fn new() -> Result<Self> {
+        let fd = unsafe {
+            libc::socket(
+                NETLINK_ROUTE,
+                SOCK_RAW | SOCK_CLOEXEC,
+                NETLINK_ROUTE_PROTOCOL,
+            )
+        };
+        if fd < 0 {
+            return Err(std::io::Error::last_os_error()).context("create netlink socket");
+        }
+        Ok(Self(fd))
+    }
+
+    /// Returns the raw file descriptor
+    fn as_raw_fd(&self) -> i32 {
+        self.0
+    }
+}
+
+impl AsRawFd for NetlinkFd {
+    fn as_raw_fd(&self) -> i32 {
+        self.0
+    }
+}
+
+impl Drop for NetlinkFd {
+    fn drop(&mut self) {
+        if self.0 >= 0 {
+            unsafe {
+                libc::close(self.0);
+            }
+        }
+    }
+}
+
+//==============================================================================
+// Netlink Constants
+//==============================================================================
 
 // Netlink constants
 const NETLINK_ROUTE: i32 = libc::AF_NETLINK;
@@ -148,16 +205,7 @@ struct NetlinkImpl {
 
 impl NetlinkImpl {
     fn new() -> Result<Self> {
-        let fd = unsafe {
-            libc::socket(
-                NETLINK_ROUTE,
-                SOCK_RAW | SOCK_CLOEXEC,
-                NETLINK_ROUTE_PROTOCOL,
-            )
-        };
-        if fd < 0 {
-            return Err(std::io::Error::last_os_error()).context("create netlink socket");
-        }
+        let socket = NetlinkFd::new()?;
 
         let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
         addr.nl_family = NETLINK_ROUTE as libc::sa_family_t;
@@ -166,29 +214,28 @@ impl NetlinkImpl {
 
         let res = unsafe {
             libc::bind(
-                fd,
+                socket.as_raw_fd(),
                 &addr as *const _ as *const libc::sockaddr,
                 std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
             )
         };
         if res < 0 {
-            let err = std::io::Error::last_os_error();
-            unsafe { libc::close(fd) };
-            return Err(err).context("netlink bind");
+            return Err(std::io::Error::last_os_error()).context("netlink bind");
         }
 
-        let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+        let flags = unsafe { libc::fcntl(socket.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
-            unsafe { libc::close(fd) };
             return Err(std::io::Error::last_os_error()).context("fcntl F_GETFL");
         }
-        if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
-            unsafe { libc::close(fd) };
+        if unsafe { libc::fcntl(socket.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
             return Err(std::io::Error::last_os_error()).context("fcntl F_SETFL");
         }
 
-        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-        let fd = AsyncFd::new(fd).context("AsyncFd")?;
+        // Convert to OwnedFd and then to AsyncFd
+        // Note: This consumes the NetlinkFd, which will no longer close the fd
+        let owned_fd = unsafe { OwnedFd::from_raw_fd(socket.as_raw_fd()) };
+        std::mem::forget(socket); // Prevent double-close
+        let fd = AsyncFd::new(owned_fd).context("AsyncFd")?;
         Ok(Self { fd })
     }
 
@@ -622,16 +669,7 @@ fn extract_ipv6_addresses_for_dump(
 }
 
 fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
-    let fd = unsafe {
-        libc::socket(
-            NETLINK_ROUTE,
-            SOCK_RAW | SOCK_CLOEXEC,
-            NETLINK_ROUTE_PROTOCOL,
-        )
-    };
-    if fd < 0 {
-        return Err(std::io::Error::last_os_error()).context("create netlink socket");
-    }
+    let socket = NetlinkFd::new()?;
 
     let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
     addr.nl_family = NETLINK_ROUTE as libc::sa_family_t;
@@ -640,15 +678,13 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
 
     let res = unsafe {
         libc::bind(
-            fd,
+            socket.as_raw_fd(),
             &addr as *const _ as *const libc::sockaddr,
             std::mem::size_of::<libc::sockaddr_nl>() as libc::socklen_t,
         )
     };
     if res < 0 {
-        let err = std::io::Error::last_os_error();
-        unsafe { libc::close(fd) };
-        return Err(err).context("netlink bind");
+        return Err(std::io::Error::last_os_error()).context("netlink bind");
     }
 
     let seq = 1u32;
@@ -661,11 +697,9 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
     buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
     buf[16] = AF_INET6;
 
-    let send_res = unsafe { libc::send(fd, buf.as_ptr() as *const libc::c_void, buf.len(), 0) };
+    let send_res = unsafe { libc::send(socket.as_raw_fd(), buf.as_ptr() as *const libc::c_void, buf.len(), 0) };
     if send_res < 0 {
-        let err = std::io::Error::last_os_error();
-        unsafe { libc::close(fd) };
-        return Err(err).context("netlink send");
+        return Err(std::io::Error::last_os_error()).context("netlink send");
     }
 
     let mut stable: Option<String> = None;
@@ -675,16 +709,14 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
     loop {
         let n = unsafe {
             libc::recv(
-                fd,
+                socket.as_raw_fd(),
                 recv_buf.as_mut_ptr() as *mut libc::c_void,
                 recv_buf.len(),
                 0,
             )
         };
         if n < 0 {
-            let err = std::io::Error::last_os_error();
-            unsafe { libc::close(fd) };
-            return Err(err).context("netlink recv");
+            return Err(std::io::Error::last_os_error()).context("netlink recv");
         }
         if n == 0 {
             break;
@@ -710,11 +742,9 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
                 None => break,
             };
             if nlmsg_type == NLMSG_DONE {
-                unsafe { libc::close(fd) };
                 return Ok((stable, temporary));
             }
             if nlmsg_type == NLMSG_ERROR {
-                unsafe { libc::close(fd) };
                 return Err(anyhow::anyhow!("netlink error response"));
             }
 
@@ -740,7 +770,6 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
         }
     }
 
-    unsafe { libc::close(fd) };
     Ok((stable, temporary))
 }
 
