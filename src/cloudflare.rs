@@ -47,6 +47,7 @@ use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 use urlencoding::encode;
+use zeroize::ZeroizeOnDrop;
 
 /// Cloudflare API base URL
 const API_BASE: &str = "https://api.cloudflare.com/client/v4";
@@ -122,9 +123,15 @@ impl std::fmt::Display for ApiError {
 ///
 /// This client provides methods to interact with the Cloudflare API for
 /// managing DNS records, specifically AAAA records for IPv6 addresses.
-/// It uses reqwest with rustls for HTTP requests.
+/// It uses reqwest with rustls for HTTP requests. The API token is wrapped
+/// in `Zeroizing` to ensure it is securely cleared from memory when dropped.
+#[derive(ZeroizeOnDrop)]
 pub struct CloudflareClient {
-    api_token: String,
+    /// Cloudflare API token with DNS edit permissions
+    #[zeroize(skip)]
+    api_token: zeroize::Zeroizing<String>,
+    /// HTTP client for making requests
+    #[zeroize(skip)]
     client: reqwest::Client,
 }
 
@@ -179,7 +186,7 @@ impl CloudflareClient {
             .context("build reqwest client")?;
 
         Ok(Self {
-            api_token: api_token.to_string(),
+            api_token: zeroize::Zeroizing::new(api_token.to_string()),
             client,
         })
     }
@@ -250,7 +257,7 @@ impl CloudflareClient {
         let resp = self
             .client
             .get(&url)
-            .bearer_auth(&self.api_token)
+            .bearer_auth(self.api_token.as_str())
             .send()
             .await
             .with_context(|| {
@@ -373,7 +380,7 @@ impl CloudflareClient {
         let resp = self
             .client
             .post(&url)
-            .bearer_auth(&self.api_token)
+            .bearer_auth(self.api_token.as_str())
             .header("Content-Type", "application/json")
             .body(payload)
             .send()
@@ -421,7 +428,7 @@ impl CloudflareClient {
         let resp = self
             .client
             .put(&url)
-            .bearer_auth(&self.api_token)
+            .bearer_auth(self.api_token.as_str())
             .header("Content-Type", "application/json")
             .body(payload)
             .send()
