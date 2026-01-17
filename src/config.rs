@@ -456,7 +456,10 @@ allow_loopback = true
         );
 
         let cfg = Config::load(Some(path)).expect("config load");
-        assert_eq!(cfg.api_token.as_str(), "file_token_123456789012345678901234567890");
+        assert_eq!(
+            cfg.api_token.as_str(),
+            "file_token_123456789012345678901234567890"
+        );
         assert_eq!(cfg.zone_id.as_str(), "0123456789abcdef0123456789abcdef");
         assert_eq!(cfg.record, "file.example.com");
         assert_eq!(cfg.timeout, Duration::from_secs(45));
@@ -485,7 +488,10 @@ allow_loopback = false
         std::env::set_var(ENV_ALLOW_LOOPBACK, "true");
 
         let cfg = Config::load(Some(path)).expect("config load");
-        assert_eq!(cfg.api_token.as_str(), "env_token_123456789012345678901234567890");
+        assert_eq!(
+            cfg.api_token.as_str(),
+            "env_token_123456789012345678901234567890"
+        );
         assert_eq!(cfg.zone_id.as_str(), "envzone0123456789abcdef0123456789ab");
         assert_eq!(cfg.record, "env.example.com");
         assert!(cfg.allow_loopback);
