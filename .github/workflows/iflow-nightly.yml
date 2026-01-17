@@ -144,6 +144,8 @@ jobs:
             You run in GitHub Actions with no sudo and no interactive input.
             Read IFLOW_PLAN.md if it exists, then make concrete edits.
             Group changes by category (docs/tests/ci/android-ui/packaging/bugfix/refactor/perf) into separate PRs.
+            Do NOT create or commit any .iflow_review_*.json, .iflow_pr_plan.json, or __pycache__ artifacts.
+            If such files appear, delete them before committing.
             You MUST create PRs yourself using git + gh:
               - git checkout -b iflow/<category>-<n>
               - git add <files>; git commit -m "<category>: <short>"
@@ -152,10 +154,12 @@ jobs:
             Never push to main/master. Only use iflow/ branches.
             Before creating any PR, you MUST run the relevant tests locally and ensure they pass.
             For Rust changes: run `cargo test`.
-            For Android changes: run `./gradlew -p android test` if applicable, otherwise state why not.
+            For Android changes: run `./gradlew -p android test` if applicable.
+            If Android tests time out or fail, revert Android changes and skip that PR.
             If tests fail, stop and do not create PRs.
             If no valuable changes, exit without creating PRs.
             Tools are allowed, but only modify files within the repo.
+            If you touch proptest, follow the official proptest! macro syntax; if unsure, skip proptest changes.
           PYTHONUNBUFFERED: "1"
           GH_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
