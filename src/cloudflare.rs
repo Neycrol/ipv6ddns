@@ -50,15 +50,9 @@ use urlencoding::encode;
 use zeroize::ZeroizeOnDrop;
 
 use crate::constants::{
-    CLOUDFLARE_API_BASE,
-    CLOUDFLARE_USER_AGENT,
-    DNS_RECORD_TYPE_AAAA,
-    DNS_TTL_AUTO,
-    HTTP_STATUS_FORBIDDEN,
-    HTTP_STATUS_SERVER_ERROR_MAX,
-    HTTP_STATUS_SERVER_ERROR_MIN,
-    HTTP_STATUS_TOO_MANY_REQUESTS,
-    HTTP_STATUS_UNAUTHORIZED,
+    CLOUDFLARE_API_BASE, CLOUDFLARE_USER_AGENT, DNS_RECORD_TYPE_AAAA, DNS_TTL_AUTO,
+    HTTP_STATUS_FORBIDDEN, HTTP_STATUS_SERVER_ERROR_MAX, HTTP_STATUS_SERVER_ERROR_MIN,
+    HTTP_STATUS_TOO_MANY_REQUESTS, HTTP_STATUS_UNAUTHORIZED,
 };
 
 //==============================================================================
@@ -241,7 +235,9 @@ impl CloudflareClient {
                         context
                     );
                 }
-                code if (HTTP_STATUS_SERVER_ERROR_MIN..=HTTP_STATUS_SERVER_ERROR_MAX).contains(&code) => {
+                code if (HTTP_STATUS_SERVER_ERROR_MIN..=HTTP_STATUS_SERVER_ERROR_MAX)
+                    .contains(&code) =>
+                {
                     bail!(
                         "Cloudflare server error ({}): {}. \
                          This is a temporary issue on Cloudflare's side. \
@@ -458,7 +454,10 @@ impl CloudflareClient {
         record_name: &str,
         ipv6_addr: &str,
     ) -> Result<DnsRecord> {
-        let url = format!("{}/zones/{}/dns_records/{}", CLOUDFLARE_API_BASE, zone_id, record_id);
+        let url = format!(
+            "{}/zones/{}/dns_records/{}",
+            CLOUDFLARE_API_BASE, zone_id, record_id
+        );
         let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
 
         debug!(

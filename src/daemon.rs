@@ -12,7 +12,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::cloudflare::CloudflareClient;
 use crate::config::Config;
-use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_SECS, BACKOFF_MAX_EXPONENT};
+use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS};
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
 
 //==============================================================================

@@ -11,19 +11,9 @@ use zeroize::ZeroizeOnDrop;
 
 use crate::cloudflare::MultiRecordPolicy;
 use crate::constants::{
-    DEFAULT_POLL_INTERVAL_SECS,
-    DEFAULT_TIMEOUT_SECS,
-    ENV_ALLOW_LOOPBACK,
-    ENV_API_TOKEN,
-    ENV_MULTI_RECORD,
-    ENV_RECORD_NAME,
-    ENV_ZONE_ID,
-    MAX_POLL_INTERVAL_SECS,
-    MAX_TIMEOUT_SECS,
-    MIN_API_TOKEN_LENGTH,
-    MAX_ZONE_ID_LENGTH,
-    MIN_POLL_INTERVAL_SECS,
-    MIN_TIMEOUT_SECS,
+    DEFAULT_POLL_INTERVAL_SECS, DEFAULT_TIMEOUT_SECS, ENV_ALLOW_LOOPBACK, ENV_API_TOKEN,
+    ENV_MULTI_RECORD, ENV_RECORD_NAME, ENV_ZONE_ID, MAX_POLL_INTERVAL_SECS, MAX_TIMEOUT_SECS,
+    MAX_ZONE_ID_LENGTH, MIN_API_TOKEN_LENGTH, MIN_POLL_INTERVAL_SECS, MIN_TIMEOUT_SECS,
     MIN_ZONE_ID_LENGTH,
 };
 use crate::validation::validate_record_name;
@@ -274,7 +264,9 @@ impl Config {
                 self.zone_id.as_str()
             ));
         }
-        if self.zone_id.as_str().len() < MIN_ZONE_ID_LENGTH || self.zone_id.as_str().len() > MAX_ZONE_ID_LENGTH {
+        if self.zone_id.as_str().len() < MIN_ZONE_ID_LENGTH
+            || self.zone_id.as_str().len() > MAX_ZONE_ID_LENGTH
+        {
             return Err(anyhow::anyhow!(
                 "{} has invalid length ({} chars, expected {}-{})",
                 ENV_ZONE_ID,
@@ -794,7 +786,10 @@ record_name = "test.example.com"
         std::env::set_var(ENV_RECORD_NAME, "");
 
         let cfg = Config::load(Some(path)).expect("config load");
-        assert_eq!(cfg.api_token.as_str(), "0123456789012345678901234567890123456789");
+        assert_eq!(
+            cfg.api_token.as_str(),
+            "0123456789012345678901234567890123456789"
+        );
         assert_eq!(cfg.zone_id.as_str(), "0123456789abcdef0123456789abcdef");
         assert_eq!(cfg.record, "test.example.com");
     }
@@ -845,6 +840,9 @@ record_name = "test.example.com"
         );
 
         let cfg = Config::load(Some(path)).expect("config load");
-        assert_eq!(cfg.api_token.as_str(), "0123456789012345678901234567890123456789!@#$%^&*()");
+        assert_eq!(
+            cfg.api_token.as_str(),
+            "0123456789012345678901234567890123456789!@#$%^&*()"
+        );
     }
 }

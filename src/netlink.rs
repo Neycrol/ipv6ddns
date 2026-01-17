@@ -696,7 +696,14 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
     buf[12..16].copy_from_slice(&0u32.to_ne_bytes());
     buf[16] = AF_INET6;
 
-    let send_res = unsafe { libc::send(socket.as_raw_fd(), buf.as_ptr() as *const libc::c_void, buf.len(), 0) };
+    let send_res = unsafe {
+        libc::send(
+            socket.as_raw_fd(),
+            buf.as_ptr() as *const libc::c_void,
+            buf.len(),
+            0,
+        )
+    };
     if send_res < 0 {
         return Err(std::io::Error::last_os_error()).context("netlink send");
     }

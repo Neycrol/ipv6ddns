@@ -272,8 +272,11 @@ mod tests {
     fn test_ipv6_boundary_values() {
         // Minimum valid IPv6 (all zeros)
         assert!(!is_valid_ipv6("::", false)); // Unspecified, rejected
-        // Maximum valid IPv6 (all F's)
-        assert!(!is_valid_ipv6("ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff", false)); // Multicast-ish
+                                              // Maximum valid IPv6 (all F's)
+        assert!(!is_valid_ipv6(
+            "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+            false
+        )); // Multicast-ish
     }
 
     #[test]
@@ -361,7 +364,7 @@ mod tests {
         // Leading/trailing whitespace is trimmed, so these should pass
         assert!(validate_record_name(" example.com").is_ok()); // Leading space (trimmed)
         assert!(validate_record_name("example.com ").is_ok()); // Trailing space (trimmed)
-        // Internal whitespace should fail
+                                                               // Internal whitespace should fail
         assert!(validate_record_name("ex ample.com").is_err()); // Internal space
         assert!(validate_record_name("example\t.com").is_err()); // Tab
         assert!(validate_record_name("example\n.com").is_err()); // Newline
