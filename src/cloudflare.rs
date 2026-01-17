@@ -6,7 +6,7 @@
 //!
 //! # Features
 //!
-//! - Automatic retry with exponential backoff on rate limiting
+//! - Returns detailed errors on rate limiting (backoff is handled by the daemon)
 //! - Support for multiple AAAA records with configurable policies
 //! - Automatic record creation (upsert operation)
 //! - Comprehensive error handling with detailed context
@@ -36,9 +36,8 @@
 //!
 //! # Rate Limiting
 //!
-//! Cloudflare has rate limits on API requests. This client implements exponential
-//! backoff when rate limited, with a maximum delay of 10 minutes. The backoff
-//! is handled at the application level in the daemon.
+//! Cloudflare has rate limits on API requests. This client reports rate-limit
+//! errors; exponential backoff is handled by the daemon.
 
 use std::fmt;
 use std::time::Duration;
