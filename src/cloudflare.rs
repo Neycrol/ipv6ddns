@@ -129,6 +129,37 @@ pub struct CloudflareClient {
 }
 
 impl CloudflareClient {
+    /// Builds the JSON payload for an AAAA record
+    ///
+    /// # Arguments
+    ///
+    /// * `record_name` - The DNS record name
+    /// * `ipv6_addr` - The IPv6 address
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the serialized JSON payload or an error
+    fn build_aaaa_payload(record_name: &str, ipv6_addr: &str) -> Result<String> {
+        #[derive(Serialize)]
+        struct Payload {
+            #[serde(rename = "type")]
+            rt: &'static str,
+            name: String,
+            content: String,
+            ttl: u64,
+            proxied: bool,
+        }
+
+        serde_json::to_string(&Payload {
+            rt: DNS_RECORD_TYPE_AAAA,
+            name: record_name.to_string(),
+            content: ipv6_addr.to_string(),
+            ttl: DNS_TTL_AUTO,
+            proxied: false,
+        })
+        .context("Failed to serialize AAAA payload")
+    }
+
     /// Creates a new Cloudflare API client
     ///
     /// # Arguments
@@ -335,24 +366,8 @@ impl CloudflareClient {
         record_name: &str,
         ipv6_addr: &str,
     ) -> Result<DnsRecord> {
-        #[derive(Serialize)]
-        struct Payload {
-            #[serde(rename = "type")]
-            rt: &'static str,
-            name: String,
-            content: String,
-            ttl: u64,
-            proxied: bool,
-        }
-
         let url = format!("{}/zones/{}/dns_records", API_BASE, zone_id);
-        let payload = serde_json::to_string(&Payload {
-            rt: DNS_RECORD_TYPE_AAAA,
-            name: record_name.to_string(),
-            content: ipv6_addr.to_string(),
-            ttl: DNS_TTL_AUTO,
-            proxied: false,
-        })?;
+        let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
 
         debug!("POST {} (record: {}, ip: {})", url, record_name, ipv6_addr);
         let resp = self
@@ -396,24 +411,8 @@ impl CloudflareClient {
         record_name: &str,
         ipv6_addr: &str,
     ) -> Result<DnsRecord> {
-        #[derive(Serialize)]
-        struct Payload {
-            #[serde(rename = "type")]
-            rt: &'static str,
-            name: String,
-            content: String,
-            ttl: u64,
-            proxied: bool,
-        }
-
         let url = format!("{}/zones/{}/dns_records/{}", API_BASE, zone_id, record_id);
-        let payload = serde_json::to_string(&Payload {
-            rt: DNS_RECORD_TYPE_AAAA,
-            name: record_name.to_string(),
-            content: ipv6_addr.to_string(),
-            ttl: DNS_TTL_AUTO,
-            proxied: false,
-        })?;
+        let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
 
         debug!(
             "PUT {} (record: {}, id: {}, ip: {})",
