@@ -504,13 +504,13 @@ def main():
             "for potential PRs and risks. Do not modify files."
         )
         try:
-        plan_output = run_iflow(
-            plan_prompt,
-            model,
-            0 if max_turns <= 0 else min(10, max_turns),
-            min(600, timeout),
-            "/tmp/iflow_plan.json",
-        )
+            plan_output = run_iflow(
+                plan_prompt,
+                model,
+                0 if max_turns <= 0 else min(10, max_turns),
+                min(600, timeout),
+                "/tmp/iflow_plan.json",
+            )
             plan_path = write_plan_md(plan_output)
             print(f"Wrote plan to {plan_path}")
             # restore normal context for execution stage
