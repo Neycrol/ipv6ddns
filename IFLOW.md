@@ -55,6 +55,9 @@ D) Chair decision:
    If needs-work/reject: must issue REWORK with explicit fixes.
    - Chair outputs decision in chat; coordinator writes it to:
      `.iflow/evidence/decision_chair.md` (verbatim).
+   If multiple proposals are approved:
+   - Chair MUST provide a priority order (1..N) and rationale.
+   - Coordinator will execute them strictly sequentially: E→F→PR per proposal.
    If Chair rejects ALL proposals:
    - Coordinator writes `.iflow/evidence/rejected_summary.md` with reasons + evidence links.
    - Reset stage to A and restart proposals.
@@ -81,6 +84,14 @@ F) Final review + vote (parallel preferred; fallback to sequential if limited):
    - Final-vote agents must NOT write files. They only output vote text in chat.
    - After ALL final votes are received, the coordinator writes them to:
      `.iflow/evidence/final_vote_<agent>.md` (verbatim).
+
+G) PR Publish (Chair Only):
+   After a proposal passes final vote, Chair publishes the PR for that proposal.
+   If final vote is needs-work/reject:
+   - Chair writes a REWORK directive (explicit fixes).
+   - Lead follows the directive and decides whether to improve or rewrite.
+   - Loop back to E for that proposal.
+   Coordinator records PR links in `.iflow/evidence/pr_links.md`.
 
 ## Validation Levels
 - A: fmt + clippy + test
