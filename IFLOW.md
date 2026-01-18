@@ -68,6 +68,13 @@ D) Chair decision:
    Dependency guard:
    - If two approved proposals are tightly coupled (cannot be implemented independently),
      Chair MUST mark needs-work and require a merged proposal (single ID) before coding.
+   Parallel rework track (if any needs-work proposals exist):
+   - After decision is recorded, coordinator must start **two tracks in parallel**:
+     Track A (Rework): restart A-stage for all needs-work proposals with a prompt
+     that includes chair summary and links to the prior proposal + peer reviews,
+     and requires revision +1.
+     Track B (Execution): proceed to E with the **first approved** proposal only.
+   - If concurrency limits prevent parallelism, serialize but do not skip either track.
    If Chair rejects ALL proposals:
    - Coordinator writes `.iflow/evidence/rejected_summary.md` with reasons + evidence links.
    - Reset stage to A and restart proposals.
@@ -87,6 +94,8 @@ E) Coding:
    If glm-lead discovers that the assigned proposal cannot be implemented without
    another approved proposal, they must stop and report to Chair + coordinator
    (do NOT proceed). Chair decides whether to merge proposals or reclassify needs-work.
+   While Track B is running, Track A can advance independently to peer review + votes
+   for the revised proposals.
 
 F) Final review + vote (parallel preferred; fallback to sequential if limited):
    deepseek-vice-2, kimi-junior-3, and glm-chair-1 provide final votes based on **code changes**, not just summaries.
@@ -106,6 +115,8 @@ G) PR Publish (Chair Only):
    - Lead follows the directive and decides whether to improve or rewrite.
    - Loop back to E for that proposal.
    Coordinator records PR links in `.iflow/evidence/pr_links.md`.
+   If Track A rework proposals pass their council votes, they must be queued
+   behind any in-flight E→F→G work, then executed sequentially (one at a time).
 
 ## Validation Levels
 - A: fmt + clippy + test
