@@ -44,7 +44,7 @@ B) Peer review:
      `.iflow/evidence/review_<agent>.md` (verbatim).
 
 C) Council votes (parallel preferred; fallback to sequential if limited):
-   deepseek-vice-2 and kimi-junior-3 vote on the proposals
+   deepseek-vice-2, kimi-junior-3, and glm-chair-1 vote on the proposals
    - Voting agents must NOT write files. They only output vote text in chat.
    - After ALL votes are received, the coordinator writes them to:
      `.iflow/evidence/vote_<agent>.md` (verbatim).
@@ -65,7 +65,7 @@ E) Coding:
       `.iflow/evidence/implementation_summary.md`.
 
 F) Final review + vote (parallel preferred; fallback to sequential if limited):
-   deepseek-vice-2 and kimi-junior-3 provide final votes based on **code changes**, not just summaries.
+   deepseek-vice-2, kimi-junior-3, and glm-chair-1 provide final votes based on **code changes**, not just summaries.
    They must review the actual diff / touched files:
    - run `git fetch origin`
    - review `git diff origin/main...HEAD`
