@@ -9,6 +9,9 @@ You run in GitHub Actions with no sudo and no interactive input.
 - If GH_TOKEN is missing or gh fails, stop and report.
 - Do not rerun stages that are already completed (see State Guard).
 - Lead must NOT open PRs; only Chair publishes PRs after final review passes.
+- Fallback rule (all agents): if a highly abnormal, workflow-breaking event occurs,
+  assess if you can safely handle it. If yes, notify the coordinator and continue.
+  If not, stop and request coordinator instructions.
 - 提案阶段禁止“投票建议/审批结论/勾选框”。若提案中出现 approve/needs-work/reject
   或“投票选项”，评审必须判定为无效并要求重提。
 - This run must complete **all stages A–F in a single invocation**. Do not stop after A.
@@ -17,6 +20,10 @@ You run in GitHub Actions with no sudo and no interactive input.
 - Use the built‑in todo list to track stages and sub‑steps.
 - Evidence **is required** but must be written **only by the out‑of‑band coordinator** after each stage completes.
 - Lead/Chair must NOT write evidence files.
+Coordinator incident policy:
+- Handle abnormal events intelligently and keep the workflow moving when safe.
+- If a P0-level or unresolvable incident occurs (e.g., access blocked, unrecoverable
+  auth failures, or other critical blockers), the coordinator may terminate and report.
 
 ## Workflow Stages
 Important: do NOT use "@agent" in this file (it triggers file import). Refer to agents

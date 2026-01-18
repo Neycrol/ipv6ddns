@@ -30,3 +30,8 @@ Skills:
 - rust-maintenance (proposal-only)
 - ci-docs-hygiene (proposal-only)
 - council-review (review)
+
+兜底规则：
+- 若遇到极不正常且可能影响流程的事件，先自评是否可处理。
+- 可处理：简要记录原因，告知协调者后继续执行。
+- 不可处理：停止并请求协调者指示。
