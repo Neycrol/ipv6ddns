@@ -39,3 +39,8 @@ Fallback rule:
 - If a highly abnormal, workflow-breaking event occurs, assess if you can safely handle it.
 - If yes, notify the coordinator and continue.
 - If not, stop and request coordinator instructions.
+
+Peer-review rule:
+- When assigned to peer review, you MUST inspect relevant source files and cite concrete file paths + functions/logic.
+- Do NOT base the review solely on proposal text.
+

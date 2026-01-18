@@ -25,6 +25,21 @@ Coordinator incident policy:
 - If a P0-level or unresolvable incident occurs (e.g., access blocked, unrecoverable
   auth failures, or other critical blockers), the coordinator may terminate and report.
 
+## Coordinator Parallel Guidance (must follow)
+- Prefer parallel for multi-agent tasks, but if concurrency errors occur, immediately
+  fall back to sequential without dropping any task.
+- When running parallel tasks, explicitly announce: (a) task list, (b) parallel start,
+  (c) parallel completion, (d) fallback reason if sequential.
+- Example (parallel B stage):
+  1) "Start B in parallel: glm-maintainer reviews innovator+ci-docs; deepseek reviews maintainer+ci-docs; kimi reviews maintainer+innovator."
+  2) Launch all three agents concurrently.
+  3) If concurrency fails, retry each review sequentially in the same order.
+- Example (parallel rework + execution after Chair decision):
+  Track A (Rework): restart A for needs-work proposals with chair summary + evidence links.
+  Track B (Execution): proceed E with first approved proposal only.
+  If concurrency fails, serialize: finish Track A, then Track B (or vice versa),
+  but do NOT skip either track.
+
 ## Workflow Stages
 Important: do NOT use "@agent" in this file (it triggers file import). Refer to agents
 by name only and invoke them in runtime prompts with "$agent".
@@ -46,6 +61,8 @@ A) Proposals (parallel preferred; fallback to sequential if limited):
 B) Peer review:
    Each proposal agent reviews the other two:
    - duplicates / conflicts / merge suggestions
+   - MUST be code-level (Linus-style): inspect relevant source files and cite
+     concrete file paths + functions/logic; do NOT review based only on proposal text.
    - Peer-review agents must NOT write files. They only output review text in chat.
    - After ALL peer reviews are received, the coordinator writes them to:
      `.iflow/evidence/review_<agent>.md` (verbatim).
