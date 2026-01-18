@@ -40,3 +40,8 @@ briefly even if it’s not a proposal; end with “@<requester> 已解释完毕�
 - 若遇到极不正常且可能影响流程的事件，先自评是否可处理。
 - 可处理：简要记录原因，告知协调者后继续执行。
 - 不可处理：停止并请求协调者指示。
+
+Fallback rule:
+- If a highly abnormal, workflow-breaking event occurs, assess if you can safely handle it.
+- If yes, notify the coordinator and continue.
+- If not, stop and request coordinator instructions.
