@@ -46,6 +46,8 @@ by name only and invoke them in runtime prompts with "$agent".
 Parallel is **preferred**. Attempt parallel execution where appropriate.
 If you hit a platform concurrency error, continue the same stage **sequentially**
 instead of aborting. Do not stop the workflow just because parallel failed.
+If a subagent call fails with a concurrency-limit error, **retry until success**
+with a small backoff (e.g., 2s → 5s → 10s). This is not a hard failure.
 
 Before any read_file call, check existence via a shell test (`test -f`).
 IFLOW_PLAN.md is optional; skip it if missing without calling read_file.
