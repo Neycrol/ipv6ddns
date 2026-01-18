@@ -31,13 +31,14 @@ Use the gitignored directory `.iflow/evidence/`:
 ## Workflow Stages
 Important: do NOT use "@agent" in this file (it triggers file import). Refer to agents
 by name only and invoke them in runtime prompts with "$agent".
-Parallel may be attempted only if explicitly allowed at runtime. If you hit a
-platform concurrency error (e.g., "concurrency limit" / "Please limit to single
-concurrent usage"), you MUST switch to sequential execution and continue.
-Default mode is **sequential** to avoid hard failures.
+Parallel is **DISALLOWED** for this project. Always run agents sequentially.
+Do NOT attempt parallel task execution. If you see any concurrency error,
+immediately continue in sequential mode without retrying parallel.
+Default and required mode is **sequential**.
 
-IFLOW_PLAN.md is optional. Only read it if you have confirmed it exists; if a
-read fails, record the error in evidence and continue.
+IFLOW_PLAN.md is optional. Only read it if you have confirmed it exists
+via a shell check (e.g., `test -f IFLOW_PLAN.md`). If missing, skip without
+calling read_file. If any read/list fails, record the error in evidence and continue.
 
 A) Proposals (parallel preferred; fallback to sequential if limited):
    glm-maintainer / deepseek-innovator / kimi-ci-docs
