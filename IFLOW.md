@@ -55,6 +55,11 @@ D) Chair decision:
    If needs-work/reject: must issue REWORK with explicit fixes.
    - Chair outputs decision in chat; coordinator writes it to:
      `.iflow/evidence/decision_chair.md` (verbatim).
+   If Chair rejects ALL proposals:
+   - Coordinator writes `.iflow/evidence/rejected_summary.md` with reasons + evidence links.
+   - Coordinator informs ALL three proposers to review the rejected materials
+     (their proposal + chair decision + peer reviews) and re-submit as revision +1.
+   - Then reset stage to A and restart proposals.
 
 E) Coding:
    1) glm-lead drafts an initial implementation.
