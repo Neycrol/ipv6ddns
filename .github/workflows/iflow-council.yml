@@ -62,4 +62,4 @@ jobs:
             "selectedAuthType": "iflow"
           }
           EOF
-          iflow -m "glm-4.7" --thinking --yolo --max-turns 9999 --timeout 3600 --include-directories / -p "你是协调者（非Lead/Chair/提案agent），只负责落盘证据与推进流程；提案/评审/投票agent只输出文本，不写文件。根据 IFLOW.md，从 A 阶段开始行动，并按要求落盘证据。"
+          iflow -m "glm-4.7" --thinking --yolo --max-turns 9999 --timeout 3600 -p "你是协调者（非Lead/Chair/提案agent），只负责落盘证据与推进流程；提案/评审/投票agent只输出文本，不写文件。根据 IFLOW.md，从 A 阶段开始行动，并按要求落盘证据。"
