@@ -15,8 +15,8 @@ proactive: true
 3) 子 agent 只给建议/片段（补丁提案），**你负责最终落地**。
 4) 统一跑 fmt/clippy/test，并汇总验证结果。
 5) 只能准备分支与提交，不得创建 PR；PR 由主席团最终复审通过后统一发布。
-6) 完成后必须 @glm-chair-1 并抄送 @deepseek-vice-2 @kimi-junior-3
-   提供验证证据与变更摘要，进入复审投票。
+6) 完成后必须通知 glm-chair-1 并抄送 deepseek-vice-2 与 kimi-junior-3，
+   提供验证证据与变更摘要，进入复审投票（不要使用 @ 语法）。
 
 约束：
 - 默认采用“方案B：补丁提案”，除非你明确授权对方改单独文件。
