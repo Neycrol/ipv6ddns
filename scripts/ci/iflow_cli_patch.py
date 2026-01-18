@@ -1,9 +1,67 @@
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
-path = Path('/usr/lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js')
-if not path.exists():
-    raise SystemExit(f"iflow bundle not found at {path}")
+def run(cmd):
+    return subprocess.check_output(cmd, text=True).strip()
+
+
+def candidate_paths():
+    candidates = []
+    env_bundle = os.environ.get("IFLOW_BUNDLE_PATH", "").strip()
+    if env_bundle:
+        candidates.append(Path(env_bundle))
+
+    which_iflow = shutil.which("iflow")
+    if which_iflow:
+        bin_path = Path(which_iflow).resolve()
+        prefix = bin_path.parent.parent
+        candidates.append(prefix / "lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js")
+
+    try:
+        root = run(["npm", "root", "-g"])
+        if root:
+            candidates.append(Path(root) / "@iflow-ai/iflow-cli/bundle/iflow.js")
+    except Exception:
+        pass
+
+    try:
+        prefix = run(["npm", "config", "get", "prefix"])
+        if prefix:
+            candidates.append(Path(prefix) / "lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js")
+    except Exception:
+        pass
+
+    # Common fallbacks
+    candidates.extend(
+        [
+            Path("/usr/local/lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js"),
+            Path("/usr/lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js"),
+            Path("/opt/hostedtoolcache/node/current/x64/lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js"),
+        ]
+    )
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique = []
+    for c in candidates:
+        if c not in seen:
+            unique.append(c)
+            seen.add(c)
+    return unique
+
+path = None
+attempted = []
+for candidate in candidate_paths():
+    attempted.append(str(candidate))
+    if candidate.exists():
+        path = candidate
+        break
+
+if not path:
+    raise SystemExit("iflow bundle not found. Tried:\n- " + "\n- ".join(attempted))
 
 s = path.read_text(encoding='utf-8')
 
