@@ -16,6 +16,7 @@ config.toml
 !etc/config.toml
 *.log
 .iflow_review_*.json
+.iflow/
 
 # OS
 .DS_Store

@@ -17,13 +17,14 @@ You run in GitHub Actions with no sudo and no interactive input.
   {"stage":"B_peer_review","completed":["A_proposals","B_peer_review"]}
 
 ## Evidence Artifacts (Required)
-Each phase must write a file to `/tmp/`:
-- Proposals: `/tmp/proposal_<agent>.md`
-- Peer reviews: `/tmp/review_<agent>.md`
-- Votes: `/tmp/vote_<agent>.md`
-- Final votes: `/tmp/final_vote_<agent>.md`
-- Chair decision: `/tmp/decision_chair.md`
-- Lead implementation summary: `/tmp/implementation_summary.md`
+Each phase must write a file **inside the repo workspace** so tools can read it.
+Use the gitignored directory `.iflow/evidence/`:
+- Proposals: `.iflow/evidence/proposal_<agent>.md`
+- Peer reviews: `.iflow/evidence/review_<agent>.md`
+- Votes: `.iflow/evidence/vote_<agent>.md`
+- Final votes: `.iflow/evidence/final_vote_<agent>.md`
+- Chair decision: `.iflow/evidence/decision_chair.md`
+- Lead implementation summary: `.iflow/evidence/implementation_summary.md`
 
 ## Workflow Stages
 Important: do NOT use "@agent" in this file (it triggers file import). Refer to agents
