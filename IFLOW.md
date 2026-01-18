@@ -59,7 +59,8 @@ D) Chair decision:
    - Coordinator writes `.iflow/evidence/rejected_summary.md` with reasons + evidence links.
    - Reset stage to A and restart proposals.
    - In the A-stage prompt, the coordinator MUST tell all three proposers
-     what happened (all rejected) and point them to their prior proposal,
+     what happened (all rejected) and require them to read
+     `.iflow/evidence/rejected_summary.md`, plus their prior proposal,
      chair decision, and peer reviews; require revision +1.
 
 E) Coding:
