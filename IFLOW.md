@@ -28,18 +28,20 @@ Each phase must write a file to `/tmp/`:
 ## Workflow Stages
 Important: do NOT use "@agent" in this file (it triggers file import). Refer to agents
 by name only and invoke them in runtime prompts with "$agent".
-Also, due to platform concurrency limits, run all agent calls sequentially (no parallel).
+Parallel is preferred when available. If you hit a platform concurrency error
+(e.g., "concurrency limit" / "Please limit to single concurrent usage"),
+you MUST fall back to sequential execution and continue the process.
 
-A) Sequential proposals (no parallel):
-   glm-maintainer → deepseek-innovator → kimi-ci-docs
+A) Proposals (parallel preferred; fallback to sequential if limited):
+   glm-maintainer / deepseek-innovator / kimi-ci-docs
    (each proposal must include ID, files, benefit, risk, validation level)
 
 B) Peer review:
    Each proposal agent reviews the other two:
    - duplicates / conflicts / merge suggestions
 
-C) Council votes (sequential):
-   deepseek-vice-2 then kimi-junior-3 vote on the proposals
+C) Council votes (parallel preferred; fallback to sequential if limited):
+   deepseek-vice-2 and kimi-junior-3 vote on the proposals
 
 D) Chair decision:
    glm-chair-1 merges evidence + votes and issues decision.
@@ -50,8 +52,8 @@ E) Coding:
    glm-lead assigns tasks and integrates patches from sub-agents.
    Run fmt/clippy/tests and record results.
 
-F) Final review + vote (sequential):
-   deepseek-vice-2 then kimi-junior-3 provide final votes based on evidence.
+F) Final review + vote (parallel preferred; fallback to sequential if limited):
+   deepseek-vice-2 and kimi-junior-3 provide final votes based on evidence.
    If any needs-work/reject, Chair must issue REWORK and loop to E.
 
 ## Validation Levels
