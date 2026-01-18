@@ -65,7 +65,8 @@ E) Coding:
       `.iflow/evidence/implementation_summary.md`.
 
 F) Final review + vote (parallel preferred; fallback to sequential if limited):
-   deepseek-vice-2 and kimi-junior-3 provide final votes based on evidence.
+   deepseek-vice-2 and kimi-junior-3 provide final votes based on **code changes**, not just summaries.
+   They must review the actual diff / touched files (at least a git diff + key files).
    If any needs-work/reject, Chair must issue REWORK and loop to E.
    - Final-vote agents must NOT write files. They only output vote text in chat.
    - After ALL final votes are received, the coordinator writes them to:
