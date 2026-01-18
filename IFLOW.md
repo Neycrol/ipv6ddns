@@ -9,6 +9,7 @@ You run in GitHub Actions with no sudo and no interactive input.
 - If GH_TOKEN is missing or gh fails, stop and report.
 - Do not rerun stages that are already completed (see State Guard).
 - Lead must NOT open PRs; only Chair publishes PRs after final review passes.
+- This run must complete **all stages A–F in a single invocation**. Do not stop after A.
 
 ## State Guard (Required)
 - Use `.iflow/evidence/council_state.json` to track progress (workspace‑local).
@@ -34,6 +35,9 @@ Parallel may be attempted only if explicitly allowed at runtime. If you hit a
 platform concurrency error (e.g., "concurrency limit" / "Please limit to single
 concurrent usage"), you MUST switch to sequential execution and continue.
 Default mode is **sequential** to avoid hard failures.
+
+IFLOW_PLAN.md is optional. Only read it if you have confirmed it exists; if a
+read fails, record the error in evidence and continue.
 
 A) Proposals (parallel preferred; fallback to sequential if limited):
    glm-maintainer / deepseek-innovator / kimi-ci-docs
