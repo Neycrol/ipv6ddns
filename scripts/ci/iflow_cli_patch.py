@@ -72,7 +72,7 @@ def candidate_paths():
 
     # Limited glob search in common roots
     for base in ["/usr/local/lib", "/usr/lib", "/opt/hostedtoolcache/node"]:
-        for match in glob.glob(f\"{base}/**/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js\", recursive=True):
+        for match in glob.glob(f"{base}/**/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js", recursive=True):
             candidates.append(Path(match))
 
     # Deduplicate while preserving order
