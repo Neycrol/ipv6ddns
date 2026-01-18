@@ -51,7 +51,7 @@ jobs:
         run: npm i -g @iflow-ai/iflow-cli@latest
 
       - name: Patch iFlow CLI retry
-        run: sudo python scripts/ci/iflow_cli_patch.py
+        run: sudo env PATH="$PATH" python scripts/ci/iflow_cli_patch.py
 
       - name: Configure git
         run: |

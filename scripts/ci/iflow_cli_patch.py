@@ -1,3 +1,4 @@
+import glob
 import os
 import re
 import shutil
@@ -8,6 +9,23 @@ def run(cmd):
     return subprocess.check_output(cmd, text=True).strip()
 
 
+def add_bin_candidate(candidates, bin_path):
+    try:
+        resolved = Path(bin_path).resolve()
+    except Exception:
+        resolved = Path(bin_path)
+
+    # If the resolved path is inside the package, use it directly.
+    for parent in resolved.parents:
+        if parent.name == "iflow-cli":
+            candidates.append(parent / "bundle/iflow.js")
+            break
+
+    # Fallback: derive from prefix (../..)
+    prefix = resolved.parent.parent
+    candidates.append(prefix / "lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js")
+
+
 def candidate_paths():
     candidates = []
     env_bundle = os.environ.get("IFLOW_BUNDLE_PATH", "").strip()
@@ -16,23 +34,32 @@ def candidate_paths():
 
     which_iflow = shutil.which("iflow")
     if which_iflow:
-        bin_path = Path(which_iflow).resolve()
-        prefix = bin_path.parent.parent
-        candidates.append(prefix / "lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js")
+        add_bin_candidate(candidates, which_iflow)
 
-    try:
-        root = run(["npm", "root", "-g"])
-        if root:
-            candidates.append(Path(root) / "@iflow-ai/iflow-cli/bundle/iflow.js")
-    except Exception:
-        pass
+    for bin_path in [
+        "/usr/local/bin/iflow",
+        "/usr/bin/iflow",
+        "/opt/hostedtoolcache/node/current/x64/bin/iflow",
+    ]:
+        if Path(bin_path).exists():
+            add_bin_candidate(candidates, bin_path)
 
-    try:
-        prefix = run(["npm", "config", "get", "prefix"])
-        if prefix:
-            candidates.append(Path(prefix) / "lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js")
-    except Exception:
-        pass
+    npm_bins = [shutil.which("npm"), "/usr/local/bin/npm", "/usr/bin/npm", "/opt/hostedtoolcache/node/current/x64/bin/npm"]
+    for npm_bin in [p for p in npm_bins if p]:
+        try:
+            root = run([npm_bin, "root", "-g"])
+            if root:
+                candidates.append(Path(root) / "@iflow-ai/iflow-cli/bundle/iflow.js")
+        except Exception:
+            pass
+
+    for npm_bin in [p for p in npm_bins if p]:
+        try:
+            prefix = run([npm_bin, "config", "get", "prefix"])
+            if prefix:
+                candidates.append(Path(prefix) / "lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js")
+        except Exception:
+            pass
 
     # Common fallbacks
     candidates.extend(
@@ -42,6 +69,11 @@ def candidate_paths():
             Path("/opt/hostedtoolcache/node/current/x64/lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js"),
         ]
     )
+
+    # Limited glob search in common roots
+    for base in ["/usr/local/lib", "/usr/lib", "/opt/hostedtoolcache/node"]:
+        for match in glob.glob(f\"{base}/**/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js\", recursive=True):
+            candidates.append(Path(match))
 
     # Deduplicate while preserving order
     seen = set()
