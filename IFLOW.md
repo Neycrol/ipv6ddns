@@ -26,22 +26,22 @@ Coordinator incident policy:
   auth failures, or other critical blockers), the coordinator may terminate and report.
 
 ## Coordinator Parallel Guidance (must follow)
-- Prefer parallel for multi-agent tasks, but if concurrency errors occur, immediately
-  fall back to sequential without dropping any task.
+- Always run multi-agent stages in parallel. Do **not** fall back to sequential.
+- If a subagent call fails with a concurrency-limit error, retry the **same parallel batch**
+  with backoff (e.g., 2s → 5s → 10s → 20s) until all tasks succeed.
 - When running parallel tasks, explicitly announce: (a) task list, (b) parallel start,
-  (c) parallel completion, (d) fallback reason if sequential.
+  (c) parallel completion, (d) retry/backoff info if needed.
 - Example (parallel B stage):
   1) "Start B in parallel: glm-maintainer reviews innovator+ci-docs; deepseek reviews maintainer+ci-docs; kimi reviews maintainer+innovator."
   2) Launch all three agents concurrently.
-  3) If concurrency fails, retry each review sequentially in the same order.
+  3) If any fail, retry the same parallel batch with backoff until success.
 - Example (parallel rework + execution after Chair decision):
   Track A (Rework): restart A for needs-work proposals with chair summary + evidence links.
   Track B (Execution): proceed E with first approved proposal only.
-  If concurrency fails, serialize: finish Track A, then Track B (or vice versa),
-  but do NOT skip either track.
+  If any fail, retry the parallel batch with backoff; do not switch to sequential.
 
 ## Workflow Stages
-Important: do NOT use "@agent" in this file (it triggers file import). Refer to agents
+Important: do NOT use the at-sign agent notation in this file (it triggers file import). Refer to agents
 by name only and invoke them in runtime prompts with "$agent".
 Parallel is **preferred**. Attempt parallel execution where appropriate.
 If you hit a platform concurrency error, continue the same stage **sequentially**
@@ -53,14 +53,14 @@ Before any read_file call, check existence via a shell test (`test -f`).
 IFLOW_PLAN.md is optional; skip it if missing without calling read_file.
 If any read/list fails, report it in the response and continue.
 
-A) Proposals (parallel preferred; fallback to sequential if limited):
+A) Proposals (parallel required):
    glm-maintainer / deepseek-innovator / kimi-ci-docs
    (each proposal must include ID, files, benefit, risk, validation level)
    - Proposal agents must NOT write files. They only output the proposal text in chat.
    - After ALL proposals are received, the coordinator writes them to:
      `.iflow/evidence/proposal_<agent>.md` (verbatim).
 
-B) Peer review:
+B) Peer review (parallel required):
    Each proposal agent reviews the other two:
    - duplicates / conflicts / merge suggestions
    - MUST validate proposal ↔ existing code fit: inspect relevant source files and cite
@@ -69,7 +69,7 @@ B) Peer review:
    - After ALL peer reviews are received, the coordinator writes them to:
      `.iflow/evidence/review_<agent>.md` (verbatim).
 
-C) Council votes (parallel preferred; fallback to sequential if limited):
+C) Council votes (parallel required):
    deepseek-vice-2, kimi-junior-3, and glm-chair-1 vote on the proposals
    - Voting agents must NOT write files. They only output vote text in chat.
    - After ALL votes are received, the coordinator writes them to:
@@ -93,7 +93,7 @@ D) Chair decision:
      that includes chair summary and links to the prior proposal + peer reviews,
      and requires revision +1.
      Track B (Execution): proceed to E with the **first approved** proposal only.
-   - If concurrency limits prevent parallelism, serialize but do not skip either track.
+   - If concurrency errors occur, retry the parallel batch with backoff; do not serialize.
    If Chair rejects ALL proposals:
    - Coordinator writes `.iflow/evidence/rejected_summary.md` with reasons + evidence links.
    - Reset stage to A and restart proposals.
@@ -116,7 +116,7 @@ E) Coding:
    While Track B is running, Track A can advance independently to peer review + votes
    for the revised proposals.
 
-F) Final review + vote (parallel preferred; fallback to sequential if limited):
+F) Final review + vote (parallel required):
    deepseek-vice-2, kimi-junior-3, and glm-chair-1 provide final votes based on **code changes**, not just summaries.
    They must review the actual diff / touched files:
    - run `git fetch origin`
