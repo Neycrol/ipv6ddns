@@ -57,10 +57,12 @@ D) Chair decision:
      `.iflow/evidence/decision_chair.md` (verbatim).
 
 E) Coding:
-   glm-lead assigns tasks and integrates patches from sub-agents.
-   Run fmt/clippy/tests and record results.
-   - Lead provides summary in chat; coordinator writes it to:
-     `.iflow/evidence/implementation_summary.md`.
+   1) glm-lead drafts an initial implementation.
+   2) Call deepseek-refactor and kimi-qa-docs to provide review + patch suggestions.
+   3) Coordinator aggregates their feedback (in chat) and forwards a summary to glm-lead.
+   4) glm-lead decides what to apply/reject, implements, then runs fmt/clippy/tests.
+   5) Lead provides final summary in chat; coordinator writes it to:
+      `.iflow/evidence/implementation_summary.md`.
 
 F) Final review + vote (parallel preferred; fallback to sequential if limited):
    deepseek-vice-2 and kimi-junior-3 provide final votes based on evidence.
