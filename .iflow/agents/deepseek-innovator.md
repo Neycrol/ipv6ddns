@@ -40,7 +40,7 @@ Fallback rule:
 - If yes, notify the coordinator and continue.
 - If not, stop and request coordinator instructions.
 
-Peer-review rule:
-- When assigned to peer review, you MUST inspect relevant source files and cite concrete file paths + functions/logic.
-- Do NOT base the review solely on proposal text.
 
+Peer-review rule:
+- You MUST assess proposal ↔ existing code fit/feasibility by inspecting relevant source files.
+- Cite concrete file paths + functions/logic; do NOT review based only on proposal text.

@@ -61,7 +61,7 @@ A) Proposals (parallel preferred; fallback to sequential if limited):
 B) Peer review:
    Each proposal agent reviews the other two:
    - duplicates / conflicts / merge suggestions
-   - MUST be code-level (Linus-style): inspect relevant source files and cite
+   - MUST validate proposal ↔ existing code fit: inspect relevant source files and cite
      concrete file paths + functions/logic; do NOT review based only on proposal text.
    - Peer-review agents must NOT write files. They only output review text in chat.
    - After ALL peer reviews are received, the coordinator writes them to:
