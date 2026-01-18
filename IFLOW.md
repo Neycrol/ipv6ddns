@@ -58,6 +58,9 @@ D) Chair decision:
    If multiple proposals are approved:
    - Chair MUST provide a priority order (1..N) and rationale.
    - Coordinator will execute them strictly sequentially: E→F→PR per proposal.
+   Dependency guard:
+   - If two approved proposals are tightly coupled (cannot be implemented independently),
+     Chair MUST mark needs-work and require a merged proposal (single ID) before coding.
    If Chair rejects ALL proposals:
    - Coordinator writes `.iflow/evidence/rejected_summary.md` with reasons + evidence links.
    - Reset stage to A and restart proposals.
@@ -67,12 +70,16 @@ D) Chair decision:
      chair decision, and peer reviews; require revision +1.
 
 E) Coding:
+   0) Coordinator assigns **exactly one approved proposal ID** to glm-lead per E cycle.
    1) glm-lead drafts an initial implementation.
    2) Call deepseek-refactor and kimi-qa-docs to provide review + patch suggestions.
    3) Coordinator aggregates their feedback (in chat) and forwards a summary to glm-lead.
    4) glm-lead decides what to apply/reject, implements, then runs fmt/clippy/tests.
    5) Lead provides final summary in chat; coordinator writes it to:
       `.iflow/evidence/implementation_summary.md`.
+   If glm-lead discovers that the assigned proposal cannot be implemented without
+   another approved proposal, they must stop and report to Chair + coordinator
+   (do NOT proceed). Chair decides whether to merge proposals or reclassify needs-work.
 
 F) Final review + vote (parallel preferred; fallback to sequential if limited):
    deepseek-vice-2, kimi-junior-3, and glm-chair-1 provide final votes based on **code changes**, not just summaries.
