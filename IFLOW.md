@@ -15,6 +15,9 @@ You run in GitHub Actions with no sudo and no interactive input.
 - 提案阶段禁止“投票建议/审批结论/勾选框”。若提案中出现 approve/needs-work/reject
   或“投票选项”，评审必须判定为无效并要求重提。
 - This run must complete **all stages A–F in a single invocation**. Do not stop after A.
+- This is **non-interactive**: do **not** ask the user for confirmation at any point.
+  If you would ask, **continue automatically** and keep outputs concise.
+- High token usage is **not** a stopping condition. Reduce verbosity instead of pausing.
 
 ## State / Progress Tracking
 - Use the built‑in todo list to track stages and sub‑steps.
@@ -39,15 +42,64 @@ Coordinator incident policy:
   Track A (Rework): restart A for needs-work proposals with chair summary + evidence links.
   Track B (Execution): proceed E with first approved proposal only.
   If any fail, retry the parallel batch with backoff; do not switch to sequential.
+  Track A and Track B **must** be launched in the same parallel batch; do not run only A
+  and then ask whether to continue B.
+
+## Parallel Launch Examples (copy this behavior)
+Use these as concrete templates; do not invent a different ordering.
+
+### A) Proposals (parallel required)
+Start the three proposal agents **at the same time**:
+- glm-maintainer
+- deepseek-innovator
+- kimi-ci-docs
+Only after all three return, write proposal evidence files.
+
+### B) Peer Review (parallel required)
+Start these three peer-review agents **at the same time**:
+- glm-maintainer reviews INNOV + CIDOCS
+- deepseek-innovator reviews MAINT + CIDOCS
+- kimi-ci-docs reviews MAINT + INNOV
+Only after all three return, write review evidence files.
+
+### C) Council Vote (parallel required)
+Start these three voters **at the same time**:
+- deepseek-vice-2
+- kimi-junior-3
+- glm-chair-1
+Only after all three return, write vote evidence files.
+
+### D) Chair Decision → Track A & Track B (parallel required)
+Once Chair decision is recorded:
+Start **Track A and Track B in the same parallel batch**.
+**关键要求：此处必须“一次性并行启动”全部相关 agent（通常是 4 个；如有额外 needs-work 提案则可能是 5 个）。绝不能分两批执行。**
+- Track A (Rework): restart A-stage for all needs-work proposals (revision +1), **launch in parallel**:
+  - glm-maintainer (rework proposal)
+  - deepseek-innovator (rework proposal)
+  - kimi-ci-docs (rework proposal)
+- Track B (Execution): start E-stage for the **first approved** proposal, **launch in parallel**:
+  - glm-lead (begin implementation of the approved proposal)
+Do **not** run only Track A and then ask whether to continue Track B.
+
+### E) Coding reviews (parallel required)
+After glm-lead drafts implementation, start these two reviewers **at the same time**:
+- deepseek-refactor
+- kimi-qa-docs
+Then aggregate feedback and send to glm-lead.
+
+### F) Final Review + Vote (parallel required)
+Start these three final voters **at the same time**:
+- deepseek-vice-2
+- kimi-junior-3
+- glm-chair-1
+Only after all three return, write final-vote evidence files.
 
 ## Workflow Stages
 Important: do NOT use the at-sign agent notation in this file (it triggers file import). Refer to agents
 by name only and invoke them in runtime prompts with "$agent".
-Parallel is **preferred**. Attempt parallel execution where appropriate.
-If you hit a platform concurrency error, continue the same stage **sequentially**
-instead of aborting. Do not stop the workflow just because parallel failed.
-If a subagent call fails with a concurrency-limit error, **retry until success**
-with a small backoff (e.g., 2s → 5s → 10s). This is not a hard failure.
+Parallel is **required** for all multi-agent stages. Do **not** fall back to sequential.
+If a subagent call fails with a concurrency-limit error, **retry the same parallel batch**
+with a small backoff (e.g., 2s → 5s → 10s) until success. This is not a hard failure.
 
 Before any read_file call, check existence via a shell test (`test -f`).
 IFLOW_PLAN.md is optional; skip it if missing without calling read_file.
