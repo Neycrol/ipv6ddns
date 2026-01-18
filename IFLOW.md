@@ -30,6 +30,8 @@ Coordinator incident policy:
 
 ## Coordinator Parallel Guidance (must follow)
 - Always run multi-agent stages in parallel. Do **not** fall back to sequential.
+- Do **not** submit more than 5 task calls in a single parallel batch. If you need more,
+  split into multiple batches (e.g., 5 + 5) and complete them separately.
 - If a subagent call fails with a concurrency-limit error, retry the **same parallel batch**
   with backoff (e.g., 2s → 5s → 10s → 20s) until all tasks succeed.
 - When running parallel tasks, explicitly announce: (a) task list, (b) parallel start,
