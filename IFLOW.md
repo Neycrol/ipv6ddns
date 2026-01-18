@@ -57,9 +57,10 @@ D) Chair decision:
      `.iflow/evidence/decision_chair.md` (verbatim).
    If Chair rejects ALL proposals:
    - Coordinator writes `.iflow/evidence/rejected_summary.md` with reasons + evidence links.
-   - Coordinator informs ALL three proposers to review the rejected materials
-     (their proposal + chair decision + peer reviews) and re-submit as revision +1.
-   - Then reset stage to A and restart proposals.
+   - Reset stage to A and restart proposals.
+   - In the A-stage prompt, the coordinator MUST tell all three proposers
+     what happened (all rejected) and point them to their prior proposal,
+     chair decision, and peer reviews; require revision +1.
 
 E) Coding:
    1) glm-lead drafts an initial implementation.
