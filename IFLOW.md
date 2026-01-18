@@ -66,7 +66,10 @@ E) Coding:
 
 F) Final review + vote (parallel preferred; fallback to sequential if limited):
    deepseek-vice-2 and kimi-junior-3 provide final votes based on **code changes**, not just summaries.
-   They must review the actual diff / touched files (at least a git diff + key files).
+   They must review the actual diff / touched files:
+   - run `git fetch origin`
+   - review `git diff origin/main...HEAD`
+   - inspect key touched files directly
    If any needs-work/reject, Chair must issue REWORK and loop to E.
    - Final-vote agents must NOT write files. They only output vote text in chat.
    - After ALL final votes are received, the coordinator writes them to:

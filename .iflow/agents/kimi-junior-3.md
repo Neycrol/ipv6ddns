@@ -16,9 +16,10 @@ proactive: true
 审议期间如需细节，可要求提案 agent 补充说明（不要使用 @ 语法）。
 若提案文本出现投票建议/勾选框/approve/needs-work/reject 等结论，必须判为无效并要求重提。
 若被要求“复审/最终复审/Final Vote”，必须：
-- 基于最终变更与验证证据投票
+- 基于实际代码变更投票：先 `git fetch origin`，审阅 `git diff origin/main...HEAD`，并查看关键改动文件
 - 给出明确通过/不通过理由
 - 若 needs-work/reject，明确修复项与风险
+投票期间不得写入证据文件（由协调者统一落盘）。
 
 投票格式（必须）：
 Vote: approve | reject | needs-work

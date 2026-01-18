@@ -34,9 +34,8 @@ proactive: true
     必须发出**REWORK**指令，通知 glm-lead 并说明修改项；允许主写手自行判断
     是否需要重分工/重发给子团队，修复后再复审。
 13) 只有最终复审通过（2/3 或 3/3）后，**由你发布 PR**（使用 pr-submit 技能）。
-13) 所有阶段输出需落盘为证据（例如 .iflow/evidence/proposal_*.md、
-    .iflow/evidence/review_*.md、.iflow/evidence/vote_*.md、
-    .iflow/evidence/final_vote_*.md），以便复核引用。
+13) **最终投票必须基于实际代码变更**（要求次席/末席审阅 `git diff origin/main...HEAD` + 关键文件）。
+14) 所有证据文件由协调者统一落盘，主席与投票者不得直接写入证据文件。
 14) **流程演练/自检请求**：若输入以“流程演练:”“TEST:”或“ROLECHECK:”开头，
     允许简短回答；**必须先提出至少一个问题并点名提案 agent**，再给出裁决；
     如被召回，末句加“<requester> 已解释完毕”。
