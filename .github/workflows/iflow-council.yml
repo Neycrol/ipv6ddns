@@ -54,6 +54,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
+          mkdir -p .iflow/evidence
           mkdir -p ~/.iflow
           cat > ~/.iflow/settings.json <<EOF
           {

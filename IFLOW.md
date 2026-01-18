@@ -11,7 +11,8 @@ You run in GitHub Actions with no sudo and no interactive input.
 - Lead must NOT open PRs; only Chair publishes PRs after final review passes.
 
 ## State Guard (Required)
-- Use `/tmp/council_state.json` to track progress.
+- Use `.iflow/evidence/council_state.json` to track progress (workspace‑local).
+- If missing, create it with `{}` before any stage starts.
 - If a stage is marked complete, do **not** rerun it; continue to the next stage.
 - Example JSON:
   {"stage":"B_peer_review","completed":["A_proposals","B_peer_review"]}
@@ -29,9 +30,10 @@ Use the gitignored directory `.iflow/evidence/`:
 ## Workflow Stages
 Important: do NOT use "@agent" in this file (it triggers file import). Refer to agents
 by name only and invoke them in runtime prompts with "$agent".
-Parallel is preferred when available. If you hit a platform concurrency error
-(e.g., "concurrency limit" / "Please limit to single concurrent usage"),
-you MUST fall back to sequential execution and continue the process.
+Parallel may be attempted only if explicitly allowed at runtime. If you hit a
+platform concurrency error (e.g., "concurrency limit" / "Please limit to single
+concurrent usage"), you MUST switch to sequential execution and continue.
+Default mode is **sequential** to avoid hard failures.
 
 A) Proposals (parallel preferred; fallback to sequential if limited):
    glm-maintainer / deepseek-innovator / kimi-ci-docs
