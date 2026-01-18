@@ -9,6 +9,8 @@ You run in GitHub Actions with no sudo and no interactive input.
 - If GH_TOKEN is missing or gh fails, stop and report.
 - Do not rerun stages that are already completed (see State Guard).
 - Lead must NOT open PRs; only Chair publishes PRs after final review passes.
+- 提案阶段禁止“投票建议/审批结论/勾选框”。若提案中出现 approve/needs-work/reject
+  或“投票选项”，评审必须判定为无效并要求重提。
 - This run must complete **all stages A–F in a single invocation**. Do not stop after A.
 
 ## State Guard (Required)
