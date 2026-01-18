@@ -78,19 +78,44 @@ jobs:
           }
           EOF
           unset CI
+          set -o pipefail
           PROMPT="你是协调者（非Lead/Chair/提案agent），只负责落盘证据与推进流程；提案/评审/投票agent只输出文本，不写文件。根据 IFLOW.md，从 A 阶段开始行动，并按要求落盘证据。"
           attempt=0
           while true; do
             attempt=$((attempt+1))
-            rm -f /tmp/iflow-client-error-*.json
+            rm -f /tmp/iflow-client-error-*.json /tmp/iflow-run.log
             echo "iFlow attempt ${attempt}..."
-            if iflow -p "$PROMPT" --thinking --yolo --model glm-4.7 --include-directories "$GITHUB_WORKSPACE"; then
+            if iflow -p "$PROMPT" --thinking --yolo --model glm-4.7 --include-directories "$GITHUB_WORKSPACE" 2>&1 | tee /tmp/iflow-run.log; then
               echo "iFlow completed successfully."
               break
             fi
-            if ls /tmp/iflow-client-error-*.json >/dev/null 2>&1 && rg -n "concurrency limit|SubAgent execution failed" /tmp/iflow-client-error-*.json >/dev/null 2>&1; then
-              echo "Detected concurrency-limit error. Backing off and retrying..."
-              sleep 10
+            concurrency_hit=0
+            if command -v rg >/dev/null 2>&1; then
+              if [ -f /tmp/iflow-run.log ] && rg -n "concurrency limit|SubAgent execution failed" /tmp/iflow-run.log >/dev/null 2>&1; then
+                concurrency_hit=1
+              fi
+              if ls /tmp/iflow-client-error-*.json >/dev/null 2>&1 && rg -n "concurrency limit|SubAgent execution failed" /tmp/iflow-client-error-*.json >/dev/null 2>&1; then
+                concurrency_hit=1
+              fi
+            else
+              if [ -f /tmp/iflow-run.log ] && grep -Eiq "concurrency limit|SubAgent execution failed" /tmp/iflow-run.log; then
+                concurrency_hit=1
+              fi
+              if ls /tmp/iflow-client-error-*.json >/dev/null 2>&1 && grep -Ei "concurrency limit|SubAgent execution failed" /tmp/iflow-client-error-*.json >/dev/null 2>&1; then
+                concurrency_hit=1
+              fi
+            fi
+            if [ "${concurrency_hit}" -eq 1 ]; then
+              case "${attempt}" in
+                1) sleep_seconds=2 ;;
+                2) sleep_seconds=5 ;;
+                3) sleep_seconds=10 ;;
+                4) sleep_seconds=20 ;;
+                5) sleep_seconds=40 ;;
+                *) sleep_seconds=60 ;;
+              esac
+              echo "Detected concurrency-limit error. Backing off ${sleep_seconds}s and retrying..."
+              sleep "${sleep_seconds}"
               continue
             fi
             echo "iFlow failed with a non-retryable error. Exiting."
