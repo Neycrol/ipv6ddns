@@ -26,6 +26,8 @@ permissions:
 jobs:
   council:
     runs-on: ubuntu-latest
+    env:
+      IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,7 +61,6 @@ jobs:
 
       - name: Run iFlow council
         env:
-          IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
           GH_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
