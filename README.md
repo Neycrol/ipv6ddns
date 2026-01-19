@@ -144,7 +144,7 @@ health_port = 8080
 Access endpoint:
 - `http://localhost:8080/health` - Health check status
 
-**Note:** For security, these endpoints bind to localhost only. Use a reverse proxy or SSH tunnel to access them remotely.
+**Note:** The health endpoint binds to localhost only. Enabling it adds a small, constant memory overhead; keep it disabled if you want the lowest footprint.
 
 `multi_record` controls behavior when multiple AAAA records exist for the same name:
 - `error` (default): refuse to update
