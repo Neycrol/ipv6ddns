@@ -231,7 +231,14 @@ impl NetlinkImpl {
         }
 
         // Convert to OwnedFd and then to AsyncFd
-        // Note: This consumes the NetlinkFd, which will no longer close the fd
+        //
+        // SAFETY: This is a safe ownership transfer from NetlinkFd to OwnedFd.
+        // - The `socket` variable owns a valid, open file descriptor (validated above)
+        // - We transfer ownership to `OwnedFd` using `from_raw_fd`
+        // - We then call `std::mem::forget(socket)` to prevent NetlinkFd's Drop
+        //   implementation from closing the fd (which would cause a double-close)
+        // - The OwnedFd now has exclusive ownership and will close the fd when dropped
+        // - This is a common pattern in Rust when converting RAII wrappers
         let owned_fd = unsafe { OwnedFd::from_raw_fd(socket.as_raw_fd()) };
         std::mem::forget(socket); // Prevent double-close
         let fd = AsyncFd::new(owned_fd).context("AsyncFd")?;
