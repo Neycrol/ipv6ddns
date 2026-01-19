@@ -631,7 +631,7 @@ fn extract_ipv6_addresses_for_dump(
     data: &[u8],
     msg_offset: usize,
     nlmsg_len: usize,
-) -> Option<(Option<(String, u8)>, Option<(String, u8)>)> {
+) -> Option<(Option<String>, Option<String>)> {
     let msg_end = (msg_offset + nlmsg_len).min(data.len());
     if msg_end < msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN {
         return None;
@@ -639,7 +639,6 @@ fn extract_ipv6_addresses_for_dump(
 
     let ifa_offset = msg_offset + NLMSG_HDRLEN;
     let ifa_family = data[ifa_offset];
-    let ifa_prefixlen = data[ifa_offset + 1];
     let ifa_flags = data[ifa_offset + 2];
     let ifa_scope = data[ifa_offset + 3];
 
@@ -666,9 +665,9 @@ fn extract_ipv6_addresses_for_dump(
     // Parse RTA attributes to find the IPv6 address
     if let Some(ip) = parse_rta_ipv6_address(data, msg_offset, msg_end) {
         if is_temp {
-            return Some((None, Some((ip, ifa_prefixlen))));
+            return Some((None, Some(ip)));
         } else {
-            return Some((Some((ip, ifa_prefixlen)), None));
+            return Some((Some(ip), None));
         }
     }
 
@@ -716,8 +715,8 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
         return Err(std::io::Error::last_os_error()).context("netlink send");
     }
 
-    let mut stable: Option<(String, u8)> = None;
-    let mut temporary: Option<(String, u8)> = None;
+    let mut stable: Option<String> = None;
+    let mut temporary: Option<String> = None;
     let mut recv_buf = vec![0u8; NETLINK_DUMP_BUFFER_SIZE];
 
     loop {
@@ -756,7 +755,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
                 None => break,
             };
             if nlmsg_type == NLMSG_DONE {
-                return Ok((stable.map(|(ip, _)| ip), temporary.map(|(ip, _)| ip)));
+                return Ok((stable, temporary));
             }
             if nlmsg_type == NLMSG_ERROR {
                 return Err(anyhow::anyhow!("netlink error response"));
@@ -767,22 +766,14 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
                 if let Some((addr_stable, addr_temp)) =
                     extract_ipv6_addresses_for_dump(data, msg_offset, nlmsg_len)
                 {
-                    if let Some((ip, prefixlen)) = addr_stable {
-                        match &stable {
-                            None => stable = Some((ip, prefixlen)),
-                            Some((_, current_prefix)) if prefixlen < *current_prefix => {
-                                stable = Some((ip, prefixlen));
-                            }
-                            _ => {}
+                    if let Some(ip) = addr_stable {
+                        if stable.is_none() {
+                            stable = Some(ip);
                         }
                     }
-                    if let Some((ip, prefixlen)) = addr_temp {
-                        match &temporary {
-                            None => temporary = Some((ip, prefixlen)),
-                            Some((_, current_prefix)) if prefixlen < *current_prefix => {
-                                temporary = Some((ip, prefixlen));
-                            }
-                            _ => {}
+                    if let Some(ip) = addr_temp {
+                        if temporary.is_none() {
+                            temporary = Some(ip);
                         }
                     }
                 }
@@ -792,7 +783,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
         }
     }
 
-    Ok((stable.map(|(ip, _)| ip), temporary.map(|(ip, _)| ip)))
+    Ok((stable, temporary))
 }
 
 //==============================================================================
