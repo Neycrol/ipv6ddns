@@ -54,16 +54,23 @@ jobs:
           # 检查版本条目包含至少一个变更类型
           python3 - "$VERSION" <<'PY'
           import re, sys
-          version = sys.argv[1].strip()
+          raw_version = sys.argv[1].strip()
+          version = raw_version.strip('"').strip("'").lstrip("v").strip()
           with open("CHANGELOG.md", "r", encoding="utf-8") as f:
             lines = f.read().splitlines()
           start = None
           for i, line in enumerate(lines):
-            if re.match(rf"^## \\[{re.escape(version)}\\]", line):
+            if line.lstrip().startswith(f"## [{version}]"):
               start = i
               break
           if start is None:
-            sys.exit(f"ERROR: CHANGELOG.md does not contain entry for version {version}")
+            # fallback: accept v-prefixed tags
+            for i, line in enumerate(lines):
+              if line.lstrip().startswith(f"## [v{version}]"):
+                start = i
+                break
+          if start is None:
+            sys.exit(f"ERROR: CHANGELOG.md does not contain entry for version {raw_version}")
           end = len(lines)
           for j in range(start + 1, len(lines)):
             if re.match(r"^## \\[", lines[j]):
