@@ -42,7 +42,10 @@ done
 # Check Arch package files
 find "$ARTIFACTS_DIR" -name "*.pkg.tar.zst" -type f | while read -r pkg; do
     echo "Checking $pkg"
-    tar --zstd -tf "$pkg" | grep -q "usr/bin/ipv6ddns"
+    tmp_list="$(mktemp)"
+    tar --zstd -tf "$pkg" > "$tmp_list"
+    grep -q "usr/bin/ipv6ddns" "$tmp_list"
+    rm -f "$tmp_list"
     echo "  ✓ Valid Arch package"
 done
 
