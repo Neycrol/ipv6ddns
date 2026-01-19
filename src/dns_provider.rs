@@ -97,26 +97,7 @@ pub trait DnsProvider: Send + Sync {
         policy: MultiRecordPolicy,
     ) -> anyhow::Result<DnsRecord>;
 
-    /// Retrieves all AAAA records for a given record name in a zone
-    ///
-    /// # Arguments
-    ///
-    /// * `zone_id` - The zone ID for the domain (provider-specific)
-    /// * `record_name` - The DNS record name to query
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing a vector of `DnsRecord` objects or an error
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// - The HTTP request fails
-    /// - The API returns an error response
-    /// - Rate limit is exceeded
-    /// - Server error occurs
-    async fn get_records(&self, zone_id: &str, record_name: &str)
-        -> anyhow::Result<Vec<DnsRecord>>;
+    // Future providers can add lookup APIs as needed; keep the trait minimal.
 }
 
 //==============================================================================

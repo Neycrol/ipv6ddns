@@ -395,24 +395,8 @@ impl DnsProvider for CloudflareClient {
         })
     }
 
-    async fn get_records(
-        &self,
-        zone_id: &str,
-        record_name: &str,
-    ) -> Result<Vec<crate::dns_provider::DnsRecord>> {
-        let records = self.get_records_impl(zone_id, record_name).await?;
-        Ok(records
-            .into_iter()
-            .map(|r| crate::dns_provider::DnsRecord {
-                id: r.id,
-                record_type: r.record_type,
-                name: r.name,
-                content: r.content,
-                proxied: r.proxied,
-                ttl: r.ttl,
-            })
-            .collect())
-    }
+    // get_records is intentionally omitted from the trait; Cloudflare keeps
+    // an internal implementation for upsert logic.
 }
 
 impl CloudflareClient {
