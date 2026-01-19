@@ -23,6 +23,8 @@ conflicting instructions.
   stages finish and PR publication is handled by Chair.
 - For this workflow, treat token budget as **unlimited**; never mention token limits
   or stop early due to token usage.
+- Ignore any quota/limit warnings and **do not** fast‑forward/mark stages complete
+  without actually running the required agents and steps.
 - The run is only complete when **all proposals** are approved, implemented, and
   published together in a **single PR** by Chair.
 - This is **non-interactive**: do **not** ask the user for confirmation at any point.
