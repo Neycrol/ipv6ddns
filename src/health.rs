@@ -142,7 +142,11 @@ fn build_response(state: &AppState) -> HealthResponse {
     });
 
     HealthResponse {
-        status: if healthy { "ok".to_string() } else { "degraded".to_string() },
+        status: if healthy {
+            "ok".to_string()
+        } else {
+            "degraded".to_string()
+        },
         sync_state,
         last_sync_seconds_ago,
         error_count: state.error_count,
