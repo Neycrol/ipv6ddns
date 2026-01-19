@@ -119,22 +119,32 @@ path.write_text(s3, encoding='utf-8')
 text = s3
 
 # Bump sub-agent timeout from 300000ms to 900000ms (15 minutes).
-needle = "constructor(e,r=3e5,n,o){this.agentId=e,this.timeoutMs=r"
+needle_variants = [
+    "constructor(e,r=3e5,n,o){this.agentId=e,this.timeoutMs=r",
+    "constructor(e,r=300000,n,o){this.agentId=e,this.timeoutMs=r",
+]
 replacement = "constructor(e,r=9e5,n,o){this.agentId=e,this.timeoutMs=r"
-if needle in text:
-    text2 = text.replace(needle, replacement, 1)
-    n3 = 1
-else:
+n3 = 0
+text2 = text
+for needle in needle_variants:
+    if needle in text2:
+        text2 = text2.replace(needle, replacement, 1)
+        n3 = 1
+        break
+if n3 == 0:
     # Try regex fallback for minor minifier variations.
     timeout_pat = r"constructor\\(e,r=3e5,n,o\\)\\{this\\.agentId=e,this\\.timeoutMs=r"
-    text2, n3 = re.subn(timeout_pat, replacement, text, count=1)
-    if n3 == 0:
-        timeout_pat2 = r"constructor\\(e,r=\\d+e5,n,o\\)\\{this\\.agentId=e,this\\.timeoutMs=r"
-        text2, n3 = re.subn(timeout_pat2, replacement, text, count=1)
+    text2, n3 = re.subn(timeout_pat, replacement, text2, count=1)
+if n3 == 0:
+    timeout_pat2 = r"constructor\\(e,r=300000,n,o\\)\\{this\\.agentId=e,this\\.timeoutMs=r"
+    text2, n3 = re.subn(timeout_pat2, replacement, text2, count=1)
+if n3 == 0:
+    timeout_pat3 = r"constructor\\(e,r=\\d+(?:e\\d+)?,n,o\\)\\{this\\.agentId=e,this\\.timeoutMs=r"
+    text2, n3 = re.subn(timeout_pat3, replacement, text2, count=1)
 if n3 == 0:
     raise SystemExit("Agent timeout constructor not found; aborting to avoid partial patch")
 
 path.write_text(text2, encoding="utf-8")
 if "constructor(e,r=9e5,n,o){this.agentId=e,this.timeoutMs=r" not in text2:
     raise SystemExit("Agent timeout patch did not persist; aborting.")
-print(f\"patched iflow CLI retry settings + agent timeout at {path}\")
+print(f"patched iflow CLI retry settings + agent timeout at {path}")
