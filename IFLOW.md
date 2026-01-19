@@ -84,12 +84,15 @@ Start **Track A and Track B in the same parallel batch**.
 Do **not** run only Track A and then ask whether to continue Track B.
 
 ### E) Coding + audit (parallel required)
-After glm-lead drafts implementation, start this **parallel batch**:
-- deepseek-refactor → review the **revised proposal text** (Track A rework) and flag gaps/risks.
-- kimi-qa-docs → review the **revised proposal text** (Track A rework) and flag gaps/risks.
-Lead audit: glm-lead must run `git fetch origin`, inspect `git diff origin/main...HEAD`,
+After glm-lead drafts the **initial implementation**, start this **parallel batch**:
+- deepseek-refactor → review **glm-lead’s initial implementation** (diff vs `origin/main`) and list gaps/risks + patch suggestions.
+- kimi-qa-docs → review **glm-lead’s initial implementation** (diff vs `origin/main`) and list gaps/risks + patch suggestions.
+Lead audit (required): glm-lead must run `git fetch origin`, inspect `git diff origin/main...HEAD`,
 and review touched files.
-Then aggregate feedback and send: proposal feedback to Track A; code feedback to glm-lead.
+After all three complete, coordinator sends feedback **in parallel**:
+- proposal feedback → Track A
+- code feedback → glm-lead
+After feedback delivery, coordinator records E-stage evidence (refactor review, QA review, lead audit).
 
 ### F) Improvement review + lead fixes (parallel required; **4 roles**)
 Start this **parallel batch** (must be 4 roles):
@@ -147,7 +150,7 @@ D) Chair decision:
    Agent to run:
    - glm-chair-1 (Chair)
    Chair merges evidence + votes and issues decision.
-   If approved: must ping glm-lead and CC deepseek-refactor + kimi-qa-docs with requirements.
+   If approved: must notify the coordinator with requirements.
    If needs-work/reject: must issue REWORK with explicit fixes.
    - Chair outputs decision in chat; coordinator writes it to:
      `.iflow/evidence/decision_chair.md` (verbatim).
@@ -178,18 +181,23 @@ D) Chair decision:
 E) Coding + audit (parallel required):
    Agents to run:
    - glm-lead (implementation owner)
-   - deepseek-refactor (proposal rework review)
-   - kimi-qa-docs (proposal rework review)
+   - deepseek-refactor (implementation review)
+   - kimi-qa-docs (implementation review)
    0) Coordinator assigns **exactly one approved proposal ID** to glm-lead per E cycle.
    1) glm-lead drafts an initial implementation.
    2) In parallel, run:
-      - deepseek-refactor: review the **revised proposal text** (Track A rework) and list gaps/risks.
-      - kimi-qa-docs: review the **revised proposal text** (Track A rework) and list gaps/risks.
+      - deepseek-refactor: review **glm-lead’s initial implementation** (diff vs `origin/main`) and list gaps/risks.
+      - kimi-qa-docs: review **glm-lead’s initial implementation** (diff vs `origin/main`) and list gaps/risks.
    2.5) Lead audit (required): glm-lead must run `git fetch origin`, review
         `git diff origin/main...HEAD`, and inspect key files.
-   3) Coordinator aggregates and routes feedback:
+   3) Coordinator aggregates and routes feedback **in parallel**:
    - proposal feedback → Track A
    - code feedback → glm-lead
+   4) After all three reviews + lead audit + parallel feedback delivery complete,
+      coordinator writes E-stage evidence:
+      - `.iflow/evidence/code_review_deepseek-refactor.md`
+      - `.iflow/evidence/code_review_kimi-qa-docs.md`
+      - `.iflow/evidence/lead_audit.md`
    If glm-lead discovers that the assigned proposal cannot be implemented without
    another approved proposal, they must stop and report to Chair + coordinator
    (do NOT proceed). Chair decides whether to merge proposals or reclassify needs-work.
@@ -225,7 +233,8 @@ G) Final decision + code re-review (parallel required; **4 roles**):
    - kimi-junior-3 → re-review glm-lead’s code vs `origin/main`
    - deepseek-refactor → re-review glm-lead’s code vs `origin/main`
    If chair approves proposal **and** all code re-reviews approve:
-   - Chair publishes the PR for that proposal (use pr-submit skill).
+   - Coordinator must summon Chair to publish the PR (use pr-submit skill).
+   - Coordinator must NOT publish the PR directly.
    - Coordinator records PR links in `.iflow/evidence/pr_links.md`.
    If chair approves proposal but any code re-review is needs-work/reject:
    - Coordinator records reasons and restarts Track B (execution) for fixes.
