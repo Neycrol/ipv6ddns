@@ -95,9 +95,9 @@ After feedback delivery, coordinator records E-stage evidence (refactor review, 
 
 ### F) Improvement review + lead fixes (parallel required; **4 roles**)
 Start this **parallel batch** (must be 4 roles):
-- deepseek-vice-2 → review the improvement feedback (proposal-level)
-- kimi-junior-3 → review the improvement feedback (proposal-level)
-- glm-chair-1 → review the improvement feedback (proposal-level)
+- deepseek-vice-2 → review the **code fixes** and remaining risks
+- kimi-junior-3 → review the **code fixes** and remaining risks
+- glm-chair-1 → review the **code fixes** and remaining risks
 - glm-lead → apply code review feedback, update implementation, run required tests
 Only after all four return, record evidence and proceed.
 
@@ -204,9 +204,9 @@ F) Improvement review + lead fixes (parallel required; **4 roles**):
    - glm-chair-1
    - glm-lead
    Start in parallel:
-   - deepseek-vice-2 → review improvement feedback (proposal-level)
-   - kimi-junior-3 → review improvement feedback (proposal-level)
-   - glm-chair-1 → review improvement feedback (proposal-level)
+   - deepseek-vice-2 → review **code fixes** and remaining risks
+   - kimi-junior-3 → review **code fixes** and remaining risks
+   - glm-chair-1 → review **code fixes** and remaining risks
    - glm-lead → apply code feedback, update code, run fmt/clippy/tests
    After all four return:
    - Coordinator writes improvement review evidence to:
