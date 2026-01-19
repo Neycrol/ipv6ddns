@@ -14,6 +14,7 @@ import com.neycrol.ipv6ddns.data.ConfigStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.BufferedReader
@@ -126,11 +127,13 @@ class Ipv6DdnsService : Service() {
             restartAttempts++
             val backoffDelayMs = (1000L * (1 shl (restartAttempts - 1))).coerceAtMost(60000L)
             Log.w(TAG, "Attempting restart $restartAttempts/$maxRestartAttempts after ${backoffDelayMs}ms delay")
-            Thread.sleep(backoffDelayMs)
-            // Attempt to restart by sending a start intent
-            val configFile = currentConfigFile
-            if (configFile != null) {
-                scope.launch { startProcess(configFile) }
+            // Schedule restart without blocking this thread
+            scope.launch {
+                delay(backoffDelayMs)
+                val configFile = currentConfigFile
+                if (configFile != null) {
+                    startProcess(configFile)
+                }
             }
         } else {
             Log.e(TAG, "Max restart attempts ($maxRestartAttempts) reached, stopping service")
