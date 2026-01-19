@@ -227,8 +227,8 @@ G) Final decision + code re-review (parallel required; **3 roles**):
      4) Report PR link + brief risk summary.
    - Coordinator records PR links in `.iflow/evidence/pr_links.md`.
    If chair approves proposal but any code vote is needs-work/reject:
-   - Coordinator sends all rejection reasons + review notes to glm-lead, deepseek-refactor,
-     and kimi-qa-docs, then repeats E → F → G for **that proposal** until approved.
+   - Coordinator sends all rejection reasons + review notes to glm-lead only,
+     then repeats E → F → G for **that proposal** until approved.
    If chair rejects proposal:
    - Coordinator records reasons and restarts the rework loop (A → B → C → D) for that proposal.
    Note: do **not** run parallel executions. Handle one proposal at a time,
