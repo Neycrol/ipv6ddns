@@ -15,6 +15,9 @@ You run in GitHub Actions with no sudo and no interactive input.
 - 提案阶段禁止“投票建议/审批结论/勾选框”。若提案中出现 approve/needs-work/reject
   或“投票选项”，评审必须判定为无效并要求重提。
 - This run must complete **all stages A–F in a single invocation**. Do not stop after A.
+- Token usage is **never** a reason to simplify, skip, or terminate the workflow.
+  If token usage is high, reduce verbosity only and **continue** until the required
+  stages finish and PR publication is handled by Chair.
 - This is **non-interactive**: do **not** ask the user for confirmation at any point.
   If you would ask, **continue automatically** and keep outputs concise.
 - High token usage is **not** a stopping condition. Reduce verbosity instead of pausing.
