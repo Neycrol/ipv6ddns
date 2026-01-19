@@ -93,13 +93,14 @@ After all three complete, coordinator sends feedback **in parallel**:
 - design/proposal defects → Chair/Coordinator for rework loop (A→B→C→D)
 After feedback delivery, coordinator records E-stage evidence (refactor review, QA review, lead audit).
 
-### F) Improvement review + lead fixes (parallel required; **4 roles**)
-Start this **parallel batch** (must be 4 roles):
-- deepseek-vice-2 → review the **code fixes** and remaining risks
-- kimi-junior-3 → review the **code fixes** and remaining risks
-- glm-chair-1 → review the **code fixes** and remaining risks
-- glm-lead → apply code review feedback, update implementation, run required tests
-Only after all four return, record evidence and proceed.
+### F) Improvement review + lead fixes (conditional)
+Decision gate:
+- If glm-lead identifies a **major proposal flaw**, coordinator must restart A→B→C→D.
+- Otherwise, only glm-lead proceeds with fixes.
+
+If no restart is needed:
+- glm-lead applies code review feedback, updates implementation, and runs required tests.
+Then record evidence and proceed.
 
 ## Workflow Stages
 Important: do NOT use the at-sign agent notation in this file (it triggers file import). Refer to agents
@@ -197,23 +198,13 @@ E) Coding + audit (parallel required):
    Do **not** run proposal rework and implementation in parallel. All proposals must
    pass D before any E/F/G work begins.
 
-F) Improvement review + lead fixes (parallel required; **4 roles**):
-   Agents to run (parallel batch):
-   - deepseek-vice-2
-   - kimi-junior-3
-   - glm-chair-1
-   - glm-lead
-   Start in parallel:
-   - deepseek-vice-2 → review **code fixes** and remaining risks
-   - kimi-junior-3 → review **code fixes** and remaining risks
-   - glm-chair-1 → review **code fixes** and remaining risks
-   - glm-lead → apply code feedback, update code, run fmt/clippy/tests
-   - If glm-lead identifies a **major proposal flaw** during fixes, they may request
-     the coordinator to restart the proposal loop (A→B→C→D). The coordinator must comply.
-   After all four return:
-   - Coordinator writes improvement review evidence to:
-     `.iflow/evidence/improvement_review_<agent>.md` (verbatim).
-   - Lead provides updated summary; coordinator writes it to:
+F) Improvement review + lead fixes (conditional):
+   Decision gate:
+   - If glm-lead identifies a **major proposal flaw**, coordinator must restart A→B→C→D.
+   - Otherwise, only glm-lead proceeds.
+   If no restart is needed:
+   - glm-lead applies code feedback, updates code, runs fmt/clippy/tests.
+   - Coordinator writes updated summary to:
      `.iflow/evidence/implementation_summary.md` (replace prior).
 
 G) Final decision + code re-review (parallel required; **4 roles**):
