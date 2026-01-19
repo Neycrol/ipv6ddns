@@ -235,6 +235,11 @@ G) Final decision + code re-review (parallel required; **4 roles**):
    If chair approves proposal **and** all code re-reviews approve:
    - Coordinator must summon Chair to publish the PR (use pr-submit skill).
    - Coordinator must NOT publish the PR directly.
+   - Chair must explicitly follow PR publish steps:
+     1) Confirm current branch is iflow/<category>-<n> (not main/master).
+     2) Confirm lead has committed and pushed.
+     3) Run pr-submit (or gh pr create + gh pr comment) to publish.
+     4) Report PR link + brief risk summary.
    - Coordinator records PR links in `.iflow/evidence/pr_links.md`.
    If chair approves proposal but any code re-review is needs-work/reject:
    - Coordinator records reasons and restarts Track B (execution) for fixes.
@@ -252,3 +257,8 @@ G) Final decision + code re-review (parallel required; **4 roles**):
 - Lead prepares branch + commits + pushes.
 - Chair publishes PR **only after final review passes**.
 - Use `pr-submit` skill for safe PR creation.
+ - Steps for Chair when publishing:
+   1) Verify branch name: iflow/<category>-<n>
+   2) Verify remote push is complete
+   3) Run pr-submit (or gh pr create + gh pr comment)
+   4) Report PR URL + risks
