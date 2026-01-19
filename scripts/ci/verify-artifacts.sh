@@ -15,7 +15,10 @@ fi
 find "$ARTIFACTS_DIR" -name "*.deb" -type f | while read -r deb; do
     echo "Checking $deb"
     dpkg-deb --info "$deb" > /dev/null
-    dpkg-deb --contents "$deb" | grep -q "usr/bin/ipv6ddns"
+    tmp_contents="$(mktemp)"
+    dpkg-deb --contents "$deb" > "$tmp_contents"
+    grep -q "usr/bin/ipv6ddns" "$tmp_contents"
+    rm -f "$tmp_contents"
     echo "  ✓ Valid .deb package"
 done
 
@@ -39,7 +42,7 @@ done
 # Check Arch package files
 find "$ARTIFACTS_DIR" -name "*.pkg.tar.zst" -type f | while read -r pkg; do
     echo "Checking $pkg"
-    tar -tzf "$pkg" | grep -q "usr/bin/ipv6ddns"
+    tar --zstd -tf "$pkg" | grep -q "usr/bin/ipv6ddns"
     echo "  ✓ Valid Arch package"
 done
 
