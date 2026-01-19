@@ -208,6 +208,8 @@ F) Improvement review + lead fixes (parallel required; **4 roles**):
    - kimi-junior-3 → review **code fixes** and remaining risks
    - glm-chair-1 → review **code fixes** and remaining risks
    - glm-lead → apply code feedback, update code, run fmt/clippy/tests
+   - If glm-lead identifies a **major proposal flaw** during fixes, they may request
+     the coordinator to restart the proposal loop (A→B→C→D). The coordinator must comply.
    After all four return:
    - Coordinator writes improvement review evidence to:
      `.iflow/evidence/improvement_review_<agent>.md` (verbatim).
