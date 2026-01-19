@@ -18,6 +18,8 @@ You run in GitHub Actions with no sudo and no interactive input.
 - Token usage is **never** a reason to simplify, skip, or terminate the workflow.
   If token usage is high, reduce verbosity only and **continue** until the required
   stages finish and PR publication is handled by Chair.
+- For this workflow, treat token budget as **unlimited**; never mention token limits
+  or stop early due to token usage.
 - This is **non-interactive**: do **not** ask the user for confirmation at any point.
   If you would ask, **continue automatically** and keep outputs concise.
 - High token usage is **not** a stopping condition. Reduce verbosity instead of pausing.
