@@ -41,11 +41,25 @@ jobs:
       - name: Run cargo test
         run: cargo test --all-features --verbose
 
+      - name: Run cargo test with coverage
+        run: |
+          cargo install cargo-tarpaulin --locked
+          cargo tarpaulin --out Xml --output-dir ./coverage --all-features --verbose
+
       - name: Run cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run cargo fmt check
         run: cargo fmt -- --check
+
+      - name: Check rustdoc
+        run: |
+          cargo doc --no-deps --all-features --document-private-items
+          echo "Checking for broken intra-doc links..."
+          if cargo doc --no-deps --all-features --document-private-items 2>&1 | grep -q "broken"; then
+            echo "ERROR: Found broken intra-doc links"
+            exit 1
+          fi
 
       - name: Install cargo-deny
         run: |
@@ -74,6 +88,7 @@ jobs:
 
   test-android:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -89,8 +104,12 @@ jobs:
         with:
           gradle-version: 8.7
 
-      - name: Run Android unit tests
-        run: gradle -p android test --stacktrace
+      - name: Run Android unit tests with timeout
+        run: |
+          timeout 20m gradle -p android test --stacktrace || {
+            echo "Android tests timed out or failed"
+            exit 1
+          }
 
   auto-pr:
     needs: [test-and-lint, test-android]

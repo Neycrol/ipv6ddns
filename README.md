@@ -122,8 +122,35 @@ verbose = false
 multi_record = "error" # error|first|all
 # allow_loopback = false # allow ::1 for local testing
 # poll_interval = 60 # 10-3600 seconds (polling fallback)
+# provider_type = "cloudflare" # DNS provider (default: cloudflare)
+# metrics_port = 9090 # Prometheus metrics port (0 = disabled)
+# health_port = 8080 # Health check port (0 = disabled)
 # Sensitive values via environment variables (recommended)
 ```
+
+### Metrics and Health Check
+
+ipv6ddns can expose Prometheus metrics and health check endpoints:
+
+```bash
+# Enable metrics endpoint
+export IPV6DDNS_METRICS_PORT=9090
+
+# Enable health check endpoint
+export IPV6DDNS_HEALTH_PORT=8080
+```
+
+Or in config file:
+```toml
+metrics_port = 9090
+health_port = 8080
+```
+
+Access endpoints:
+- `http://localhost:9090/metrics` - Prometheus metrics
+- `http://localhost:8080/health` - Health check status
+
+**Note:** For security, these endpoints bind to localhost only. Use a reverse proxy or SSH tunnel to access them remotely.
 
 `multi_record` controls behavior when multiple AAAA records exist for the same name:
 - `error` (default): refuse to update

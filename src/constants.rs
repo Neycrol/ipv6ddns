@@ -107,3 +107,22 @@ pub const ENV_MULTI_RECORD: &str = "CLOUDFLARE_MULTI_RECORD";
 
 /// Environment variable name to allow loopback IPv6 (::1)
 pub const ENV_ALLOW_LOOPBACK: &str = "IPV6DDNS_ALLOW_LOOPBACK";
+
+/// Environment variable name for DNS provider type
+pub const ENV_PROVIDER_TYPE: &str = "IPV6DDNS_PROVIDER_TYPE";
+
+/// Environment variable name for metrics port
+pub const ENV_METRICS_PORT: &str = "IPV6DDNS_METRICS_PORT";
+
+/// Environment variable name for health check port
+pub const ENV_HEALTH_PORT: &str = "IPV6DDNS_HEALTH_PORT";
+
+//==============================================================================
+// HTTP Connection Pool Constants
+//==============================================================================
+
+/// Maximum idle connections per host in HTTP connection pool
+pub const HTTP_POOL_MAX_IDLE_PER_HOST: usize = 10;
+
+/// Idle timeout for HTTP connections in seconds
+pub const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;

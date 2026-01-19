@@ -43,6 +43,7 @@ use std::fmt;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
+use async_trait::async_trait;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
@@ -51,9 +52,11 @@ use zeroize::ZeroizeOnDrop;
 
 use crate::constants::{
     CLOUDFLARE_API_BASE, CLOUDFLARE_USER_AGENT, DNS_RECORD_TYPE_AAAA, DNS_TTL_AUTO,
-    HTTP_STATUS_FORBIDDEN, HTTP_STATUS_SERVER_ERROR_MAX, HTTP_STATUS_SERVER_ERROR_MIN,
-    HTTP_STATUS_TOO_MANY_REQUESTS, HTTP_STATUS_UNAUTHORIZED,
+    HTTP_POOL_IDLE_TIMEOUT_SECS, HTTP_POOL_MAX_IDLE_PER_HOST, HTTP_STATUS_FORBIDDEN,
+    HTTP_STATUS_SERVER_ERROR_MAX, HTTP_STATUS_SERVER_ERROR_MIN, HTTP_STATUS_TOO_MANY_REQUESTS,
+    HTTP_STATUS_UNAUTHORIZED,
 };
+use crate::dns_provider::{DnsProvider, MultiRecordPolicy};
 
 //==============================================================================
 // Types
@@ -177,6 +180,9 @@ impl CloudflareClient {
             .connect_timeout(timeout)
             .timeout(timeout)
             .user_agent(CLOUDFLARE_USER_AGENT)
+            .pool_max_idle_per_host(HTTP_POOL_MAX_IDLE_PER_HOST)
+            .pool_idle_timeout(Duration::from_secs(HTTP_POOL_IDLE_TIMEOUT_SECS))
+            .tcp_keepalive(Duration::from_secs(HTTP_POOL_IDLE_TIMEOUT_SECS))
             .build()
             .context("build reqwest client")?;
 
@@ -262,144 +268,6 @@ impl CloudflareClient {
             }
         }
         Ok(())
-    }
-
-    /// Retrieves all AAAA records for a given record name in a zone
-    ///
-    /// # Arguments
-    ///
-    /// * `zone_id` - The Cloudflare zone ID
-    /// * `record_name` - The DNS record name to query
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing a vector of `DnsRecord` objects or an error
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// - The HTTP request fails
-    /// - The API returns an error response
-    /// - Rate limit is exceeded (429 status)
-    /// - Server error occurs (5xx status)
-    pub async fn get_records(&self, zone_id: &str, record_name: &str) -> Result<Vec<DnsRecord>> {
-        let record_name = encode(record_name);
-        let url = format!(
-            "{}/zones/{}/dns_records?name={}&type=AAAA",
-            CLOUDFLARE_API_BASE, zone_id, record_name
-        );
-
-        debug!("GET {} (record: {})", url, record_name);
-        let resp = self
-            .client
-            .get(&url)
-            .bearer_auth(self.api_token.as_str())
-            .send()
-            .await
-            .with_context(|| {
-                format!(
-                    "GET request failed for record '{}' in zone '{}'",
-                    record_name, zone_id
-                )
-            })?;
-        let status = resp.status();
-        let body: ApiResponse<Vec<DnsRecord>> = resp
-            .json()
-            .await
-            .with_context(|| format!("Failed to parse response for record '{}'", record_name))?;
-
-        let ctx = format!("GET record '{}' in zone '{}'", record_name, zone_id);
-        self.handle_api_response(status, &body, &ctx)?;
-
-        Ok(body.result.unwrap_or_default())
-    }
-
-    /// Creates or updates an AAAA record with the given IPv6 address
-    ///
-    /// This method implements an upsert operation: it will create a new record
-    /// if none exists, or update existing records according to the specified policy.
-    ///
-    /// # Arguments
-    ///
-    /// * `zone_id` - The Cloudflare zone ID
-    /// * `record_name` - The DNS record name
-    /// * `ipv6_addr` - The IPv6 address to set
-    /// * `policy` - The policy for handling multiple records
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing the created or updated `DnsRecord` or an error
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if:
-    /// - Multiple records exist and policy is `Error`
-    /// - The HTTP request fails
-    /// - The API returns an error response
-    /// - Rate limit is exceeded (429 status)
-    /// - Server error occurs (5xx status)
-    pub async fn upsert_aaaa_record(
-        &self,
-        zone_id: &str,
-        record_name: &str,
-        ipv6_addr: &str,
-        policy: MultiRecordPolicy,
-    ) -> Result<DnsRecord> {
-        let records = self.get_records(zone_id, record_name).await?;
-        match policy {
-            MultiRecordPolicy::Error => {
-                if records.len() > 1 {
-                    warn!("Multiple AAAA records found for {}", record_name);
-                    bail!(
-                        "Multiple AAAA records found for {}. Refusing to update.",
-                        record_name
-                    );
-                }
-                if let Some(record) = records.into_iter().next() {
-                    if record.content == ipv6_addr {
-                        debug!("Record already matches {}", ipv6_addr);
-                        return Ok(record);
-                    }
-                    self.update_record(zone_id, &record.id, record_name, ipv6_addr)
-                        .await
-                } else {
-                    self.create_record(zone_id, record_name, ipv6_addr).await
-                }
-            }
-            MultiRecordPolicy::UpdateFirst => {
-                if let Some(record) = records.into_iter().next() {
-                    if record.content == ipv6_addr {
-                        debug!("Record already matches {}", ipv6_addr);
-                        return Ok(record);
-                    }
-                    self.update_record(zone_id, &record.id, record_name, ipv6_addr)
-                        .await
-                } else {
-                    self.create_record(zone_id, record_name, ipv6_addr).await
-                }
-            }
-            MultiRecordPolicy::UpdateAll => {
-                if records.is_empty() {
-                    return self.create_record(zone_id, record_name, ipv6_addr).await;
-                }
-                let mut first = None;
-                for record in records {
-                    if record.content == ipv6_addr {
-                        if first.is_none() {
-                            first = Some(record);
-                        }
-                        continue;
-                    }
-                    let updated = self
-                        .update_record(zone_id, &record.id, record_name, ipv6_addr)
-                        .await?;
-                    if first.is_none() {
-                        first = Some(updated);
-                    }
-                }
-                Ok(first.unwrap())
-            }
-        }
     }
 
     /// Create a new AAAA record
@@ -501,27 +369,150 @@ impl CloudflareClient {
     }
 }
 
-/// Policy for handling multiple AAAA records with the same name
-///
-/// When multiple AAAA records exist for a given record name, this enum
-/// defines how the client should handle the update operation.
-#[derive(Debug, Clone, Copy)]
-pub enum MultiRecordPolicy {
-    /// Refuse to update if multiple records exist (default)
-    ///
-    /// This is the safest option as it prevents accidental updates to
-    /// unintended records. The operation will fail with an error.
-    Error,
-    /// Update only the first record found
-    ///
-    /// This option is useful when you want to update a single record
-    /// but don't care which one is updated.
-    UpdateFirst,
-    /// Update all matching AAAA records
-    ///
-    /// This option will update all AAAA records with the given name.
-    /// Be careful as this may affect multiple records.
-    UpdateAll,
+//==============================================================================
+// DnsProvider Implementation
+//==============================================================================
+
+#[async_trait]
+impl DnsProvider for CloudflareClient {
+    async fn upsert_aaaa_record(
+        &self,
+        zone_id: &str,
+        record_name: &str,
+        ipv6_addr: &str,
+        policy: MultiRecordPolicy,
+    ) -> Result<crate::dns_provider::DnsRecord> {
+        let record = self
+            .upsert_aaaa_record_impl(zone_id, record_name, ipv6_addr, policy)
+            .await?;
+        Ok(crate::dns_provider::DnsRecord {
+            id: record.id,
+            record_type: record.record_type,
+            name: record.name,
+            content: record.content,
+            proxied: record.proxied,
+            ttl: record.ttl,
+        })
+    }
+
+    async fn get_records(
+        &self,
+        zone_id: &str,
+        record_name: &str,
+    ) -> Result<Vec<crate::dns_provider::DnsRecord>> {
+        let records = self.get_records_impl(zone_id, record_name).await?;
+        Ok(records
+            .into_iter()
+            .map(|r| crate::dns_provider::DnsRecord {
+                id: r.id,
+                record_type: r.record_type,
+                name: r.name,
+                content: r.content,
+                proxied: r.proxied,
+                ttl: r.ttl,
+            })
+            .collect())
+    }
+}
+
+impl CloudflareClient {
+    /// Internal implementation of upsert_aaaa_record
+    async fn upsert_aaaa_record_impl(
+        &self,
+        zone_id: &str,
+        record_name: &str,
+        ipv6_addr: &str,
+        policy: MultiRecordPolicy,
+    ) -> Result<DnsRecord> {
+        let records = self.get_records_impl(zone_id, record_name).await?;
+        match policy {
+            MultiRecordPolicy::Error => {
+                if records.len() > 1 {
+                    warn!("Multiple AAAA records found for {}", record_name);
+                    bail!(
+                        "Multiple AAAA records found for {}. Refusing to update.",
+                        record_name
+                    );
+                }
+                if let Some(record) = records.into_iter().next() {
+                    if record.content == ipv6_addr {
+                        debug!("Record already matches {}", ipv6_addr);
+                        return Ok(record);
+                    }
+                    self.update_record(zone_id, &record.id, record_name, ipv6_addr)
+                        .await
+                } else {
+                    self.create_record(zone_id, record_name, ipv6_addr).await
+                }
+            }
+            MultiRecordPolicy::UpdateFirst => {
+                if let Some(record) = records.into_iter().next() {
+                    if record.content == ipv6_addr {
+                        debug!("Record already matches {}", ipv6_addr);
+                        return Ok(record);
+                    }
+                    self.update_record(zone_id, &record.id, record_name, ipv6_addr)
+                        .await
+                } else {
+                    self.create_record(zone_id, record_name, ipv6_addr).await
+                }
+            }
+            MultiRecordPolicy::UpdateAll => {
+                if records.is_empty() {
+                    return self.create_record(zone_id, record_name, ipv6_addr).await;
+                }
+                let mut first = None;
+                for record in records {
+                    if record.content == ipv6_addr {
+                        if first.is_none() {
+                            first = Some(record);
+                        }
+                        continue;
+                    }
+                    let updated = self
+                        .update_record(zone_id, &record.id, record_name, ipv6_addr)
+                        .await?;
+                    if first.is_none() {
+                        first = Some(updated);
+                    }
+                }
+                Ok(first.unwrap())
+            }
+        }
+    }
+
+    /// Internal implementation of get_records
+    async fn get_records_impl(&self, zone_id: &str, record_name: &str) -> Result<Vec<DnsRecord>> {
+        let record_name = encode(record_name);
+        let url = format!(
+            "{}/zones/{}/dns_records?name={}&type=AAAA",
+            CLOUDFLARE_API_BASE, zone_id, record_name
+        );
+
+        debug!("GET {} (record: {})", url, record_name);
+        let resp = self
+            .client
+            .get(&url)
+            .bearer_auth(self.api_token.as_str())
+            .send()
+            .await
+            .with_context(|| {
+                format!(
+                    "GET request failed for record '{}' in zone '{}'",
+                    record_name, zone_id
+                )
+            })?;
+        let status = resp.status();
+        let body: ApiResponse<Vec<DnsRecord>> = resp
+            .json()
+            .await
+            .with_context(|| format!("Failed to parse response for record '{}'", record_name))?;
+
+        let ctx = format!("GET record '{}' in zone '{}'", record_name, zone_id);
+        self.handle_api_response(status, &body, &ctx)?;
+
+        Ok(body.result.unwrap_or_default())
+    }
 }
 
 //==============================================================================

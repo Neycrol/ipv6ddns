@@ -10,9 +10,10 @@ use chrono::{DateTime, Utc};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, warn};
 
-use crate::cloudflare::CloudflareClient;
 use crate::config::Config;
 use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS};
+use crate::dns_provider::DnsProvider;
+use crate::metrics;
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
 
 //==============================================================================
@@ -161,15 +162,15 @@ pub fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
 
 /// Main daemon for IPv6 DDNS synchronization
 ///
-/// The daemon monitors IPv6 address changes and updates Cloudflare DNS records
+/// The daemon monitors IPv6 address changes and updates DNS records
 /// accordingly. It supports both event-driven (netlink) and polling-based monitoring.
 pub struct Daemon {
     /// Shared configuration
     config: Arc<Config>,
     /// Shared application state (protected by mutex)
     state: Arc<tokio::sync::Mutex<AppState>>,
-    /// Cloudflare API client
-    cf_client: Arc<CloudflareClient>,
+    /// DNS provider client (trait object)
+    dns_provider: Arc<dyn DnsProvider>,
     /// Netlink socket for IPv6 address monitoring
     netlink: NetlinkSocket,
 }
@@ -180,13 +181,13 @@ impl Daemon {
     /// # Arguments
     ///
     /// * `config` - Configuration for the daemon
-    /// * `cf_client` - Cloudflare API client
+    /// * `dns_provider` - DNS provider client (trait object)
     /// * `netlink` - Netlink socket for IPv6 monitoring
-    pub fn new(config: Config, cf_client: CloudflareClient, netlink: NetlinkSocket) -> Self {
+    pub fn new(config: Config, dns_provider: Arc<dyn DnsProvider>, netlink: NetlinkSocket) -> Self {
         Self {
             config: Arc::new(config),
             state: Arc::new(tokio::sync::Mutex::new(AppState::default())),
-            cf_client: Arc::new(cf_client),
+            dns_provider,
             netlink,
         }
     }
@@ -330,8 +331,10 @@ impl Daemon {
             self.config.record, ip, redacted_zone
         );
 
+        let timer = metrics::start_dns_update_timer(&self.config.provider_type, "upsert");
+
         let result = self
-            .cf_client
+            .dns_provider
             .upsert_aaaa_record(
                 self.config.zone_id.as_str(),
                 &self.config.record,
@@ -340,16 +343,24 @@ impl Daemon {
             )
             .await;
 
+        timer.stop_and_record();
+
         match result {
             Ok(record) => {
                 let mut state = self.state.lock().await;
                 state.mark_synced(ip.to_string());
+                metrics::record_dns_update(&self.config.provider_type);
+                metrics::set_error_count(0);
+                metrics::set_sync_state(1);
                 info!("Synced (ID: {})", record.id);
                 Ok(())
             }
             Err(e) => {
                 let mut state = self.state.lock().await;
                 state.mark_error();
+                metrics::record_dns_error(&self.config.provider_type, "sync_error");
+                metrics::set_error_count(state.error_count);
+                metrics::set_sync_state(2);
                 error!("Sync failed: {:#}", e);
                 Err(e)
             }
@@ -364,6 +375,7 @@ impl Daemon {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::BACKOFF_MAX_SECS;
 
     #[test]
     fn test_backoff_delay_calculation() {

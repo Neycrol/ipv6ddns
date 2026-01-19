@@ -261,20 +261,87 @@ The daemon responds to Unix signals:
 
 ### Potential Improvements
 
-1. **Health Check Endpoint**: Add HTTP endpoint for monitoring
-2. **Metrics**: Expose metrics (sync status, error count, last sync time)
-3. **Configuration Reload**: Support reloading config without restart
-4. **Multiple Records**: Support monitoring multiple DNS records
-5. **Webhook Support**: Send webhook notifications on sync events
-6. **DNS Provider Support**: Add support for other DNS providers
+1. **Configuration Reload**: Support reloading config without restart
+2. **Multiple Records**: Support monitoring multiple DNS records
+3. **Webhook Support**: Send webhook notifications on sync events
+4. **IPv4 Support**: Add support for IPv4 DDNS
 
 ### Known Limitations
 
 1. **Single Record**: Only monitors one DNS record per instance
-2. **Cloudflare Only**: No support for other DNS providers
-3. **IPv6 Only**: No IPv4 support
-4. **Linux Only**: Requires netlink (Linux-specific)
-5. **No UI**: No graphical interface (except Android app)
+2. **IPv6 Only**: No IPv4 support
+3. **Linux Only**: Requires netlink (Linux-specific)
+4. **No UI**: No graphical interface (except Android app)
+
+## Observability
+
+### Metrics
+
+ipv6ddns exposes Prometheus metrics for monitoring:
+
+- `ipv6ddns_dns_updates_total`: Total number of successful DNS updates
+- `ipv6ddns_dns_errors_total`: Total number of DNS update errors
+- `ipv6ddns_error_count`: Current number of consecutive errors
+- `ipv6ddns_last_sync_seconds`: Time since last successful sync
+- `ipv6ddns_sync_state`: Current sync state (0=Unknown, 1=Synced, 2=Error)
+- `ipv6ddns_dns_update_duration_seconds`: DNS update duration histogram
+- `ipv6ddns_ipv6_change_events`: IPv6 address change events histogram
+
+Enable metrics by setting `IPV6DDNS_METRICS_PORT` environment variable (e.g., `9090`).
+
+### Health Check
+
+ipv6ddns provides a health check endpoint:
+
+- `/health`: Returns health status JSON
+- `/metrics`: Returns Prometheus metrics
+
+Enable health check by setting `IPV6DDNS_HEALTH_PORT` environment variable (e.g., `8080`).
+
+Example health response:
+```json
+{
+  "status": "ok",
+  "sync_state": "synced",
+  "last_sync_seconds_ago": 0,
+  "error_count": 0,
+  "healthy": true
+}
+```
+
+## DNS Provider Abstraction
+
+ipv6ddns uses a trait-based abstraction for DNS providers, allowing support for multiple providers:
+
+### Supported Providers
+
+- **Cloudflare**: Default provider, fully supported
+
+### Provider Configuration
+
+Set the provider type via environment variable or config file:
+
+```toml
+provider_type = "cloudflare"
+```
+
+Or via environment variable:
+```bash
+export IPV6DDNS_PROVIDER_TYPE="cloudflare"
+```
+
+### Adding New Providers
+
+To add support for a new DNS provider:
+
+1. Implement the `DnsProvider` trait in a new module (e.g., `src/route53.rs`)
+2. Add the provider to the configuration parsing logic
+3. Update `src/main.rs` to instantiate the correct provider based on configuration
+
+The `DnsProvider` trait requires implementing:
+
+- `upsert_aaaa_record()`: Create or update an AAAA record
+- `get_records()`: Retrieve existing AAAA records
 
 ## References
 
