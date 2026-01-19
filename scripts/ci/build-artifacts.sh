@@ -98,6 +98,31 @@ fi
 curl -fsSL "$APPIMAGE_TOOL_URL" -o /tmp/appimagetool.AppImage
 chmod +x /tmp/appimagetool.AppImage
 
+# 验证 SHA-256 校验和
+case "$APPIMAGE_TOOL_URL" in
+  *appimagetool-x86_64.AppImage)
+    EXPECTED_SHA256="b90f4a8b18967545fda78a445b27680a1642f1ef9488ced28b65398f2be7add2"
+    ;;
+  *appimagetool-aarch64.AppImage)
+    EXPECTED_SHA256="a48972e5ae91c944c5a7c80214e7e0a42dd6aa3ae979d8756203512a74ff574d"
+    ;;
+  *)
+    echo "WARNING: Unknown AppImageKit URL, skipping SHA-256 verification"
+    EXPECTED_SHA256=""
+    ;;
+esac
+
+if [ -n "$EXPECTED_SHA256" ]; then
+  ACTUAL_SHA256=$(sha256sum /tmp/appimagetool.AppImage | awk '{print $1}')
+  if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+    echo "ERROR: SHA-256 mismatch for appimagetool.AppImage"
+    echo "Expected: $EXPECTED_SHA256"
+    echo "Actual: $ACTUAL_SHA256"
+    exit 1
+  fi
+  echo "SHA-256 verification passed for appimagetool.AppImage"
+fi
+
 APPIMG_TMP=$(mktemp -d)
 if APPIMAGE_EXTRACT_AND_RUN=1 /tmp/appimagetool.AppImage "$APPDIR" "$ROOT_DIR/dist/ipv6ddns-${PKGVER}-${ARCH}.AppImage"; then
   :
