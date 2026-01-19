@@ -73,7 +73,7 @@ jobs:
             sys.exit(f"ERROR: CHANGELOG.md does not contain entry for version {raw_version}")
           end = len(lines)
           for j in range(start + 1, len(lines)):
-            if re.match(r"^## \\[", lines[j]):
+            if lines[j].lstrip().startswith("## ["):
               end = j
               break
           block = "\n".join(lines[start:end])
