@@ -13,6 +13,7 @@ CONFIG_SRC="${SCRIPT_DIR}/etc/config.toml"
 CONFIG_DST="/etc/ipv6ddns/config.toml"
 SERVICE_SRC="${SCRIPT_DIR}/etc/ipv6ddns.service"
 SERVICE_DST="/etc/systemd/system/ipv6ddns.service"
+INSTALL_BIN="/usr/bin/ipv6ddns"
 
 # Colors for output
 RED='\033[0;31m'
@@ -71,7 +72,7 @@ install() {
         log_error "Binary not found. Run 'build' first."
         exit 1
     fi
-    sudo install -m 755 "${BINARY}" /usr/local/bin/ipv6ddns
+    sudo install -m 755 "${BINARY}" "${INSTALL_BIN}"
 
     # Copy config (preserve existing if it exists)
     if [[ -f "${CONFIG_DST}" ]]; then
@@ -103,7 +104,7 @@ uninstall() {
     sudo systemctl disable ipv6ddns.service 2>/dev/null || true
 
     # Remove files
-    sudo rm -f /usr/local/bin/ipv6ddns
+    sudo rm -f "${INSTALL_BIN}"
     sudo rm -f /etc/systemd/system/ipv6ddns.service
     sudo rm -rf /etc/ipv6ddns
 
