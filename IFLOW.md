@@ -207,18 +207,17 @@ F) Improvement review + lead fixes (conditional):
    - Coordinator writes updated summary to:
      `.iflow/evidence/implementation_summary.md` (replace prior).
 
-G) Final decision + code re-review (parallel required; **4 roles**):
+G) Final decision + code re-review (parallel required; **3 roles**):
    Agents to run (parallel batch):
-   - glm-chair-1
    - deepseek-vice-2
    - kimi-junior-3
    - deepseek-refactor
    Start in parallel:
-   - glm-chair-1 → decide whether the **improved proposal** passes
-   - deepseek-vice-2 → re-review glm-lead’s code vs `origin/main`
-   - kimi-junior-3 → re-review glm-lead’s code vs `origin/main`
-   - deepseek-refactor → re-review glm-lead’s code vs `origin/main`
-   If chair approves proposal **and** all code re-reviews approve:
+   - deepseek-vice-2 → re-review glm-lead’s code vs `origin/main` and vote
+   - kimi-junior-3 → re-review glm-lead’s code vs `origin/main` and vote
+   - deepseek-refactor → re-review glm-lead’s code vs `origin/main` and vote
+   After votes are collected, coordinator asks glm-chair-1 to issue the final decision.
+   If chair approves proposal **and** all code votes approve:
    - Coordinator must summon Chair to publish the PR (use pr-submit skill).
    - Coordinator must NOT publish the PR directly.
    - Chair must explicitly follow PR publish steps:
@@ -227,7 +226,7 @@ G) Final decision + code re-review (parallel required; **4 roles**):
      3) Run pr-submit (or gh pr create + gh pr comment) to publish.
      4) Report PR link + brief risk summary.
    - Coordinator records PR links in `.iflow/evidence/pr_links.md`.
-   If chair approves proposal but any code re-review is needs-work/reject:
+   If chair approves proposal but any code vote is needs-work/reject:
    - Coordinator sends all rejection reasons + review notes to glm-lead, deepseek-refactor,
      and kimi-qa-docs, then repeats E → F → G for **that proposal** until approved.
    If chair rejects proposal:
