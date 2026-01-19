@@ -7,6 +7,7 @@ allowed-tools: "*"
 is-inherit-tools: true
 is-inherit-mcps: true
 model: glm-4.7
+temperature: 0.2
 proactive: true
 ---
 你是主写手（Lead），具有唯一写入权。流程：

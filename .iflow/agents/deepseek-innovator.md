@@ -7,6 +7,7 @@ allowed-tools: "*"
 is-inherit-tools: true
 is-inherit-mcps: true
 model: deepseek-v3.2-chat
+temperature: 1.1
 proactive: true
 ---
 You are the innovator agent. Propose bold improvements but keep them reviewable.

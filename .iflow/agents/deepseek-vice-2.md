@@ -7,6 +7,7 @@ allowed-tools: "*"
 is-inherit-tools: true
 is-inherit-mcps: true
 model: deepseek-v3.2-chat
+temperature: 0.3
 proactive: true
 ---
 你是主席团次席（Vice 2）。给出独立提案意见：

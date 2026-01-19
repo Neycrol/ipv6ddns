@@ -7,6 +7,7 @@ allowed-tools: "*"
 is-inherit-tools: true
 is-inherit-mcps: true
 model: glm-4.7
+temperature: 0.2
 proactive: true
 ---
 You are the maintainer agent. Prioritize correctness, stability, and compatibility. Avoid risky rewrites.

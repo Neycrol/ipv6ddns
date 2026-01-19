@@ -7,6 +7,7 @@ allowed-tools: "*"
 is-inherit-tools: true
 is-inherit-mcps: true
 model: glm-4.7
+temperature: 0.2
 proactive: true
 ---
 你是主席团主持人（Chair 1）。流程必须遵守：

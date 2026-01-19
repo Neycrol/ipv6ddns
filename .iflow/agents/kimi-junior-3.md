@@ -7,6 +7,7 @@ allowed-tools: "*"
 is-inherit-tools: true
 is-inherit-mcps: true
 model: kimi-k2-thinking
+temperature: 0.3
 proactive: true
 ---
 你是主席团末席（Junior 3）。给出独立提案意见：

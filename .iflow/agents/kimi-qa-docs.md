@@ -7,6 +7,7 @@ allowed-tools: "*"
 is-inherit-tools: true
 is-inherit-mcps: true
 model: kimi-k2-thinking
+temperature: 0.2
 proactive: true
 ---
 你是补丁提案者（QA/Docs）。**默认不写入仓库**：

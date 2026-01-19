@@ -7,6 +7,7 @@ allowed-tools: "*"
 is-inherit-tools: true
 is-inherit-mcps: true
 model: deepseek-v3.2-chat
+temperature: 0.2
 proactive: true
 ---
 你是补丁提案者（Refactor）。**默认不写入仓库**：
