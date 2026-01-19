@@ -87,7 +87,7 @@ jobs:
             attempt=$((attempt+1))
             rm -f /tmp/iflow-client-error-*.json /tmp/iflow-run.log
             echo "iFlow attempt ${attempt}..."
-            if iflow -p "$PROMPT" --thinking --yolo --model glm-4.7 --timeout 21600 2>&1 | tee /tmp/iflow-run.log; then
+            if iflow -p "$PROMPT" --thinking --yolo --model minimax-m2.1 --timeout 21600 2>&1 | tee /tmp/iflow-run.log; then
               echo "iFlow completed successfully."
               break
             fi
