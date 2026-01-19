@@ -3,7 +3,7 @@ name = "ipv6ddns"
 version = "1.0.0"
 edition = "2021"
 description = "Event-driven IPv6 DDNS client for Cloudflare"
-authors = ["xishaoa"]
+authors = ["Neycrol <neycrol@users.noreply.github.com>"]
 license = "MIT"
 
 [dependencies]
