@@ -1,13 +1,18 @@
 //! Health check endpoint for ipv6ddns
 //!
-//! This module provides an HTTP endpoint for health checks and metrics.
+//! This module provides a lightweight HTTP endpoint for health checks.
 
 use anyhow::Result;
+use chrono::Utc;
 use serde::Serialize;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, Mutex};
 use tracing::{error, info};
+
+use crate::daemon::{AppState, RecordState};
 
 //==============================================================================
 // Types
@@ -39,49 +44,58 @@ pub struct HealthServer {
 //==============================================================================
 
 impl HealthServer {
-    /// Creates a new health server
-    pub fn new() -> Self {
-        Self { shutdown_tx: None }
-    }
-
     /// Starts the health check server
-    ///
-    /// # Arguments
-    ///
-    /// * `addr` - Socket address to bind to
-    /// * `metrics_enabled` - Whether to expose metrics endpoint
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing the server handle or an error
-    pub async fn start(&mut self, addr: SocketAddr, metrics_enabled: bool) -> Result<()> {
+    pub async fn start(addr: SocketAddr, state: Arc<Mutex<AppState>>) -> Result<Self> {
         let listener = TcpListener::bind(addr).await?;
         info!("Health check server listening on {}", addr);
 
-        let (shutdown_tx, shutdown_rx) = oneshot::channel();
-        self.shutdown_tx = Some(shutdown_tx);
+        let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
 
         tokio::spawn(async move {
-            let router = axum::Router::new()
-                .route("/health", axum::routing::get(health_handler))
-                .route("/metrics", axum::routing::get(metrics_handler));
+            loop {
+                tokio::select! {
+                    _ = &mut shutdown_rx => {
+                        break;
+                    }
+                    accept = listener.accept() => {
+                        match accept {
+                            Ok((mut socket, _peer)) => {
+                                let state = Arc::clone(&state);
+                                tokio::spawn(async move {
+                                    let mut buf = [0u8; 1024];
+                                    let _ = socket.read(&mut buf).await;
 
-            if metrics_enabled {
-                info!("Metrics endpoint enabled at http://{}/metrics", addr);
-            } else {
-                info!("Metrics endpoint disabled");
-            }
+                                    let snapshot = state.lock().await;
+                                    let response = build_response(&snapshot);
+                                    let body = match serde_json::to_string(&response) {
+                                        Ok(body) => body,
+                                        Err(_) => "{\"status\":\"error\"}".to_string(),
+                                    };
 
-            let serve = axum::serve(listener, router).with_graceful_shutdown(async {
-                shutdown_rx.await.ok();
-            });
+                                    let reply = format!(
+                                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                        body.len(),
+                                        body
+                                    );
 
-            if let Err(e) = serve.await {
-                error!("Health check server error: {}", e);
+                                    if let Err(e) = socket.write_all(reply.as_bytes()).await {
+                                        error!("Health response write failed: {}", e);
+                                    }
+                                    let _ = socket.shutdown().await;
+                                });
+                            }
+                            Err(e) => {
+                                error!("Health listener accept error: {}", e);
+                            }
+                        }
+                    }
+                }
             }
         });
 
-        Ok(())
+        Ok(Self {
+            shutdown_tx: Some(shutdown_tx),
+        })
     }
 
     /// Stops the health check server
@@ -92,32 +106,29 @@ impl HealthServer {
     }
 }
 
-impl Default for HealthServer {
-    fn default() -> Self {
-        Self::new()
+//==============================================================================
+// Helpers
+//==============================================================================
+
+fn build_response(state: &AppState) -> HealthResponse {
+    let (sync_state, healthy) = match &state.state {
+        RecordState::Unknown => ("unknown".to_string(), false),
+        RecordState::Synced(_) => ("synced".to_string(), true),
+        RecordState::Error(_) => ("error".to_string(), false),
+    };
+
+    let last_sync_seconds_ago = state.last_sync.map(|ts| {
+        let seconds = (Utc::now() - ts).num_seconds();
+        seconds.max(0) as f64
+    });
+
+    HealthResponse {
+        status: if healthy { "ok".to_string() } else { "degraded".to_string() },
+        sync_state,
+        last_sync_seconds_ago,
+        error_count: state.error_count,
+        healthy,
     }
-}
-
-//==============================================================================
-// Handlers
-//==============================================================================
-
-/// Health check handler
-async fn health_handler() -> axum::Json<HealthResponse> {
-    // In a real implementation, we would query the daemon's state
-    // For now, return a simple healthy response
-    axum::Json(HealthResponse {
-        status: "ok".to_string(),
-        sync_state: "synced".to_string(),
-        last_sync_seconds_ago: Some(0.0),
-        error_count: 0,
-        healthy: true,
-    })
-}
-
-/// Metrics handler
-async fn metrics_handler() -> String {
-    crate::metrics::gather_metrics()
 }
 
 //==============================================================================
@@ -141,11 +152,5 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"status\":\"ok\""));
         assert!(json.contains("\"healthy\":true"));
-    }
-
-    #[test]
-    fn test_health_server_default() {
-        let server = HealthServer::default();
-        assert!(server.shutdown_tx.is_none());
     }
 }

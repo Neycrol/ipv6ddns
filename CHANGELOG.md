@@ -9,7 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - DNS provider abstraction layer for multi-provider support
-- Prometheus metrics endpoint for monitoring
 - HTTP health check endpoint
 - HTTP connection pool optimization for better performance
 - Minimum Supported Rust Version (MSRV) specification

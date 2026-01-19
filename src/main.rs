@@ -18,7 +18,6 @@ mod constants;
 mod daemon;
 mod dns_provider;
 mod health;
-mod metrics;
 mod netlink;
 mod validation;
 

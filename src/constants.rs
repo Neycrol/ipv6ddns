@@ -111,9 +111,6 @@ pub const ENV_ALLOW_LOOPBACK: &str = "IPV6DDNS_ALLOW_LOOPBACK";
 /// Environment variable name for DNS provider type
 pub const ENV_PROVIDER_TYPE: &str = "IPV6DDNS_PROVIDER_TYPE";
 
-/// Environment variable name for metrics port
-pub const ENV_METRICS_PORT: &str = "IPV6DDNS_METRICS_PORT";
-
 /// Environment variable name for health check port
 pub const ENV_HEALTH_PORT: &str = "IPV6DDNS_HEALTH_PORT";
 

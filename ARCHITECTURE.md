@@ -275,26 +275,11 @@ The daemon responds to Unix signals:
 
 ## Observability
 
-### Metrics
-
-ipv6ddns exposes Prometheus metrics for monitoring:
-
-- `ipv6ddns_dns_updates_total`: Total number of successful DNS updates
-- `ipv6ddns_dns_errors_total`: Total number of DNS update errors
-- `ipv6ddns_error_count`: Current number of consecutive errors
-- `ipv6ddns_last_sync_seconds`: Time since last successful sync
-- `ipv6ddns_sync_state`: Current sync state (0=Unknown, 1=Synced, 2=Error)
-- `ipv6ddns_dns_update_duration_seconds`: DNS update duration histogram
-- `ipv6ddns_ipv6_change_events`: IPv6 address change events histogram
-
-Enable metrics by setting `IPV6DDNS_METRICS_PORT` environment variable (e.g., `9090`).
-
 ### Health Check
 
 ipv6ddns provides a health check endpoint:
 
 - `/health`: Returns health status JSON
-- `/metrics`: Returns Prometheus metrics
 
 Enable health check by setting `IPV6DDNS_HEALTH_PORT` environment variable (e.g., `8080`).
 

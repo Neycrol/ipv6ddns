@@ -11,9 +11,9 @@ use zeroize::ZeroizeOnDrop;
 
 use crate::constants::{
     DEFAULT_POLL_INTERVAL_SECS, DEFAULT_TIMEOUT_SECS, ENV_ALLOW_LOOPBACK, ENV_API_TOKEN,
-    ENV_HEALTH_PORT, ENV_METRICS_PORT, ENV_MULTI_RECORD, ENV_PROVIDER_TYPE, ENV_RECORD_NAME,
-    ENV_ZONE_ID, MAX_POLL_INTERVAL_SECS, MAX_TIMEOUT_SECS, MAX_ZONE_ID_LENGTH,
-    MIN_API_TOKEN_LENGTH, MIN_POLL_INTERVAL_SECS, MIN_TIMEOUT_SECS, MIN_ZONE_ID_LENGTH,
+    ENV_HEALTH_PORT, ENV_MULTI_RECORD, ENV_PROVIDER_TYPE, ENV_RECORD_NAME, ENV_ZONE_ID,
+    MAX_POLL_INTERVAL_SECS, MAX_TIMEOUT_SECS, MAX_ZONE_ID_LENGTH, MIN_API_TOKEN_LENGTH,
+    MIN_POLL_INTERVAL_SECS, MIN_TIMEOUT_SECS, MIN_ZONE_ID_LENGTH,
 };
 use crate::dns_provider::MultiRecordPolicy;
 use crate::validation::validate_record_name;
@@ -40,7 +40,6 @@ use crate::validation::validate_record_name;
 /// - `multi_record`: Policy for handling multiple AAAA records
 /// - `allow_loopback`: Allow loopback IPv6 (::1) as a valid address
 /// - `provider_type`: DNS provider type (default: "cloudflare")
-/// - `metrics_port`: Port for Prometheus metrics endpoint (0 = disabled)
 /// - `health_port`: Port for health check endpoint (0 = disabled)
 ///
 /// # Configuration Loading Priority
@@ -104,13 +103,6 @@ pub struct Config {
     /// Currently supported: "cloudflare"
     #[zeroize(skip)]
     pub provider_type: String,
-    /// Port for Prometheus metrics endpoint
-    ///
-    /// Default: 0 (disabled)
-    /// Can be set via the `IPV6DDNS_METRICS_PORT` environment variable.
-    /// Set to 0 to disable the metrics endpoint.
-    #[zeroize(skip)]
-    pub metrics_port: u16,
     /// Port for health check endpoint
     ///
     /// Default: 0 (disabled)
@@ -173,7 +165,6 @@ impl Config {
         let mut multi_record = MultiRecordPolicy::Error;
         let mut allow_loopback = false;
         let mut provider_type = "cloudflare".to_string();
-        let mut metrics_port: u16 = 0;
         let mut health_port: u16 = 0;
 
         if let Some(path) = config_path {
@@ -200,9 +191,6 @@ impl Config {
                 if let Some(v) = toml_config.provider_type {
                     provider_type = v;
                 }
-                if let Some(v) = toml_config.metrics_port {
-                    metrics_port = v;
-                }
                 if let Some(v) = toml_config.health_port {
                     health_port = v;
                 }
@@ -219,7 +207,6 @@ impl Config {
             multi_record,
             allow_loopback,
             provider_type,
-            metrics_port,
             health_port,
         })
     }
@@ -266,11 +253,6 @@ impl Config {
         if let Ok(v) = env::var(ENV_PROVIDER_TYPE) {
             if !v.is_empty() {
                 config.provider_type = v;
-            }
-        }
-        if let Ok(v) = env::var(ENV_METRICS_PORT) {
-            if !v.is_empty() {
-                config.metrics_port = v.parse().context("Invalid IPV6DDNS_METRICS_PORT value")?;
             }
         }
         if let Ok(v) = env::var(ENV_HEALTH_PORT) {
@@ -395,7 +377,6 @@ struct TomlConfig {
     multi_record: Option<String>,
     allow_loopback: Option<bool>,
     provider_type: Option<String>,
-    metrics_port: Option<u16>,
     health_port: Option<u16>,
 }
 

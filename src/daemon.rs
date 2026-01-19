@@ -13,7 +13,7 @@ use tracing::{debug, error, info, warn};
 use crate::config::Config;
 use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS};
 use crate::dns_provider::DnsProvider;
-use crate::metrics;
+use crate::health::HealthServer;
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
 
 //==============================================================================
@@ -226,6 +226,19 @@ impl Daemon {
             )
         );
 
+        let mut health_server = if self.config.health_port > 0 {
+            let addr = std::net::SocketAddr::from(([127, 0, 0, 1], self.config.health_port));
+            match HealthServer::start(addr, Arc::clone(&self.state)).await {
+                Ok(server) => Some(server),
+                Err(e) => {
+                    error!("Health server failed to start: {:#}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
             info!("Initial IPv6: {}", ip);
             _ = self.sync_record(&ip).await;
@@ -259,6 +272,10 @@ impl Daemon {
         }
 
         info!("Daemon stopped");
+        if let Some(server) = health_server.as_mut() {
+            server.stop().await;
+        }
+
         Ok(())
     }
 
@@ -331,8 +348,6 @@ impl Daemon {
             self.config.record, ip, redacted_zone
         );
 
-        let timer = metrics::start_dns_update_timer(&self.config.provider_type, "upsert");
-
         let result = self
             .dns_provider
             .upsert_aaaa_record(
@@ -343,24 +358,16 @@ impl Daemon {
             )
             .await;
 
-        timer.stop_and_record();
-
         match result {
             Ok(record) => {
                 let mut state = self.state.lock().await;
                 state.mark_synced(ip.to_string());
-                metrics::record_dns_update(&self.config.provider_type);
-                metrics::set_error_count(0);
-                metrics::set_sync_state(1);
                 info!("Synced (ID: {})", record.id);
                 Ok(())
             }
             Err(e) => {
                 let mut state = self.state.lock().await;
                 state.mark_error();
-                metrics::record_dns_error(&self.config.provider_type, "sync_error");
-                metrics::set_error_count(state.error_count);
-                metrics::set_sync_state(2);
                 error!("Sync failed: {:#}", e);
                 Err(e)
             }

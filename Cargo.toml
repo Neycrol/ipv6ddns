@@ -22,9 +22,6 @@ libc = "0.2"
 async-trait = "0.1"
 urlencoding = "2.1"
 zeroize = { version = "1.8", features = ["serde", "zeroize_derive"] }
-prometheus = "0.13"
-axum = "0.7"
-lazy_static = "1.4"
 
 [dev-dependencies]
 serial_test = "3.0"
