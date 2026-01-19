@@ -14,6 +14,7 @@ import com.neycrol.ipv6ddns.data.ConfigStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import java.io.BufferedReader
@@ -23,6 +24,9 @@ import java.io.InputStreamReader
 class Ipv6DdnsService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var process: Process? = null
+    private var restartAttempts = 0
+    private val maxRestartAttempts = 5
+    private var currentConfigFile: File? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -64,6 +68,7 @@ class Ipv6DdnsService : Service() {
     @Synchronized
     private fun startProcess(configFile: File) {
         if (process != null) return
+        currentConfigFile = configFile
         try {
             val bin = BinaryManager.ensureBinary(this)
             val builder = ProcessBuilder(
@@ -73,6 +78,7 @@ class Ipv6DdnsService : Service() {
             )
             builder.redirectErrorStream(true)
             process = builder.start()
+            restartAttempts = 0 // Reset restart counter on successful start
             runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, true) }
             streamLogs(process!!)
         } catch (e: SecurityException) {
@@ -115,8 +121,27 @@ class Ipv6DdnsService : Service() {
         Log.w(TAG, "ipv6ddns exited with code $exitCode")
         runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
         process = null
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+
+        // Implement exponential backoff for restarts
+        if (restartAttempts < maxRestartAttempts) {
+            restartAttempts++
+            val backoffDelayMs = (1000L * (1 shl (restartAttempts - 1))).coerceAtMost(60000L)
+            Log.w(TAG, "Attempting restart $restartAttempts/$maxRestartAttempts after ${backoffDelayMs}ms delay")
+            // Schedule restart without blocking this thread
+            scope.launch {
+                delay(backoffDelayMs)
+                val configFile = currentConfigFile
+                if (configFile != null) {
+                    startProcess(configFile)
+                }
+            }
+        } else {
+            Log.e(TAG, "Max restart attempts ($maxRestartAttempts) reached, stopping service")
+            restartAttempts = 0
+            currentConfigFile = null
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     @Synchronized
@@ -124,6 +149,8 @@ class Ipv6DdnsService : Service() {
         try {
             process?.destroy()
             process = null
+            restartAttempts = 0 // Reset restart counter on manual stop
+            currentConfigFile = null
             runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
         } catch (e: Exception) {
             Log.w(TAG, "Stop failed: ${e.message}")
