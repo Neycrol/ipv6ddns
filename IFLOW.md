@@ -87,7 +87,7 @@ Do **not** run only Track A and then ask whether to continue Track B.
 After glm-lead drafts implementation, start this **parallel batch**:
 - deepseek-refactor → review the **revised proposal text** (Track A rework) and flag gaps/risks.
 - kimi-qa-docs → review the **revised proposal text** (Track A rework) and flag gaps/risks.
-- general-purpose (sub-writer) → audit glm-lead’s code vs `origin/main`:
+- glm-maintainer (sub-writer) → audit glm-lead’s code vs `origin/main`:
   run `git fetch origin`, inspect `git diff origin/main...HEAD`, and review touched files.
 Then aggregate feedback and send: proposal feedback to Track A; code feedback to glm-lead.
 
@@ -180,19 +180,19 @@ E) Coding + audit (parallel required):
    - glm-lead (implementation owner)
    - deepseek-refactor (proposal rework review)
    - kimi-qa-docs (proposal rework review)
-   - general-purpose (sub-writer code audit vs origin/main)
+   - glm-maintainer (sub-writer code audit vs origin/main)
    0) Coordinator assigns **exactly one approved proposal ID** to glm-lead per E cycle.
    1) glm-lead drafts an initial implementation.
    2) In parallel, run:
       - deepseek-refactor: review the **revised proposal text** (Track A rework) and list gaps/risks.
       - kimi-qa-docs: review the **revised proposal text** (Track A rework) and list gaps/risks.
-      - general-purpose (sub-writer): audit glm-lead’s code vs `origin/main`:
+      - glm-maintainer (sub-writer): audit glm-lead’s code vs `origin/main`:
         run `git fetch origin`, review `git diff origin/main...HEAD`, and inspect key files.
    3) Coordinator aggregates and routes feedback:
       - proposal feedback → Track A
       - code feedback → glm-lead
    4) Coordinator writes sub-writer audit to:
-      `.iflow/evidence/code_review_general-purpose.md` (verbatim).
+      `.iflow/evidence/code_review_glm-maintainer.md` (verbatim).
    If glm-lead discovers that the assigned proposal cannot be implemented without
    another approved proposal, they must stop and report to Chair + coordinator
    (do NOT proceed). Chair decides whether to merge proposals or reclassify needs-work.
