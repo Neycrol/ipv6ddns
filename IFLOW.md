@@ -83,18 +83,21 @@ Start **Track A and Track B in the same parallel batch**.
   - glm-lead (begin implementation of the approved proposal)
 Do **not** run only Track A and then ask whether to continue Track B.
 
-### E) Coding reviews (parallel required)
-After glm-lead drafts implementation, start these two reviewers **at the same time**:
-- deepseek-refactor
-- kimi-qa-docs
-Then aggregate feedback and send to glm-lead.
+### E) Coding reviews + sub-writer audit (parallel required)
+After glm-lead drafts implementation, start this **parallel batch**:
+- deepseek-refactor → review the **revised proposal text** (Track A rework) and flag gaps/risks.
+- kimi-qa-docs → review the **revised proposal text** (Track A rework) and flag gaps/risks.
+- general-purpose (sub-writer) → audit glm-lead’s code vs `origin/main`:
+  run `git fetch origin`, inspect `git diff origin/main...HEAD`, and review touched files.
+Then aggregate feedback and send: proposal feedback to Track A; code feedback to glm-lead.
 
-### F) Final Review + Vote (parallel required)
-Start these three final voters **at the same time**:
-- deepseek-vice-2
-- kimi-junior-3
-- glm-chair-1
-Only after all three return, write final-vote evidence files.
+### F) Improvement review + lead fixes (parallel required; **4 roles**)
+Start this **parallel batch** (must be 4 roles):
+- deepseek-vice-2 → review the improvement feedback (proposal-level)
+- kimi-junior-3 → review the improvement feedback (proposal-level)
+- glm-chair-1 → review the improvement feedback (proposal-level)
+- glm-lead → apply sub-writer code review feedback, update implementation, run required tests
+Only after all four return, record evidence and proceed.
 
 ## Workflow Stages
 Important: do NOT use the at-sign agent notation in this file (it triggers file import). Refer to agents
@@ -156,40 +159,52 @@ D) Chair decision:
      `.iflow/evidence/rejected_summary.md`, plus their prior proposal,
      chair decision, and peer reviews; require revision +1.
 
-E) Coding:
+E) Coding + audit:
    0) Coordinator assigns **exactly one approved proposal ID** to glm-lead per E cycle.
    1) glm-lead drafts an initial implementation.
-   2) Call deepseek-refactor and kimi-qa-docs to provide review + patch suggestions.
-   3) Coordinator aggregates their feedback (in chat) and forwards a summary to glm-lead.
-   4) glm-lead decides what to apply/reject, implements, then runs fmt/clippy/tests.
-   5) Lead provides final summary in chat; coordinator writes it to:
-      `.iflow/evidence/implementation_summary.md`.
+   2) In parallel, run:
+      - deepseek-refactor: review the **revised proposal text** (Track A rework) and list gaps/risks.
+      - kimi-qa-docs: review the **revised proposal text** (Track A rework) and list gaps/risks.
+      - general-purpose (sub-writer): audit glm-lead’s code vs `origin/main`:
+        run `git fetch origin`, review `git diff origin/main...HEAD`, and inspect key files.
+   3) Coordinator aggregates and routes feedback:
+      - proposal feedback → Track A
+      - code feedback → glm-lead
+   4) Coordinator writes sub-writer audit to:
+      `.iflow/evidence/code_review_general-purpose.md` (verbatim).
    If glm-lead discovers that the assigned proposal cannot be implemented without
    another approved proposal, they must stop and report to Chair + coordinator
    (do NOT proceed). Chair decides whether to merge proposals or reclassify needs-work.
    While Track B is running, Track A can advance independently to peer review + votes
    for the revised proposals.
 
-F) Final review + vote (parallel required):
-   deepseek-vice-2, kimi-junior-3, and glm-chair-1 provide final votes based on **code changes**, not just summaries.
-   They must review the actual diff / touched files:
-   - run `git fetch origin`
-   - review `git diff origin/main...HEAD`
-   - inspect key touched files directly
-   If any needs-work/reject, Chair must issue REWORK and loop to E.
-   - Final-vote agents must NOT write files. They only output vote text in chat.
-   - After ALL final votes are received, the coordinator writes them to:
-     `.iflow/evidence/final_vote_<agent>.md` (verbatim).
+F) Improvement review + lead fixes (parallel required; **4 roles**):
+   Start in parallel:
+   - deepseek-vice-2 → review improvement feedback (proposal-level)
+   - kimi-junior-3 → review improvement feedback (proposal-level)
+   - glm-chair-1 → review improvement feedback (proposal-level)
+   - glm-lead → apply sub-writer code feedback, update code, run fmt/clippy/tests
+   After all four return:
+   - Coordinator writes improvement review evidence to:
+     `.iflow/evidence/improvement_review_<agent>.md` (verbatim).
+   - Lead provides updated summary; coordinator writes it to:
+     `.iflow/evidence/implementation_summary.md` (replace prior).
 
-G) PR Publish (Chair Only):
-   After a proposal passes final vote, Chair publishes the PR for that proposal.
-   If final vote is needs-work/reject:
-   - Chair writes a REWORK directive (explicit fixes).
-   - Lead follows the directive and decides whether to improve or rewrite.
-   - Loop back to E for that proposal.
-   Coordinator records PR links in `.iflow/evidence/pr_links.md`.
-   If Track A rework proposals pass their council votes, they must be queued
-   behind any in-flight E→F→G work, then executed sequentially (one at a time).
+G) Final decision + code re-review (parallel required; **4 roles**):
+   Start in parallel:
+   - glm-chair-1 → decide whether the **improved proposal** passes
+   - deepseek-vice-2 → re-review glm-lead’s code vs `origin/main`
+   - kimi-junior-3 → re-review glm-lead’s code vs `origin/main`
+   - deepseek-refactor → re-review glm-lead’s code vs `origin/main`
+   If chair approves proposal **and** all code re-reviews approve:
+   - Chair publishes the PR for that proposal (use pr-submit skill).
+   - Coordinator records PR links in `.iflow/evidence/pr_links.md`.
+   If chair approves proposal but any code re-review is needs-work/reject:
+   - Coordinator records reasons and restarts Track B (execution) for fixes.
+   If chair rejects proposal:
+   - Coordinator records reasons and routes proposal back to Track A rework.
+   Note: proposal pass/fail and code pass/fail are independent; both can trigger
+   separate Track B executions in parallel if required.
 
 ## Validation Levels
 - A: fmt + clippy + test
