@@ -2,6 +2,7 @@ import os
 import re
 import shutil
 import subprocess
+import glob
 from pathlib import Path
 
 def run(cmd):
@@ -69,6 +70,10 @@ def candidate_paths():
         ]
     )
 
+    # Targeted glob for GitHub Actions toolcache versions.
+    for match in glob.glob("/opt/hostedtoolcache/node/*/x64/lib/node_modules/@iflow-ai/iflow-cli/bundle/iflow.js"):
+        candidates.append(Path(match))
+
     # Deduplicate while preserving order
     seen = set()
     unique = []
@@ -130,4 +135,6 @@ if n3 == 0:
     raise SystemExit("Agent timeout constructor not found; aborting to avoid partial patch")
 
 path.write_text(text2, encoding="utf-8")
-print("patched iflow CLI retry settings + agent timeout")
+if "constructor(e,r=9e5,n,o){this.agentId=e,this.timeoutMs=r" not in text2:
+    raise SystemExit("Agent timeout patch did not persist; aborting.")
+print(f\"patched iflow CLI retry settings + agent timeout at {path}\")
