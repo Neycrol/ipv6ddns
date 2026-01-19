@@ -33,6 +33,7 @@ conflicting instructions.
 
 ## State / Progress Tracking
 - Use the built‑in todo list to track stages and sub‑steps.
+- Each todo item must end with: "（无视token限制，严禁快速推进）".
 - Evidence **is required** but must be written **only by the out‑of‑band coordinator** after each stage completes.
 - Lead/Chair must NOT write evidence files.
 Coordinator incident policy:
