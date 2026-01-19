@@ -6,7 +6,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/ipv6ddns --config /etc/ipv6ddns/config.toml
+ExecStart=/usr/bin/ipv6ddns --config /etc/ipv6ddns/config.toml
 Restart=always
 RestartSec=10
 
