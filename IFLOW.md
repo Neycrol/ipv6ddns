@@ -111,13 +111,20 @@ IFLOW_PLAN.md is optional; skip it if missing without calling read_file.
 If any read/list fails, report it in the response and continue.
 
 A) Proposals (parallel required):
-   glm-maintainer / deepseek-innovator / kimi-ci-docs
+   Agents to run (parallel batch):
+   - glm-maintainer
+   - deepseek-innovator
+   - kimi-ci-docs
    (each proposal must include ID, files, benefit, risk, validation level)
    - Proposal agents must NOT write files. They only output the proposal text in chat.
    - After ALL proposals are received, the coordinator writes them to:
      `.iflow/evidence/proposal_<agent>.md` (verbatim).
 
 B) Peer review (parallel required):
+   Agents to run (parallel batch):
+   - glm-maintainer reviews INNOV + CIDOCS
+   - deepseek-innovator reviews MAINT + CIDOCS
+   - kimi-ci-docs reviews MAINT + INNOV
    Each proposal agent reviews the other two:
    - duplicates / conflicts / merge suggestions
    - MUST validate proposal ↔ existing code fit: inspect relevant source files and cite
@@ -127,13 +134,19 @@ B) Peer review (parallel required):
      `.iflow/evidence/review_<agent>.md` (verbatim).
 
 C) Council votes (parallel required):
-   deepseek-vice-2, kimi-junior-3, and glm-chair-1 vote on the proposals
+   Agents to run (parallel batch):
+   - deepseek-vice-2
+   - kimi-junior-3
+   - glm-chair-1
+   They vote on the proposals.
    - Voting agents must NOT write files. They only output vote text in chat.
    - After ALL votes are received, the coordinator writes them to:
      `.iflow/evidence/vote_<agent>.md` (verbatim).
 
 D) Chair decision:
-   glm-chair-1 merges evidence + votes and issues decision.
+   Agent to run:
+   - glm-chair-1 (Chair)
+   Chair merges evidence + votes and issues decision.
    If approved: must ping glm-lead and CC deepseek-refactor + kimi-qa-docs with requirements.
    If needs-work/reject: must issue REWORK with explicit fixes.
    - Chair outputs decision in chat; coordinator writes it to:
@@ -150,6 +163,9 @@ D) Chair decision:
      that includes chair summary and links to the prior proposal + peer reviews,
      and requires revision +1.
      Track B (Execution): proceed to E with the **first approved** proposal only.
+     Agents to run in the same parallel batch (typically 4 or 5):
+     - Track A: glm-maintainer, deepseek-innovator, kimi-ci-docs (rework proposals)
+     - Track B: glm-lead (begin implementation of first approved proposal)
    - If concurrency errors occur, retry the parallel batch with backoff; do not serialize.
    If Chair rejects ALL proposals:
    - Coordinator writes `.iflow/evidence/rejected_summary.md` with reasons + evidence links.
@@ -159,7 +175,12 @@ D) Chair decision:
      `.iflow/evidence/rejected_summary.md`, plus their prior proposal,
      chair decision, and peer reviews; require revision +1.
 
-E) Coding + audit:
+E) Coding + audit (parallel required):
+   Agents to run:
+   - glm-lead (implementation owner)
+   - deepseek-refactor (proposal rework review)
+   - kimi-qa-docs (proposal rework review)
+   - general-purpose (sub-writer code audit vs origin/main)
    0) Coordinator assigns **exactly one approved proposal ID** to glm-lead per E cycle.
    1) glm-lead drafts an initial implementation.
    2) In parallel, run:
@@ -179,6 +200,11 @@ E) Coding + audit:
    for the revised proposals.
 
 F) Improvement review + lead fixes (parallel required; **4 roles**):
+   Agents to run (parallel batch):
+   - deepseek-vice-2
+   - kimi-junior-3
+   - glm-chair-1
+   - glm-lead
    Start in parallel:
    - deepseek-vice-2 → review improvement feedback (proposal-level)
    - kimi-junior-3 → review improvement feedback (proposal-level)
@@ -191,6 +217,11 @@ F) Improvement review + lead fixes (parallel required; **4 roles**):
      `.iflow/evidence/implementation_summary.md` (replace prior).
 
 G) Final decision + code re-review (parallel required; **4 roles**):
+   Agents to run (parallel batch):
+   - glm-chair-1
+   - deepseek-vice-2
+   - kimi-junior-3
+   - deepseek-refactor
    Start in parallel:
    - glm-chair-1 → decide whether the **improved proposal** passes
    - deepseek-vice-2 → re-review glm-lead’s code vs `origin/main`
