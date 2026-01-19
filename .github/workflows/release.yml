@@ -349,6 +349,7 @@ jobs:
           done < <(find release-assets -type f -print0)
       - name: Verify release artifacts
         run: |
+          chmod +x scripts/ci/verify-artifacts.sh
           ./scripts/ci/verify-artifacts.sh release-assets
       - uses: actions/upload-artifact@v6
         with:
