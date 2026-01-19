@@ -63,10 +63,7 @@ impl HealthServer {
                                 let state = Arc::clone(&state);
                                 tokio::spawn(async move {
                                     let mut buf = [0u8; 1024];
-                                    let bytes_read = match socket.read(&mut buf).await {
-                                        Ok(count) => count,
-                                        Err(_) => 0,
-                                    };
+                                    let bytes_read = socket.read(&mut buf).await.unwrap_or_default();
 
                                     let request_text = String::from_utf8_lossy(&buf[..bytes_read]);
                                     let request_line = request_text.lines().next().unwrap_or("");
