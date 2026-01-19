@@ -111,4 +111,17 @@ if n2 != 1:
     raise SystemExit(f"calculateDelay not found or replaced {n2} times")
 
 path.write_text(s3, encoding='utf-8')
-print("patched iflow CLI retry settings")
+text = s3
+
+# Bump sub-agent timeout from 300000ms to 900000ms (15 minutes).
+timeout_pat = r"constructor\\(e,r=3e5,n,o\\)\\{this\\.agentId=e,this\\.timeoutMs=r"
+text2, n3 = re.subn(timeout_pat, "constructor(e,r=9e5,n,o){this.agentId=e,this.timeoutMs=r", text, count=1)
+if n3 == 0:
+    # Already patched or pattern changed; try a looser match.
+    timeout_pat2 = r"constructor\\(e,r=\\d+e5,n,o\\)\\{this\\.agentId=e,this\\.timeoutMs=r"
+    text2, n3 = re.subn(timeout_pat2, "constructor(e,r=9e5,n,o){this.agentId=e,this.timeoutMs=r", text, count=1)
+if n3 == 0:
+    raise SystemExit("Agent timeout constructor not found; aborting to avoid partial patch")
+
+path.write_text(text2, encoding="utf-8")
+print("patched iflow CLI retry settings + agent timeout")

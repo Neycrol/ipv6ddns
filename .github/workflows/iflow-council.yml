@@ -26,6 +26,7 @@ permissions:
 jobs:
   council:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     env:
       IFLOW_API_KEY: ${{ secrets.IFLOW_API_KEY }}
     steps:
@@ -86,7 +87,7 @@ jobs:
             attempt=$((attempt+1))
             rm -f /tmp/iflow-client-error-*.json /tmp/iflow-run.log
             echo "iFlow attempt ${attempt}..."
-            if iflow -p "$PROMPT" --thinking --yolo --model glm-4.7 2>&1 | tee /tmp/iflow-run.log; then
+            if iflow -p "$PROMPT" --thinking --yolo --model glm-4.7 --timeout 21600 2>&1 | tee /tmp/iflow-run.log; then
               echo "iFlow completed successfully."
               break
             fi
