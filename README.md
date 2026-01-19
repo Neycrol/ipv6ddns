@@ -122,8 +122,29 @@ verbose = false
 multi_record = "error" # error|first|all
 # allow_loopback = false # allow ::1 for local testing
 # poll_interval = 60 # 10-3600 seconds (polling fallback)
+# provider_type = "cloudflare" # DNS provider (default: cloudflare)
+# health_port = 8080 # Health check port (0 = disabled)
 # Sensitive values via environment variables (recommended)
 ```
+
+### Health Check
+
+ipv6ddns can expose a lightweight health check endpoint (disabled by default):
+
+```bash
+# Enable health check endpoint
+export IPV6DDNS_HEALTH_PORT=8080
+```
+
+Or in config file:
+```toml
+health_port = 8080
+```
+
+Access endpoint:
+- `http://localhost:8080/health` - Health check status
+
+**Note:** The health endpoint binds to localhost only. Enabling it adds a small, constant memory overhead; keep it disabled if you want the lowest footprint.
 
 `multi_record` controls behavior when multiple AAAA records exist for the same name:
 - `error` (default): refuse to update

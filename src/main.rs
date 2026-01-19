@@ -16,6 +16,8 @@ mod cloudflare;
 mod config;
 mod constants;
 mod daemon;
+mod dns_provider;
+mod health;
 mod netlink;
 mod validation;
 
@@ -54,7 +56,7 @@ async fn main() -> Result<()> {
     let netlink = NetlinkSocket::new(Some(config.poll_interval), config.allow_loopback)
         .context("Netlink socket failed")?;
 
-    let mut daemon = Daemon::new(config, cf_client, netlink);
+    let mut daemon = Daemon::new(config, std::sync::Arc::new(cf_client), netlink);
     daemon.run().await?;
 
     Ok(())

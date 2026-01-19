@@ -9,13 +9,13 @@ use std::time::Duration;
 use anyhow::{Context as _, Result};
 use zeroize::ZeroizeOnDrop;
 
-use crate::cloudflare::MultiRecordPolicy;
 use crate::constants::{
     DEFAULT_POLL_INTERVAL_SECS, DEFAULT_TIMEOUT_SECS, ENV_ALLOW_LOOPBACK, ENV_API_TOKEN,
-    ENV_MULTI_RECORD, ENV_RECORD_NAME, ENV_ZONE_ID, MAX_POLL_INTERVAL_SECS, MAX_TIMEOUT_SECS,
-    MAX_ZONE_ID_LENGTH, MIN_API_TOKEN_LENGTH, MIN_POLL_INTERVAL_SECS, MIN_TIMEOUT_SECS,
-    MIN_ZONE_ID_LENGTH,
+    ENV_HEALTH_PORT, ENV_MULTI_RECORD, ENV_PROVIDER_TYPE, ENV_RECORD_NAME, ENV_ZONE_ID,
+    MAX_POLL_INTERVAL_SECS, MAX_TIMEOUT_SECS, MAX_ZONE_ID_LENGTH, MIN_API_TOKEN_LENGTH,
+    MIN_POLL_INTERVAL_SECS, MIN_TIMEOUT_SECS, MIN_ZONE_ID_LENGTH,
 };
+use crate::dns_provider::MultiRecordPolicy;
 use crate::validation::validate_record_name;
 
 //==============================================================================
@@ -39,6 +39,8 @@ use crate::validation::validate_record_name;
 /// - `verbose`: Enable verbose logging
 /// - `multi_record`: Policy for handling multiple AAAA records
 /// - `allow_loopback`: Allow loopback IPv6 (::1) as a valid address
+/// - `provider_type`: DNS provider type (default: "cloudflare")
+/// - `health_port`: Port for health check endpoint (0 = disabled)
 ///
 /// # Configuration Loading Priority
 ///
@@ -94,6 +96,20 @@ pub struct Config {
     /// Can be set via the `IPV6DDNS_ALLOW_LOOPBACK` environment variable.
     #[zeroize(skip)]
     pub allow_loopback: bool,
+    /// DNS provider type
+    ///
+    /// Default: "cloudflare"
+    /// Can be set via the `IPV6DDNS_PROVIDER_TYPE` environment variable.
+    /// Currently supported: "cloudflare"
+    #[zeroize(skip)]
+    pub provider_type: String,
+    /// Port for health check endpoint
+    ///
+    /// Default: 0 (disabled)
+    /// Can be set via the `IPV6DDNS_HEALTH_PORT` environment variable.
+    /// Set to 0 to disable the health check endpoint.
+    #[zeroize(skip)]
+    pub health_port: u16,
 }
 
 impl Config {
@@ -148,6 +164,8 @@ impl Config {
         let mut verbose = false;
         let mut multi_record = MultiRecordPolicy::Error;
         let mut allow_loopback = false;
+        let mut provider_type = "cloudflare".to_string();
+        let mut health_port: u16 = 0;
 
         if let Some(path) = config_path {
             if path.exists() {
@@ -170,6 +188,12 @@ impl Config {
                 if let Some(v) = toml_config.allow_loopback {
                     allow_loopback = v;
                 }
+                if let Some(v) = toml_config.provider_type {
+                    provider_type = v;
+                }
+                if let Some(v) = toml_config.health_port {
+                    health_port = v;
+                }
             }
         }
 
@@ -182,6 +206,8 @@ impl Config {
             verbose,
             multi_record,
             allow_loopback,
+            provider_type,
+            health_port,
         })
     }
 
@@ -222,6 +248,16 @@ impl Config {
             if !v.is_empty() {
                 config.allow_loopback =
                     parse_bool_env(&v).context("Invalid IPV6DDNS_ALLOW_LOOPBACK value")?;
+            }
+        }
+        if let Ok(v) = env::var(ENV_PROVIDER_TYPE) {
+            if !v.is_empty() {
+                config.provider_type = v;
+            }
+        }
+        if let Ok(v) = env::var(ENV_HEALTH_PORT) {
+            if !v.is_empty() {
+                config.health_port = v.parse().context("Invalid IPV6DDNS_HEALTH_PORT value")?;
             }
         }
         Ok(())
@@ -279,6 +315,15 @@ impl Config {
             return Err(anyhow::anyhow!("Missing {}", ENV_RECORD_NAME));
         }
         validate_record_name(&self.record)?;
+
+        let provider = self.provider_type.trim().to_ascii_lowercase();
+        if provider != "cloudflare" {
+            return Err(anyhow::anyhow!(
+                "{} must be \"cloudflare\" (only provider supported), got: {}",
+                ENV_PROVIDER_TYPE,
+                self.provider_type
+            ));
+        }
 
         let timeout_secs = self.timeout.as_secs();
         if !(MIN_TIMEOUT_SECS..=MAX_TIMEOUT_SECS).contains(&timeout_secs) {
@@ -340,6 +385,8 @@ struct TomlConfig {
     verbose: Option<bool>,
     multi_record: Option<String>,
     allow_loopback: Option<bool>,
+    provider_type: Option<String>,
+    health_port: Option<u16>,
 }
 
 /// Parses a multi-record policy string into a `MultiRecordPolicy` enum

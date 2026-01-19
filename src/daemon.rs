@@ -10,9 +10,10 @@ use chrono::{DateTime, Utc};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, warn};
 
-use crate::cloudflare::CloudflareClient;
 use crate::config::Config;
 use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS};
+use crate::dns_provider::DnsProvider;
+use crate::health::HealthServer;
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
 
 //==============================================================================
@@ -161,15 +162,15 @@ pub fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
 
 /// Main daemon for IPv6 DDNS synchronization
 ///
-/// The daemon monitors IPv6 address changes and updates Cloudflare DNS records
+/// The daemon monitors IPv6 address changes and updates DNS records
 /// accordingly. It supports both event-driven (netlink) and polling-based monitoring.
 pub struct Daemon {
     /// Shared configuration
     config: Arc<Config>,
     /// Shared application state (protected by mutex)
     state: Arc<tokio::sync::Mutex<AppState>>,
-    /// Cloudflare API client
-    cf_client: Arc<CloudflareClient>,
+    /// DNS provider client (trait object)
+    dns_provider: Arc<dyn DnsProvider>,
     /// Netlink socket for IPv6 address monitoring
     netlink: NetlinkSocket,
 }
@@ -180,13 +181,13 @@ impl Daemon {
     /// # Arguments
     ///
     /// * `config` - Configuration for the daemon
-    /// * `cf_client` - Cloudflare API client
+    /// * `dns_provider` - DNS provider client (trait object)
     /// * `netlink` - Netlink socket for IPv6 monitoring
-    pub fn new(config: Config, cf_client: CloudflareClient, netlink: NetlinkSocket) -> Self {
+    pub fn new(config: Config, dns_provider: Arc<dyn DnsProvider>, netlink: NetlinkSocket) -> Self {
         Self {
             config: Arc::new(config),
             state: Arc::new(tokio::sync::Mutex::new(AppState::default())),
-            cf_client: Arc::new(cf_client),
+            dns_provider,
             netlink,
         }
     }
@@ -225,6 +226,19 @@ impl Daemon {
             )
         );
 
+        let mut health_server = if self.config.health_port > 0 {
+            let addr = std::net::SocketAddr::from(([127, 0, 0, 1], self.config.health_port));
+            match HealthServer::start(addr, Arc::clone(&self.state)).await {
+                Ok(server) => Some(server),
+                Err(e) => {
+                    error!("Health server failed to start: {:#}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
             info!("Initial IPv6: {}", ip);
             _ = self.sync_record(&ip).await;
@@ -258,6 +272,10 @@ impl Daemon {
         }
 
         info!("Daemon stopped");
+        if let Some(server) = health_server.as_mut() {
+            server.stop().await;
+        }
+
         Ok(())
     }
 
@@ -331,7 +349,7 @@ impl Daemon {
         );
 
         let result = self
-            .cf_client
+            .dns_provider
             .upsert_aaaa_record(
                 self.config.zone_id.as_str(),
                 &self.config.record,
@@ -364,6 +382,7 @@ impl Daemon {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::BACKOFF_MAX_SECS;
 
     #[test]
     fn test_backoff_delay_calculation() {
