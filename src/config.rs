@@ -316,6 +316,15 @@ impl Config {
         }
         validate_record_name(&self.record)?;
 
+        let provider = self.provider_type.trim().to_ascii_lowercase();
+        if provider != "cloudflare" {
+            return Err(anyhow::anyhow!(
+                "{} must be \"cloudflare\" (only provider supported), got: {}",
+                ENV_PROVIDER_TYPE,
+                self.provider_type
+            ));
+        }
+
         let timeout_secs = self.timeout.as_secs();
         if !(MIN_TIMEOUT_SECS..=MAX_TIMEOUT_SECS).contains(&timeout_secs) {
             return Err(anyhow::anyhow!(

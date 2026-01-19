@@ -63,23 +63,42 @@ impl HealthServer {
                                 let state = Arc::clone(&state);
                                 tokio::spawn(async move {
                                     let mut buf = [0u8; 1024];
-                                    let _ = socket.read(&mut buf).await;
-
-                                    let snapshot = state.lock().await;
-                                    let response = build_response(&snapshot);
-                                    let body = match serde_json::to_string(&response) {
-                                        Ok(body) => body,
-                                        Err(_) => "{\"status\":\"error\"}".to_string(),
+                                    let bytes_read = match socket.read(&mut buf).await {
+                                        Ok(count) => count,
+                                        Err(_) => 0,
                                     };
 
-                                    let reply = format!(
-                                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                                        body.len(),
-                                        body
-                                    );
+                                    let request_text = String::from_utf8_lossy(&buf[..bytes_read]);
+                                    let request_line = request_text.lines().next().unwrap_or("");
+                                    let mut parts = request_line.split_whitespace();
+                                    let method = parts.next().unwrap_or("");
+                                    let path = parts.next().unwrap_or("");
 
-                                    if let Err(e) = socket.write_all(reply.as_bytes()).await {
-                                        error!("Health response write failed: {}", e);
+                                    if method == "GET" && path == "/health" {
+                                        let snapshot = state.lock().await;
+                                        let response = build_response(&snapshot);
+                                        let body = match serde_json::to_string(&response) {
+                                            Ok(body) => body,
+                                            Err(_) => "{\"status\":\"error\"}".to_string(),
+                                        };
+
+                                        let reply = format!(
+                                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                            body.len(),
+                                            body
+                                        );
+
+                                        if let Err(e) = socket.write_all(reply.as_bytes()).await {
+                                            error!("Health response write failed: {}", e);
+                                        }
+                                    } else {
+                                        let body = "Not Found";
+                                        let reply = format!(
+                                            "HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                            body.len(),
+                                            body
+                                        );
+                                        let _ = socket.write_all(reply.as_bytes()).await;
                                     }
                                     let _ = socket.shutdown().await;
                                 });
