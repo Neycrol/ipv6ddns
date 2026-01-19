@@ -24,6 +24,7 @@ jobs:
         run: |
           curl -fsSL https://sh.rustup.rs | sh -s -- -y
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          "$HOME/.cargo/bin/rustup" component add clippy rustfmt
       - name: Check CHANGELOG exists
         if: ${{ !inputs.skip_changelog_check }}
         run: |
