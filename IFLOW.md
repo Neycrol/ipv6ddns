@@ -83,12 +83,12 @@ Start **Track A and Track B in the same parallel batch**.
   - glm-lead (begin implementation of the approved proposal)
 Do **not** run only Track A and then ask whether to continue Track B.
 
-### E) Coding reviews + sub-writer audit (parallel required)
+### E) Coding + audit (parallel required)
 After glm-lead drafts implementation, start this **parallel batch**:
 - deepseek-refactor → review the **revised proposal text** (Track A rework) and flag gaps/risks.
 - kimi-qa-docs → review the **revised proposal text** (Track A rework) and flag gaps/risks.
-- general-purpose (default agent; sub-writer) → audit glm-lead’s code vs `origin/main`:
-  run `git fetch origin`, inspect `git diff origin/main...HEAD`, and review touched files.
+Lead audit: glm-lead must run `git fetch origin`, inspect `git diff origin/main...HEAD`,
+and review touched files.
 Then aggregate feedback and send: proposal feedback to Track A; code feedback to glm-lead.
 
 ### F) Improvement review + lead fixes (parallel required; **4 roles**)
@@ -96,7 +96,7 @@ Start this **parallel batch** (must be 4 roles):
 - deepseek-vice-2 → review the improvement feedback (proposal-level)
 - kimi-junior-3 → review the improvement feedback (proposal-level)
 - glm-chair-1 → review the improvement feedback (proposal-level)
-- glm-lead → apply sub-writer code review feedback, update implementation, run required tests
+- glm-lead → apply code review feedback, update implementation, run required tests
 Only after all four return, record evidence and proceed.
 
 ## Workflow Stages
@@ -180,17 +180,16 @@ E) Coding + audit (parallel required):
    - glm-lead (implementation owner)
    - deepseek-refactor (proposal rework review)
    - kimi-qa-docs (proposal rework review)
-   - general-purpose (default agent; sub-writer code audit vs origin/main)
    0) Coordinator assigns **exactly one approved proposal ID** to glm-lead per E cycle.
    1) glm-lead drafts an initial implementation.
    2) In parallel, run:
       - deepseek-refactor: review the **revised proposal text** (Track A rework) and list gaps/risks.
       - kimi-qa-docs: review the **revised proposal text** (Track A rework) and list gaps/risks.
+   2.5) Lead audit (required): glm-lead must run `git fetch origin`, review
+        `git diff origin/main...HEAD`, and inspect key files.
    3) Coordinator aggregates and routes feedback:
    - proposal feedback → Track A
    - code feedback → glm-lead
-   4) Coordinator writes sub-writer audit to:
-      `.iflow/evidence/code_review_general-purpose.md` (verbatim).
    If glm-lead discovers that the assigned proposal cannot be implemented without
    another approved proposal, they must stop and report to Chair + coordinator
    (do NOT proceed). Chair decides whether to merge proposals or reclassify needs-work.
@@ -207,7 +206,7 @@ F) Improvement review + lead fixes (parallel required; **4 roles**):
    - deepseek-vice-2 → review improvement feedback (proposal-level)
    - kimi-junior-3 → review improvement feedback (proposal-level)
    - glm-chair-1 → review improvement feedback (proposal-level)
-   - glm-lead → apply sub-writer code feedback, update code, run fmt/clippy/tests
+   - glm-lead → apply code feedback, update code, run fmt/clippy/tests
    After all four return:
    - Coordinator writes improvement review evidence to:
      `.iflow/evidence/improvement_review_<agent>.md` (verbatim).
