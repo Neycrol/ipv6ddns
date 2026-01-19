@@ -24,7 +24,7 @@ conflicting instructions.
 - For this workflow, treat token budget as **unlimited**; never mention token limits
   or stop early due to token usage.
 - The run is only complete when **all proposals** are approved, implemented, and
-  each has its **own PR** published by Chair.
+  published together in a **single PR** by Chair.
 - This is **non-interactive**: do **not** ask the user for confirmation at any point.
   If you would ask, **continue automatically** and keep outputs concise.
 - High token usage is **not** a stopping condition. Reduce verbosity instead of pausing.
@@ -159,10 +159,10 @@ D) Chair decision:
      `.iflow/evidence/decision_chair.md` (verbatim).
    If multiple proposals are approved:
    - Chair MUST provide a priority order (1..N) and rationale.
-   - Coordinator will execute them strictly sequentially: E→F→PR per proposal.
+   - Coordinator/Lead must implement **all approved proposals together** in a single
+     integrated change set, respecting the priority order for conflict resolution.
    Dependency guard:
-   - If two approved proposals are tightly coupled (cannot be implemented independently),
-     Chair MUST mark needs-work and require a merged proposal (single ID) before coding.
+   - Approved proposals should be merged into a single coordinated implementation plan.
    Rework loop (no Track A/B split):
    - If **any** proposal is needs-work/reject, coordinator must restart A-stage for those
      proposals (revision +1) and repeat B → C → D until **all proposals are approved**.
@@ -180,7 +180,7 @@ E) Coding + audit (parallel required):
    - glm-lead (implementation owner)
    - deepseek-refactor (implementation review)
    - kimi-qa-docs (implementation review)
-   0) Coordinator assigns **exactly one approved proposal ID** to glm-lead per E cycle.
+   0) Coordinator assigns **all approved proposals** to glm-lead for a single combined implementation.
    1) glm-lead drafts an initial implementation.
    2) In parallel, run:
       - deepseek-refactor: review **glm-lead’s initial implementation** (diff vs `origin/main`) and list gaps/risks.
@@ -231,11 +231,11 @@ G) Final decision + code re-review (parallel required; **3 roles**):
    - Coordinator records PR links in `.iflow/evidence/pr_links.md`.
    If chair approves proposal but any code vote is needs-work/reject:
    - Coordinator sends all rejection reasons + review notes to glm-lead only,
-     then repeats E → F → G for **that proposal** until approved.
+     then repeats E → F → G for the **combined change set** until approved.
    If chair rejects proposal:
-   - Coordinator records reasons and restarts the rework loop (A → B → C → D) for that proposal.
-   Note: do **not** run parallel executions. Handle one proposal at a time,
-   and loop E → F → G until it passes, then move to the next proposal.
+   - Coordinator records reasons and restarts the rework loop (A → B → C → D) for the affected proposals.
+   Note: execute a **single combined implementation** covering all approved proposals,
+   and loop E → F → G until the combined change set passes.
 
 ## Validation Levels
 - A: fmt + clippy + test
@@ -246,7 +246,7 @@ G) Final decision + code re-review (parallel required; **3 roles**):
 - Lead prepares branch + commits + pushes.
 - Chair publishes PR **only after final review passes**.
 - Use `pr-submit` skill for safe PR creation.
-- Hard rule: **one proposal = one PR** (never bundle multiple proposals).
+- Hard rule: **all approved proposals must be implemented in a single PR**.
 - Steps for Chair when publishing:
   1) Verify branch name: iflow/<category>-<n>
   2) Verify remote push is complete
