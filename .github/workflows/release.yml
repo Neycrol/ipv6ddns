@@ -51,16 +51,10 @@ jobs:
         if: ${{ !inputs.skip_changelog_check }}
         run: |
           VERSION="${{ steps.meta.outputs.version }}"
-          # 匹配格式: ## [1.0.0] 或 ## [1.0.0] - YYYY-MM-DD
-          if ! grep -q "## \[${VERSION}\]" CHANGELOG.md; then
-            echo "ERROR: CHANGELOG.md does not contain entry for version ${VERSION}"
-            echo "Expected format: ## [${VERSION}] or ## [${VERSION}] - YYYY-MM-DD"
-            exit 1
-          fi
           # 检查版本条目包含至少一个变更类型
           python3 - "$VERSION" <<'PY'
           import re, sys
-          version = sys.argv[1]
+          version = sys.argv[1].strip()
           with open("CHANGELOG.md", "r", encoding="utf-8") as f:
             lines = f.read().splitlines()
           start = None
