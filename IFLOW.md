@@ -20,6 +20,8 @@ You run in GitHub Actions with no sudo and no interactive input.
   stages finish and PR publication is handled by Chair.
 - For this workflow, treat token budget as **unlimited**; never mention token limits
   or stop early due to token usage.
+- The run is only complete when **all proposals** are approved, implemented, and
+  each has its **own PR** published by Chair.
 - This is **non-interactive**: do **not** ask the user for confirmation at any point.
   If you would ask, **continue automatically** and keep outputs concise.
 - High token usage is **not** a stopping condition. Reduce verbosity instead of pausing.
@@ -45,12 +47,10 @@ Coordinator incident policy:
   1) "Start B in parallel: glm-maintainer reviews innovator+ci-docs; deepseek reviews maintainer+ci-docs; kimi reviews maintainer+innovator."
   2) Launch all three agents concurrently.
   3) If any fail, retry the same parallel batch with backoff until success.
-- Example (parallel rework + execution after Chair decision):
-  Track A (Rework): restart A for needs-work proposals with chair summary + evidence links.
-  Track B (Execution): proceed E with first approved proposal only.
-  If any fail, retry the parallel batch with backoff; do not switch to sequential.
-  Track A and Track B **must** be launched in the same parallel batch; do not run only A
-  and then ask whether to continue B.
+- Example (rework loop after Chair decision):
+  If any proposal is not approved, coordinator must restart A for those proposals,
+  then repeat B → C → D until **all proposals are approved**.
+  Do NOT proceed to E while any proposal remains needs-work/reject.
 
 ## Parallel Launch Examples (copy this behavior)
 Use these as concrete templates; do not invent a different ordering.
@@ -76,17 +76,11 @@ Start these three voters **at the same time**:
 - glm-chair-1
 Only after all three return, write vote evidence files.
 
-### D) Chair Decision → Track A & Track B (parallel required)
+### D) Chair Decision → Rework loop (no Track A/B split)
 Once Chair decision is recorded:
-Start **Track A and Track B in the same parallel batch**.
-**关键要求：此处必须“一次性并行启动”全部相关 agent（通常是 4 个；如有额外 needs-work 提案则可能是 5 个）。绝不能分两批执行。**
-- Track A (Rework): restart A-stage for all needs-work proposals (revision +1), **launch in parallel**:
-  - glm-maintainer (rework proposal)
-  - deepseek-innovator (rework proposal)
-  - kimi-ci-docs (rework proposal)
-- Track B (Execution): start E-stage for the **first approved** proposal, **launch in parallel**:
-  - glm-lead (begin implementation of the approved proposal)
-Do **not** run only Track A and then ask whether to continue Track B.
+If **any** proposal is needs-work or reject, coordinator must restart A-stage for those
+proposals (revision +1) and repeat B → C → D until **all proposals are approved**.
+Do **not** proceed to E while any proposal remains unapproved.
 
 ### E) Coding + audit (parallel required)
 After glm-lead drafts the **initial implementation**, start this **parallel batch**:
@@ -95,8 +89,8 @@ After glm-lead drafts the **initial implementation**, start this **parallel batc
 Lead audit (required): glm-lead must run `git fetch origin`, inspect `git diff origin/main...HEAD`,
 and review touched files.
 After all three complete, coordinator sends feedback **in parallel**:
-- proposal feedback → Track A
 - code feedback → glm-lead
+- design/proposal defects → Chair/Coordinator for rework loop (A→B→C→D)
 After feedback delivery, coordinator records E-stage evidence (refactor review, QA review, lead audit).
 
 ### F) Improvement review + lead fixes (parallel required; **4 roles**)
@@ -165,16 +159,10 @@ D) Chair decision:
    Dependency guard:
    - If two approved proposals are tightly coupled (cannot be implemented independently),
      Chair MUST mark needs-work and require a merged proposal (single ID) before coding.
-   Parallel rework track (if any needs-work proposals exist):
-   - After decision is recorded, coordinator must start **two tracks in parallel**:
-     Track A (Rework): restart A-stage for all needs-work proposals with a prompt
-     that includes chair summary and links to the prior proposal + peer reviews,
-     and requires revision +1.
-     Track B (Execution): proceed to E with the **first approved** proposal only.
-     Agents to run in the same parallel batch (typically 4 or 5):
-     - Track A: glm-maintainer, deepseek-innovator, kimi-ci-docs (rework proposals)
-     - Track B: glm-lead (begin implementation of first approved proposal)
-   - If concurrency errors occur, retry the parallel batch with backoff; do not serialize.
+   Rework loop (no Track A/B split):
+   - If **any** proposal is needs-work/reject, coordinator must restart A-stage for those
+     proposals (revision +1) and repeat B → C → D until **all proposals are approved**.
+   - Do **not** proceed to E while any proposal remains unapproved.
    If Chair rejects ALL proposals:
    - Coordinator writes `.iflow/evidence/rejected_summary.md` with reasons + evidence links.
    - Reset stage to A and restart proposals.
@@ -196,8 +184,8 @@ E) Coding + audit (parallel required):
    2.5) Lead audit (required): glm-lead must run `git fetch origin`, review
         `git diff origin/main...HEAD`, and inspect key files.
    3) Coordinator aggregates and routes feedback **in parallel**:
-   - proposal feedback → Track A
    - code feedback → glm-lead
+   - design/proposal defects → Chair/Coordinator for rework loop (A→B→C→D)
    4) After all three reviews + lead audit + parallel feedback delivery complete,
       coordinator writes E-stage evidence:
       - `.iflow/evidence/code_review_deepseek-refactor.md`
@@ -206,8 +194,8 @@ E) Coding + audit (parallel required):
    If glm-lead discovers that the assigned proposal cannot be implemented without
    another approved proposal, they must stop and report to Chair + coordinator
    (do NOT proceed). Chair decides whether to merge proposals or reclassify needs-work.
-   While Track B is running, Track A can advance independently to peer review + votes
-   for the revised proposals.
+   Do **not** run proposal rework and implementation in parallel. All proposals must
+   pass D before any E/F/G work begins.
 
 F) Improvement review + lead fixes (parallel required; **4 roles**):
    Agents to run (parallel batch):
@@ -247,11 +235,12 @@ G) Final decision + code re-review (parallel required; **4 roles**):
      4) Report PR link + brief risk summary.
    - Coordinator records PR links in `.iflow/evidence/pr_links.md`.
    If chair approves proposal but any code re-review is needs-work/reject:
-   - Coordinator records reasons and restarts Track B (execution) for fixes.
+   - Coordinator sends all rejection reasons + review notes to glm-lead, deepseek-refactor,
+     and kimi-qa-docs, then repeats E → F → G for **that proposal** until approved.
    If chair rejects proposal:
-   - Coordinator records reasons and routes proposal back to Track A rework.
-   Note: proposal pass/fail and code pass/fail are independent; both can trigger
-   separate Track B executions in parallel if required.
+   - Coordinator records reasons and restarts the rework loop (A → B → C → D) for that proposal.
+   Note: do **not** run parallel executions. Handle one proposal at a time,
+   and loop E → F → G until it passes, then move to the next proposal.
 
 ## Validation Levels
 - A: fmt + clippy + test
@@ -262,8 +251,9 @@ G) Final decision + code re-review (parallel required; **4 roles**):
 - Lead prepares branch + commits + pushes.
 - Chair publishes PR **only after final review passes**.
 - Use `pr-submit` skill for safe PR creation.
- - Steps for Chair when publishing:
-   1) Verify branch name: iflow/<category>-<n>
-   2) Verify remote push is complete
-   3) Run pr-submit (or gh pr create + gh pr comment)
-   4) Report PR URL + risks
+- Hard rule: **one proposal = one PR** (never bundle multiple proposals).
+- Steps for Chair when publishing:
+  1) Verify branch name: iflow/<category>-<n>
+  2) Verify remote push is complete
+  3) Run pr-submit (or gh pr create + gh pr comment)
+  4) Report PR URL + risks
