@@ -97,14 +97,16 @@ if not path:
 s = path.read_text(encoding='utf-8')
 
 # Set SubAgent retry parameters and fixed delay.
-header_pat = r"Wst=class\{maxRetries=\d+;backoffMultiplier=\d+;baseDelayMs=\d+e3;"
-new_header = "Wst=class{maxRetries=100;backoffMultiplier=1;baseDelayMs=1e3;"
+# Match any minified class name, not just Wst.
+header_pat = r"([A-Za-z0-9_$]+)=class\{maxRetries=\d+;backoffMultiplier=\d+;baseDelayMs=\d+(?:e3)?;"
+new_header = r"\1=class{maxRetries=100;backoffMultiplier=1;baseDelayMs=1e3;"
 
 s2, n1 = re.subn(header_pat, new_header, s, count=1)
 if n1 == 0:
     # Already patched header or unexpected layout
-    if new_header not in s:
+    if not re.search(r"=class\{maxRetries=100;backoffMultiplier=1;baseDelayMs=(?:1e3|1000);", s):
         raise SystemExit("Wst header not found or replaced 0 times")
+    s2 = s
 
 calc_pat = r"calculateDelay\(\w\)\{return this\.baseDelayMs\*Math\.pow\(this\.backoffMultiplier,\w-1\)\}"
 # Force fixed 1000ms delay regardless of retry count
