@@ -323,7 +323,7 @@ jobs:
           name: verified-release-assets
           path: release-assets/**
 
-publish-release:
+  publish-release:
     runs-on: ubuntu-latest
     needs: [build-release]
     if: ${{ inputs.publish }}
