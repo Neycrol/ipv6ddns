@@ -9,12 +9,13 @@ conflicting instructions.
 ## Global Rules
 - Never push directly to main/master.
 - Use git + gh (or REST API) to create PRs after committing changes.
-- If GH_TOKEN is missing or gh fails, stop and report.
+- If GH_TOKEN is missing or gh fails, report the blocker and continue; do not terminate
+  or fast‑forward any stages.
 - Do not rerun stages that are already completed (see State Guard).
 - Lead must NOT open PRs; only Chair publishes PRs after final review passes.
 - Fallback rule (all agents): if a highly abnormal, workflow-breaking event occurs,
   assess if you can safely handle it. If yes, notify the coordinator and continue.
-  If not, stop and request coordinator instructions.
+  If not, report the blocker and continue in a safe no‑op state until resolved.
 - 提案阶段禁止“投票建议/审批结论/勾选框”。若提案中出现 approve/needs-work/reject
   或“投票选项”，评审必须判定为无效并要求重提。
 - This run must complete **all stages A–F in a single invocation**. Do not stop after A.
@@ -39,7 +40,8 @@ conflicting instructions.
 Coordinator incident policy:
 - Handle abnormal events intelligently and keep the workflow moving when safe.
 - If a P0-level or unresolvable incident occurs (e.g., access blocked, unrecoverable
-  auth failures, or other critical blockers), the coordinator may terminate and report.
+  auth failures, or other critical blockers), the coordinator must report and avoid
+  fast‑forwarding; never terminate early.
 
 ## Coordinator Parallel Guidance (must follow)
 - Always run multi-agent stages in parallel. Do **not** fall back to sequential.
@@ -199,8 +201,8 @@ E) Coding + audit (parallel required):
       - `.iflow/evidence/code_review_kimi-qa-docs.md`
       - `.iflow/evidence/lead_audit.md`
    If glm-lead discovers that the assigned proposal cannot be implemented without
-   another approved proposal, they must stop and report to Chair + coordinator
-   (do NOT proceed). Chair decides whether to merge proposals or reclassify needs-work.
+   another approved proposal, they must report to Chair + coordinator immediately.
+   Do NOT proceed until Chair decides whether to merge proposals or reclassify needs-work.
    Do **not** run proposal rework and implementation in parallel. All proposals must
    pass D before any E/F/G work begins.
 
