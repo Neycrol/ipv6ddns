@@ -39,12 +39,35 @@ const VERSION: &str = "1.0.0";
 struct Args {
     #[arg(short, long)]
     config: Option<PathBuf>,
+    /// Test configuration file validity without running the daemon
+    #[arg(long)]
+    config_test: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    let config = Config::load(args.config).context("Config load failed")?;
+    
+    // Handle config test mode
+    if args.config_test {
+        match Config::load(args.config.clone()) {
+            Ok(config) => {
+                println!("Configuration is valid");
+                println!("Record: {}", config.record);
+                println!("Zone ID: {}", config.zone_id.as_str());
+                println!("Provider: {}", config.provider_type);
+                println!("Health port: {}", config.health_port);
+                println!("Multi-record policy: {:?}", config.multi_record);
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("Configuration is invalid: {:#}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+    
+    let config = Config::load(args.config.clone()).context("Config load failed")?;
 
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(if config.verbose { "debug" } else { "info" }));
@@ -57,7 +80,9 @@ async fn main() -> Result<()> {
         .context("Netlink socket failed")?;
 
     let mut daemon = Daemon::new(config, std::sync::Arc::new(cf_client), netlink);
-    daemon.run().await?;
+    
+    // Pass config path to daemon for file watching
+    daemon.run(args.config).await?;
 
     Ok(())
 }

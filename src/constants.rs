@@ -123,3 +123,10 @@ pub const HTTP_POOL_MAX_IDLE_PER_HOST: usize = 10;
 
 /// Idle timeout for HTTP connections in seconds
 pub const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+
+//==============================================================================
+// Config File Watch Constants
+//==============================================================================
+
+/// Configuration file watch debounce duration in milliseconds
+pub const CONFIG_WATCH_DEBOUNCE_MS: u64 = 500;

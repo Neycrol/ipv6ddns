@@ -7,11 +7,12 @@ use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
+use notify::{Config as NotifyConfig, Event, RecommendedWatcher, RecursiveMode, Watcher};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
-use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS};
+use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS, CONFIG_WATCH_DEBOUNCE_MS};
 use crate::dns_provider::DnsProvider;
 use crate::health::HealthServer;
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
@@ -165,8 +166,8 @@ pub fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
 /// The daemon monitors IPv6 address changes and updates DNS records
 /// accordingly. It supports both event-driven (netlink) and polling-based monitoring.
 pub struct Daemon {
-    /// Shared configuration
-    config: Arc<Config>,
+    /// Shared configuration (protected by RwLock for hot-reloading)
+    config: Arc<tokio::sync::RwLock<Config>>,
     /// Shared application state (protected by mutex)
     state: Arc<tokio::sync::Mutex<AppState>>,
     /// DNS provider client (trait object)
@@ -185,7 +186,7 @@ impl Daemon {
     /// * `netlink` - Netlink socket for IPv6 monitoring
     pub fn new(config: Config, dns_provider: Arc<dyn DnsProvider>, netlink: NetlinkSocket) -> Self {
         Self {
-            config: Arc::new(config),
+            config: Arc::new(tokio::sync::RwLock::new(config)),
             state: Arc::new(tokio::sync::Mutex::new(AppState::default())),
             dns_provider,
             netlink,
@@ -201,13 +202,21 @@ impl Daemon {
     ///    - SIGTERM: Graceful shutdown
     ///    - SIGHUP: Force resync
     ///    - Netlink events: IPv6 address changes
+    ///    - Config file changes (if config_path is provided)
+    ///
+    /// # Arguments
+    ///
+    /// * `config_path` - Optional path to config file for watching
     ///
     /// # Returns
     ///
     /// Returns `Ok(())` on graceful shutdown or an error if the daemon fails.
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(&mut self, config_path: Option<std::path::PathBuf>) -> Result<()> {
         info!("Starting ipv6ddns daemon");
-        info!("Record: {}", self.config.record);
+
+        // Read config for initial setup
+        let config = self.config.read().await;
+        info!("Record: {}", config.record);
         info!(
             "Mode: {}",
             if self.netlink.is_event_driven() {
@@ -216,18 +225,22 @@ impl Daemon {
                 "polling"
             }
         );
-        info!("Multi-record policy: {:?}", self.config.multi_record);
+        info!("Multi-record policy: {:?}", config.multi_record);
         debug!(
             "Zone ID: {}",
             redact_secrets(
-                self.config.zone_id.as_str(),
-                self.config.api_token.as_str(),
-                self.config.zone_id.as_str()
+                config.zone_id.as_str(),
+                config.api_token.as_str(),
+                config.zone_id.as_str()
             )
         );
+        let health_port = config.health_port;
+        let allow_loopback = config.allow_loopback;
+        let has_config_path = config.config_path.is_some();
+        drop(config); // Release read lock
 
-        let mut health_server = if self.config.health_port > 0 {
-            let addr = std::net::SocketAddr::from(([127, 0, 0, 1], self.config.health_port));
+        let mut health_server = if health_port > 0 {
+            let addr = std::net::SocketAddr::from(([127, 0, 0, 1], health_port));
             match HealthServer::start(addr, Arc::clone(&self.state)).await {
                 Ok(server) => Some(server),
                 Err(e) => {
@@ -239,7 +252,7 @@ impl Daemon {
             None
         };
 
-        if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
+        if let Some(ip) = detect_global_ipv6(allow_loopback) {
             info!("Initial IPv6: {}", ip);
             _ = self.sync_record(&ip).await;
         } else {
@@ -249,6 +262,56 @@ impl Daemon {
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sighup = signal(SignalKind::hangup())?;
 
+        // Set up config file watching if path is provided
+        let (config_tx, mut config_rx) = tokio::sync::mpsc::channel::<()>(10);
+        let mut _watcher: Option<RecommendedWatcher> = None;
+        let mut debounce_timer = None;
+        
+        if let Some(ref config_path) = config_path {
+            if has_config_path {
+                let path = config_path.clone();
+                let tx = config_tx.clone();
+
+                // Create file watcher
+                let mut watcher = RecommendedWatcher::new(
+                    move |res: Result<Event, notify::Error>| {
+                        match res {
+                            Ok(event) => {
+                                // Check if the event affects our config file
+                                let is_relevant = event.paths.iter().any(|p| {
+                                    p == &path || p.file_name() == path.file_name()
+                                });
+                                
+                                // Only trigger on modify events (not on initial watch)
+                                if is_relevant && event.kind.is_modify() {
+                                    debug!("Config file changed: {:?}", event);
+                                    // Use try_send to avoid blocking if the channel is full
+                                    if let Err(e) = tx.try_send(()) {
+                                        warn!("Failed to send config change notification: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!("Config file watch error: {}", e);
+                            }
+                        }
+                    },
+                    NotifyConfig::default().with_poll_interval(Duration::from_secs(1)),
+                )?;
+
+                watcher.watch(config_path.as_path(), RecursiveMode::NonRecursive)?;
+                info!(
+                    "Watching config file for changes: {}",
+                    config_path.display()
+                );
+                _watcher = Some(watcher);
+            } else {
+                warn!("Config loaded from environment variables only, file watching disabled");
+            }
+        } else {
+            info!("No config file specified, file watching disabled");
+        }
+
         loop {
             tokio::select! {
                 _ = sigterm.recv() => {
@@ -256,14 +319,59 @@ impl Daemon {
                     break;
                 }
                 _ = sighup.recv() => {
-                    info!("SIGHUP received: forcing resync");
-                    if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
+                    info!("SIGHUP received: reloading configuration and forcing resync");
+
+                    // Try to reload configuration
+                    let reload_result = {
+                        let config = self.config.blocking_read();
+                        config.reload()
+                    };
+
+                    match reload_result {
+                        Ok(new_config) => {
+                            info!("Configuration reloaded successfully");
+                            // Update the config
+                            *self.config.write().await = new_config;
+                        }
+                        Err(e) => {
+                            error!("Configuration reload failed: {:#}. Keeping old configuration.", e);
+                            // Continue with old config
+                        }
+                    }
+
+                    // Force resync regardless of reload success
+                    let config = self.config.read().await;
+                    if let Some(ip) = detect_global_ipv6(config.allow_loopback) {
                         if let Err(e) = self.sync_record(&ip).await {
                             error!("Sync failed: {:#}", e);
                         }
                     } else {
                         warn!("No IPv6 on SIGHUP");
                     }
+                }
+                // Handle config file changes with debouncing
+                Some(()) = async {
+                    if _watcher.is_some() {
+                        config_rx.recv().await
+                    } else {
+                        None
+                    }
+                } => {
+                    // Start or reset debounce timer
+                    debounce_timer = Some(tokio::time::Instant::now() + Duration::from_millis(CONFIG_WATCH_DEBOUNCE_MS));
+                }
+                // Check debounce timer
+                _ = async {
+                    if let Some(timer) = debounce_timer {
+                        tokio::time::sleep_until(timer).await;
+                        Result::<(), ()>::Ok(())
+                    } else {
+                        std::future::pending().await
+                    }
+                } => {
+                    // Debounce period elapsed, handle the config change
+                    debounce_timer = None;
+                    self.handle_config_change().await;
                 }
                 event = self.netlink.recv() => {
                     self.handle_event(event).await;
@@ -297,6 +405,49 @@ impl Daemon {
             }
             Ok(NetlinkEvent::Unknown) => {}
             Err(e) => debug!("Netlink error: {:#}", e),
+        }
+    }
+
+    /// Handles configuration file changes
+    ///
+    /// This method is called when the configuration file is modified.
+    /// It attempts to reload the configuration and applies the new settings.
+    /// If the reload fails, the old configuration is preserved.
+    ///
+    /// # Behavior
+    ///
+    /// - Debounces rapid file changes (500ms cooldown)
+    /// - Validates new configuration before applying
+    /// - Logs success or failure
+    /// - Preserves old config if reload fails
+    pub async fn handle_config_change(&self) {
+        info!("Configuration file changed, reloading...");
+
+        let reload_result = {
+            let config = self.config.blocking_read();
+            config.reload()
+        };
+
+        match reload_result {
+            Ok(new_config) => {
+                info!("Configuration reloaded successfully from file change");
+                // Update the config
+                *self.config.write().await = new_config;
+
+                // Force a resync with new config
+                let config = self.config.read().await;
+                if let Some(ip) = detect_global_ipv6(config.allow_loopback) {
+                    if let Err(e) = self.sync_record(&ip).await {
+                        error!("Sync failed after config reload: {:#}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Configuration reload failed: {:#}. Keeping old configuration.",
+                    e
+                );
+            }
         }
     }
 
@@ -338,24 +489,25 @@ impl Daemon {
             }
         }
 
+        // Read config for this sync operation
+        let config = self.config.read().await;
         let redacted_zone = redact_secrets(
-            self.config.zone_id.as_str(),
-            self.config.api_token.as_str(),
-            self.config.zone_id.as_str(),
+            config.zone_id.as_str(),
+            config.api_token.as_str(),
+            config.zone_id.as_str(),
         );
         info!(
             "Syncing {} -> {} (zone: {})",
-            self.config.record, ip, redacted_zone
+            config.record, ip, redacted_zone
         );
+        let zone_id = config.zone_id.clone();
+        let record = config.record.clone();
+        let multi_record = config.multi_record;
+        drop(config); // Release read lock
 
         let result = self
             .dns_provider
-            .upsert_aaaa_record(
-                self.config.zone_id.as_str(),
-                &self.config.record,
-                ip,
-                self.config.multi_record,
-            )
+            .upsert_aaaa_record(zone_id.as_str(), &record, ip, multi_record)
             .await;
 
         match result {
