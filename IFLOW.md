@@ -31,6 +31,8 @@ conflicting instructions.
 - This is **non-interactive**: do **not** ask the user for confirmation at any point.
   If you would ask, **continue automatically** and keep outputs concise.
 - High token usage is **not** a stopping condition. Reduce verbosity instead of pausing.
+- Never pause to “wait for Chair.” If a Chair decision is required, request it and
+  continue with the default policy if no response arrives in the same run.
 
 ## State / Progress Tracking
 - Use the built‑in todo list to track stages and sub‑steps.
@@ -89,6 +91,8 @@ Once Chair decision is recorded:
 If **any** proposal is needs-work or reject, coordinator must restart A-stage for those
 proposals (revision +1) and repeat B → C → D until **all proposals are approved**.
 Do **not** proceed to E while any proposal remains unapproved.
+If Chair decision is not returned in-time, coordinator must apply the default:
+mark any ambiguous/defective proposals as needs-work and restart A immediately.
 
 ### E) Coding + audit (parallel required)
 After glm-lead drafts the **initial implementation**, start this **parallel batch**:
