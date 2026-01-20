@@ -47,7 +47,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    
+
     // Handle config test mode
     if args.config_test {
         match Config::load(args.config.clone()) {
@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
             }
         }
     }
-    
+
     let config = Config::load(args.config.clone()).context("Config load failed")?;
 
     let filter = EnvFilter::try_from_default_env()
@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
         .context("Netlink socket failed")?;
 
     let mut daemon = Daemon::new(config, std::sync::Arc::new(cf_client), netlink);
-    
+
     // Pass config path to daemon for file watching
     daemon.run(args.config).await?;
 

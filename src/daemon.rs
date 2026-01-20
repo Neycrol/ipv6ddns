@@ -12,7 +12,9 @@ use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
-use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS, CONFIG_WATCH_DEBOUNCE_MS};
+use crate::constants::{
+    BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS, CONFIG_WATCH_DEBOUNCE_MS,
+};
 use crate::dns_provider::DnsProvider;
 use crate::health::HealthServer;
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
@@ -214,30 +216,43 @@ impl Daemon {
     pub async fn run(&mut self, config_path: Option<std::path::PathBuf>) -> Result<()> {
         info!("Starting ipv6ddns daemon");
 
-        // Read config for initial setup
-        let config = self.config.read().await;
-        info!("Record: {}", config.record);
-        info!(
-            "Mode: {}",
-            if self.netlink.is_event_driven() {
-                "event-driven (netlink)"
-            } else {
-                "polling"
-            }
-        );
-        info!("Multi-record policy: {:?}", config.multi_record);
+        // Atomically read all initial configuration values to avoid race conditions
+        let (
+            record,
+            mode,
+            multi_record,
+            zone_id,
+            api_token,
+            health_port,
+            allow_loopback,
+            has_config_path,
+            config_path_from_config,
+        ) = {
+            let config = self.config.read().await;
+            (
+                config.record.clone(),
+                if self.netlink.is_event_driven() {
+                    "event-driven (netlink)"
+                } else {
+                    "polling"
+                },
+                config.multi_record,
+                config.zone_id.clone(),
+                config.api_token.clone(),
+                config.health_port,
+                config.allow_loopback,
+                config.config_path.is_some(),
+                config.config_path.clone(),
+            )
+        };
+
+        info!("Record: {}", record);
+        info!("Mode: {}", mode);
+        info!("Multi-record policy: {:?}", multi_record);
         debug!(
             "Zone ID: {}",
-            redact_secrets(
-                config.zone_id.as_str(),
-                config.api_token.as_str(),
-                config.zone_id.as_str()
-            )
+            redact_secrets(zone_id.as_str(), api_token.as_str(), zone_id.as_str())
         );
-        let health_port = config.health_port;
-        let allow_loopback = config.allow_loopback;
-        let has_config_path = config.config_path.is_some();
-        drop(config); // Release read lock
 
         let mut health_server = if health_port > 0 {
             let addr = std::net::SocketAddr::from(([127, 0, 0, 1], health_port));
@@ -266,48 +281,46 @@ impl Daemon {
         let (config_tx, mut config_rx) = tokio::sync::mpsc::channel::<()>(10);
         let mut _watcher: Option<RecommendedWatcher> = None;
         let mut debounce_timer = None;
-        
-        if let Some(ref config_path) = config_path {
-            if has_config_path {
-                let path = config_path.clone();
-                let tx = config_tx.clone();
 
-                // Create file watcher
-                let mut watcher = RecommendedWatcher::new(
-                    move |res: Result<Event, notify::Error>| {
-                        match res {
-                            Ok(event) => {
-                                // Check if the event affects our config file
-                                let is_relevant = event.paths.iter().any(|p| {
-                                    p == &path || p.file_name() == path.file_name()
-                                });
-                                
-                                // Only trigger on modify events (not on initial watch)
-                                if is_relevant && event.kind.is_modify() {
-                                    debug!("Config file changed: {:?}", event);
-                                    // Use try_send to avoid blocking if the channel is full
-                                    if let Err(e) = tx.try_send(()) {
-                                        warn!("Failed to send config change notification: {}", e);
-                                    }
+        // Use config_path parameter if provided, otherwise use config_path from config
+        let watch_path = config_path.or(config_path_from_config);
+
+        if let Some(ref path) = watch_path {
+            let path_clone = path.clone();
+            let tx = config_tx.clone();
+
+            // Create file watcher
+            let mut watcher = RecommendedWatcher::new(
+                move |res: Result<Event, notify::Error>| {
+                    match res {
+                        Ok(event) => {
+                            // Check if the event affects our config file
+                            let is_relevant = event.paths.iter().any(|p| {
+                                p == &path_clone || p.file_name() == path_clone.file_name()
+                            });
+
+                            // Only trigger on modify events (not on initial watch)
+                            if is_relevant && event.kind.is_modify() {
+                                debug!("Config file changed: {:?}", event);
+                                // Use try_send to avoid blocking if the channel is full
+                                if let Err(e) = tx.try_send(()) {
+                                    warn!("Failed to send config change notification: {}", e);
                                 }
                             }
-                            Err(e) => {
-                                error!("Config file watch error: {}", e);
-                            }
                         }
-                    },
-                    NotifyConfig::default().with_poll_interval(Duration::from_secs(1)),
-                )?;
+                        Err(e) => {
+                            error!("Config file watch error: {}", e);
+                        }
+                    }
+                },
+                NotifyConfig::default().with_poll_interval(Duration::from_secs(1)),
+            )?;
 
-                watcher.watch(config_path.as_path(), RecursiveMode::NonRecursive)?;
-                info!(
-                    "Watching config file for changes: {}",
-                    config_path.display()
-                );
-                _watcher = Some(watcher);
-            } else {
-                warn!("Config loaded from environment variables only, file watching disabled");
-            }
+            watcher.watch(path.as_path(), RecursiveMode::NonRecursive)?;
+            info!("Watching config file for changes: {}", path.display());
+            _watcher = Some(watcher);
+        } else if has_config_path {
+            warn!("Config loaded from environment variables only, file watching disabled");
         } else {
             info!("No config file specified, file watching disabled");
         }
@@ -323,7 +336,7 @@ impl Daemon {
 
                     // Try to reload configuration
                     let reload_result = {
-                        let config = self.config.blocking_read();
+                        let config = self.config.read().await;
                         config.reload()
                     };
 
@@ -424,7 +437,7 @@ impl Daemon {
         info!("Configuration file changed, reloading...");
 
         let reload_result = {
-            let config = self.config.blocking_read();
+            let config = self.config.read().await;
             config.reload()
         };
 

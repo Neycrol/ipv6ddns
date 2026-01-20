@@ -31,7 +31,7 @@ fail() {
 # Ensure binary exists
 if [[ ! -f "${BINARY}" ]]; then
     echo "Building ipv6ddns..."
-    cargo build --debug
+    cargo build
 fi
 
 # Create a temporary directory for test files
