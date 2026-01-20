@@ -45,7 +45,7 @@ cargo test netlink
 # Set environment variables
 export CLOUDFLARE_API_TOKEN="your-token-here"
 export CLOUDFLARE_ZONE_ID="your-zone-id"
-export CLOUDFLARE_RECORD_NAME="home.example.com"
+export CLOUDFLARE_RECORD_NAME="example.com"
 
 # Run the daemon
 cargo run --release
@@ -232,7 +232,7 @@ fun testConfigValidation() {
     val config = AppConfig(
         apiToken = "test_token",
         zoneId = "test_zone",
-        recordName = "test.example.com"
+        recordName = "example.com"
     )
     assertTrue(config.apiToken.isNotEmpty())
 }

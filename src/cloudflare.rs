@@ -512,14 +512,14 @@ mod tests {
         let record = DnsRecord {
             id: "test123".to_string(),
             record_type: "AAAA".to_string(),
-            name: "home.xishao.top".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,
         };
 
         let s = format!("{}", record);
-        assert!(s.contains("home.xishao.top"));
+        assert!(s.contains("example.com"));
         assert!(s.contains("2001:db8::1"));
     }
 
@@ -532,7 +532,7 @@ mod tests {
             "result": {
                 "id": "abc123",
                 "type": "AAAA",
-                "name": "test.example.com",
+                "name": "example.com",
                 "content": "::1",
                 "proxied": false,
                 "ttl": 1
@@ -609,7 +609,7 @@ mod tests {
             "result": {
                 "id": "abc123",
                 "type": "AAAA",
-                "name": "test.example.com",
+                "name": "example.com",
                 "content": "::1",
                 "proxied": false,
                 "ttl": 1
@@ -632,7 +632,7 @@ mod tests {
                 {
                     "id": "abc123",
                     "type": "AAAA",
-                    "name": "test.example.com",
+                    "name": "example.com",
                     "content": "2001:db8::1",
                     "proxied": false,
                     "ttl": 1
@@ -640,7 +640,7 @@ mod tests {
                 {
                     "id": "def456",
                     "type": "AAAA",
-                    "name": "test.example.com",
+                    "name": "example.com",
                     "content": "2001:db8::2",
                     "proxied": false,
                     "ttl": 1
@@ -659,7 +659,7 @@ mod tests {
         let json = r#"{
             "id": "abc123",
             "type": "AAAA",
-            "name": "test.example.com",
+            "name": "example.com",
             "content": "2001:db8::1",
             "proxied": true,
             "ttl": 1
@@ -674,7 +674,7 @@ mod tests {
         let json = r#"{
             "id": "abc123",
             "type": "AAAA",
-            "name": "test.example.com",
+            "name": "example.com",
             "content": "2001:db8::1",
             "proxied": false,
             "ttl": 3600
@@ -715,7 +715,7 @@ mod tests {
         let json = r#"{
             "id": "abc123",
             "type": "AAAA",
-            "name": "test.example.com",
+            "name": "example.com",
             "content": "2001:0db8:0000:0000:0000:0000:0000:0001",
             "proxied": false,
             "ttl": 1
@@ -730,7 +730,7 @@ mod tests {
         let json = r#"{
             "id": "abc123",
             "type": "AAAA",
-            "name": "test.example.com",
+            "name": "example.com",
             "content": "2001:db8::1",
             "proxied": false,
             "ttl": 1
@@ -745,7 +745,7 @@ mod tests {
         let json = r#"{
             "id": "abc123",
             "type": "AAAA",
-            "name": "test.example.com",
+            "name": "example.com",
             "content": "2001:db8::1",
             "proxied": false,
             "ttl": 1
@@ -760,7 +760,7 @@ mod tests {
         let json = r#"{
             "id": "abc123",
             "type": "AAAA",
-            "name": "test.example.com",
+            "name": "example.com",
             "content": "2001:db8::1",
             "proxied": false,
             "ttl": 86400
@@ -851,7 +851,7 @@ mod tests {
         let record1 = DnsRecord {
             id: "abc123".to_string(),
             record_type: "AAAA".to_string(),
-            name: "test.example.com".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,
@@ -860,7 +860,7 @@ mod tests {
         let record2 = DnsRecord {
             id: "abc123".to_string(),
             record_type: "AAAA".to_string(),
-            name: "test.example.com".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,
@@ -874,7 +874,7 @@ mod tests {
         let record1 = DnsRecord {
             id: "abc123".to_string(),
             record_type: "AAAA".to_string(),
-            name: "test.example.com".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,
@@ -883,7 +883,7 @@ mod tests {
         let record2 = DnsRecord {
             id: "def456".to_string(),
             record_type: "AAAA".to_string(),
-            name: "test.example.com".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,
@@ -897,7 +897,7 @@ mod tests {
         let record = DnsRecord {
             id: "abc123".to_string(),
             record_type: "AAAA".to_string(),
-            name: "test.example.com".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,

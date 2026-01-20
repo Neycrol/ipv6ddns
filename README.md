@@ -56,7 +56,7 @@ The ipv6ddns Android app provides a convenient UI for managing the DDNS service 
 1. Open the ipv6ddns app
 2. Enter your Cloudflare API Token
 3. Enter your Zone ID
-4. Enter the DNS record name to update (e.g., `home.example.com`)
+4. Enter the DNS record name to update (e.g., `example.com`)
 5. Configure optional settings (timeout, polling interval, verbose logging)
 6. Tap "Start" to begin monitoring
 
@@ -94,7 +94,7 @@ Add:
 [Service]
 Environment="CLOUDFLARE_API_TOKEN=your-token-here"
 Environment="CLOUDFLARE_ZONE_ID=your-zone-id"
-Environment="CLOUDFLARE_RECORD_NAME=home.example.com"
+Environment="CLOUDFLARE_RECORD_NAME=example.com"
 Environment="CLOUDFLARE_MULTI_RECORD=error"
 Environment="IPV6DDNS_ALLOW_LOOPBACK=false"
 ```
@@ -103,7 +103,7 @@ Or create `/etc/default/ipv6ddns`:
 ```bash
 export CLOUDFLARE_API_TOKEN="your-token-here"
 export CLOUDFLARE_ZONE_ID="your-zone-id"
-export CLOUDFLARE_RECORD_NAME="home.example.com"
+export CLOUDFLARE_RECORD_NAME="example.com"
 export CLOUDFLARE_MULTI_RECORD="error"
 export IPV6DDNS_ALLOW_LOOPBACK="false"
 ```
@@ -113,7 +113,7 @@ export IPV6DDNS_ALLOW_LOOPBACK="false"
 Edit `/etc/ipv6ddns/config.toml`:
 
 ```toml
-record_name = "home.example.com"
+record_name = "example.com"
 timeout = 30 # 1-300 seconds
 # Optional, but env vars override these when set:
 # api_token = "your-token-here"

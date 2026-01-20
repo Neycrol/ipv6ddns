@@ -20,7 +20,7 @@ PrivateTmp=true
 # IMPORTANT: Set these before enabling the service!
 # Environment="CLOUDFLARE_API_TOKEN=your-token-here"
 # Environment="CLOUDFLARE_ZONE_ID=your-zone-id"
-# Environment="CLOUDFLARE_RECORD_NAME=home.example.com"
+# Environment="CLOUDFLARE_RECORD_NAME=example.com"
 # Environment="CLOUDFLARE_MULTI_RECORD=error"
 
 # Logging

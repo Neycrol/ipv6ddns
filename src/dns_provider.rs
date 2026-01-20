@@ -113,7 +113,7 @@ mod tests {
         let record1 = DnsRecord {
             id: "abc123".to_string(),
             record_type: "AAAA".to_string(),
-            name: "test.example.com".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,
@@ -122,7 +122,7 @@ mod tests {
         let record2 = DnsRecord {
             id: "abc123".to_string(),
             record_type: "AAAA".to_string(),
-            name: "test.example.com".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,
@@ -136,7 +136,7 @@ mod tests {
         let record1 = DnsRecord {
             id: "abc123".to_string(),
             record_type: "AAAA".to_string(),
-            name: "test.example.com".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,
@@ -145,7 +145,7 @@ mod tests {
         let record2 = DnsRecord {
             id: "def456".to_string(),
             record_type: "AAAA".to_string(),
-            name: "test.example.com".to_string(),
+            name: "example.com".to_string(),
             content: "2001:db8::1".to_string(),
             proxied: false,
             ttl: 1,

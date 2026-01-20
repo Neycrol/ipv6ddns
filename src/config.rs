@@ -33,7 +33,7 @@ use crate::validation::validate_record_name;
 ///
 /// - `api_token`: Cloudflare API token with DNS edit permissions
 /// - `zone_id`: Cloudflare zone ID for the domain
-/// - `record`: DNS record name to update (e.g., "home.example.com")
+/// - `record`: DNS record name to update (e.g., "example.com")
 /// - `timeout`: HTTP request timeout in seconds
 /// - `poll_interval`: Polling interval in seconds (fallback when netlink unavailable)
 /// - `verbose`: Enable verbose logging
@@ -62,7 +62,7 @@ pub struct Config {
     /// It can be set via the `CLOUDFLARE_ZONE_ID` environment variable.
     #[zeroize(skip)]
     pub zone_id: zeroize::Zeroizing<String>,
-    /// DNS record name to update (e.g., "home.example.com")
+    /// DNS record name to update (e.g., "example.com")
     ///
     /// This is the full DNS record name including subdomain if applicable.
     /// It can be set via the `CLOUDFLARE_RECORD_NAME` environment variable.
@@ -476,7 +476,7 @@ mod tests {
             r#"
 api_token = "file_token_123456789012345678901234567890"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "file.example.com"
+record_name = "example.com"
 timeout = 45
 poll_interval = 90
 verbose = true
@@ -491,7 +491,7 @@ allow_loopback = true
             "file_token_123456789012345678901234567890"
         );
         assert_eq!(cfg.zone_id.as_str(), "0123456789abcdef0123456789abcdef");
-        assert_eq!(cfg.record, "file.example.com");
+        assert_eq!(cfg.record, "example.com");
         assert_eq!(cfg.timeout, Duration::from_secs(45));
         assert_eq!(cfg.poll_interval, Duration::from_secs(90));
         assert!(cfg.verbose);
@@ -507,14 +507,14 @@ allow_loopback = true
             r#"
 api_token = "file_token_123456789012345678901234567890"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "file.example.com"
+record_name = "example.com"
 allow_loopback = false
 "#,
         );
 
         std::env::set_var(ENV_API_TOKEN, "env_token_123456789012345678901234567890");
         std::env::set_var(ENV_ZONE_ID, "envzone0123456789abcdef0123456789ab");
-        std::env::set_var(ENV_RECORD_NAME, "env.example.com");
+        std::env::set_var(ENV_RECORD_NAME, "example.com");
         std::env::set_var(ENV_ALLOW_LOOPBACK, "true");
 
         let cfg = Config::load(Some(path)).expect("config load");
@@ -523,7 +523,7 @@ allow_loopback = false
             "env_token_123456789012345678901234567890"
         );
         assert_eq!(cfg.zone_id.as_str(), "envzone0123456789abcdef0123456789ab");
-        assert_eq!(cfg.record, "env.example.com");
+        assert_eq!(cfg.record, "example.com");
         assert!(cfg.allow_loopback);
     }
 
@@ -548,7 +548,7 @@ allow_loopback = false
             r#"
 api_token = "short"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
         let err = Config::load(Some(path)).expect_err("token too short");
@@ -564,7 +564,7 @@ record_name = "test.example.com"
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "invalid-zone-id!"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
         let err = Config::load(Some(path)).expect_err("zone id invalid");
@@ -580,7 +580,7 @@ record_name = "test.example.com"
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "short"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
         let err = Config::load(Some(path)).expect_err("zone id length");
@@ -605,14 +605,14 @@ record_name = "test.example.com"
         let _env = EnvGuard::new();
         std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
         std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
-        std::env::set_var(ENV_RECORD_NAME, "test.example.com");
+        std::env::set_var(ENV_RECORD_NAME, "example.com");
 
         // Test minimum timeout via config file
         let (_dir, path) = write_config(
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 timeout = 1
 "#,
         );
@@ -624,7 +624,7 @@ timeout = 1
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 timeout = 300
 "#,
         );
@@ -636,7 +636,7 @@ timeout = 300
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 timeout = 0
 "#,
         );
@@ -648,7 +648,7 @@ timeout = 0
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 timeout = 301
 "#,
         );
@@ -662,14 +662,14 @@ timeout = 301
         let _env = EnvGuard::new();
         std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
         std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
-        std::env::set_var(ENV_RECORD_NAME, "test.example.com");
+        std::env::set_var(ENV_RECORD_NAME, "example.com");
 
         // Test minimum poll interval via config file
         let (_dir, path) = write_config(
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 poll_interval = 10
 "#,
         );
@@ -681,7 +681,7 @@ poll_interval = 10
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 poll_interval = 3600
 "#,
         );
@@ -693,7 +693,7 @@ poll_interval = 3600
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 poll_interval = 9
 "#,
         );
@@ -705,7 +705,7 @@ poll_interval = 9
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 poll_interval = 3601
 "#,
         );
@@ -721,7 +721,7 @@ poll_interval = 3601
             r#"
 api_token = "01234567890123456789012345678901"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
         let cfg = Config::load(Some(path)).expect("config load");
@@ -736,7 +736,7 @@ record_name = "test.example.com"
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
         let cfg = Config::load(Some(path)).expect("config load");
@@ -751,7 +751,7 @@ record_name = "test.example.com"
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef01234567"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
         let cfg = Config::load(Some(path)).expect("config load");
@@ -764,7 +764,7 @@ record_name = "test.example.com"
         let _env = EnvGuard::new();
         std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
         std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
-        std::env::set_var(ENV_RECORD_NAME, "test.example.com");
+        std::env::set_var(ENV_RECORD_NAME, "example.com");
 
         // Test error policy variants
         for policy in ["error", "fail", "reject"] {
@@ -796,7 +796,7 @@ record_name = "test.example.com"
         let _env = EnvGuard::new();
         std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
         std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
-        std::env::set_var(ENV_RECORD_NAME, "test.example.com");
+        std::env::set_var(ENV_RECORD_NAME, "example.com");
 
         // Test true variants
         for value in ["1", "true", "yes", "on"] {
@@ -823,7 +823,7 @@ record_name = "test.example.com"
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
 
@@ -838,7 +838,7 @@ record_name = "test.example.com"
             "0123456789012345678901234567890123456789"
         );
         assert_eq!(cfg.zone_id.as_str(), "0123456789abcdef0123456789abcdef");
-        assert_eq!(cfg.record, "test.example.com");
+        assert_eq!(cfg.record, "example.com");
     }
 
     #[test]
@@ -849,7 +849,7 @@ record_name = "test.example.com"
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
 
@@ -866,7 +866,7 @@ record_name = "test.example.com"
             r#"
 api_token = "0123456789012345678901234567890123456789"
 zone_id = "ABCDEF0123456789abcdef0123456789"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
 
@@ -882,7 +882,7 @@ record_name = "test.example.com"
             r#"
 api_token = "0123456789012345678901234567890123456789!@#$%^&*()"
 zone_id = "0123456789abcdef0123456789abcdef"
-record_name = "test.example.com"
+record_name = "example.com"
 "#,
         );
 

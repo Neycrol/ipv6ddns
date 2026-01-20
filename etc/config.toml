@@ -15,7 +15,7 @@
 # allow_loopback = false
 
 # Record name to update
-record_name = "xishao.top"
+record_name = "example.com"
 
 # Request timeout in seconds
 timeout = 30

@@ -26,7 +26,7 @@ class ConfigTest {
         val config = AppConfig(
             apiToken = "test_token",
             zoneId = "test_zone",
-            recordName = "test.example.com",
+            recordName = "example.com",
             timeoutSec = 45,
             pollIntervalSec = 90,
             verbose = true,
@@ -35,7 +35,7 @@ class ConfigTest {
         )
         assertEquals("test_token", config.apiToken)
         assertEquals("test_zone", config.zoneId)
-        assertEquals("test.example.com", config.recordName)
+        assertEquals("example.com", config.recordName)
         assertEquals(45L, config.timeoutSec)
         assertEquals(90L, config.pollIntervalSec)
         assertTrue(config.verbose)
