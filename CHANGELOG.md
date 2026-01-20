@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - HTTP health check endpoint
 - HTTP connection pool optimization for better performance
 - Minimum Supported Rust Version (MSRV) specification
+- Configuration hot-reload capability via SIGHUP signal
+- `--config-test` command-line parameter for config validation
 
 ### Changed
 - Enhanced CI/CD pipeline with test coverage reporting

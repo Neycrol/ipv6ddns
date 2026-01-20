@@ -9,6 +9,8 @@ Event-driven IPv6 DDNS client for Cloudflare, written in Rust.
 - **Lightweight**: ~1MB memory footprint, zero runtime dependencies
 - **Secure**: Sensitive data via environment variables (no secrets in config)
 - **Reliable**: Automatic retry with exponential backoff on failures
+- **Config hot-reload**: Reload configuration without restarting via SIGHUP signal
+- **Config validation**: Test configuration syntax with `--config-test` parameter
 
 ## Requirements
 
@@ -126,6 +128,47 @@ multi_record = "error" # error|first|all
 # health_port = 8080 # Health check port (0 = disabled)
 # Sensitive values via environment variables (recommended)
 ```
+
+#### Configuration Hot-Reload
+
+ipv6ddns supports configuration hot-reload without restarting the service. Send a SIGHUP signal to the running process:
+
+```bash
+# Find the process ID
+pidof ipv6ddns
+
+# Send SIGHUP signal to reload configuration
+sudo kill -HUP <pid>
+
+# Or using systemctl (if running as a service)
+sudo systemctl reload ipv6ddns
+```
+
+When the configuration is reloaded:
+- The daemon re-reads the configuration file
+- Settings like `timeout`, `poll_interval`, `verbose`, `multi_record`, `allow_loopback`, and `health_port` take effect immediately
+- DNS provider settings (`api_token`, `zone_id`, `record_name`, `provider_type`) also update dynamically
+- The daemon continues monitoring IPv6 changes without interruption
+- If the new configuration is invalid, the daemon logs an error and continues using the previous valid configuration
+
+#### Configuration Validation
+
+Test your configuration file syntax without starting the daemon:
+
+```bash
+# Test configuration syntax
+ipv6ddns --config /etc/ipv6ddns/config.toml --config-test
+
+# Or with environment variables
+CLOUDFLARE_API_TOKEN="your-token" ipv6ddns --config /etc/ipv6ddns/config.toml --config-test
+```
+
+The `--config-test` parameter:
+- Validates TOML syntax
+- Checks required fields (`api_token`, `zone_id`, `record_name`)
+- Validates field values (e.g., token length, timeout range)
+- Exits with code 0 on success, 1 on failure
+- Useful for pre-deployment validation in CI/CD pipelines
 
 ### Health Check
 
