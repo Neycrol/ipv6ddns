@@ -1,0 +1,51 @@
+# Multi-stage Dockerfile for testing ipv6ddns
+# Stage 1: Build stage
+FROM rust:1.70-slim as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /usr/src/ipv6ddns
+
+# Copy manifests
+COPY Cargo.toml Cargo.lock ./
+
+# Copy source code
+COPY src ./src
+COPY scripts ./scripts
+
+# Build the application
+RUN cargo build --release
+
+# Stage 2: Test stage
+FROM debian:bookworm-slim
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    bash \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r ipv6ddns && useradd -r -g ipv6ddns ipv6ddns
+
+# Copy binary from builder stage
+COPY --from=builder /usr/src/ipv6ddns/target/release/ipv6ddns /usr/local/bin/ipv6ddns
+COPY --from=builder /usr/src/ipv6ddns/scripts/ci/functional-test.sh /usr/local/bin/functional-test.sh
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/functional-test.sh
+
+# Switch to non-root user
+USER ipv6ddns
+
+# Set working directory
+WORKDIR /home/ipv6ddns
+
+# Default command runs functional tests
+CMD ["/usr/local/bin/functional-test.sh"]

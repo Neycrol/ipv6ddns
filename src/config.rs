@@ -110,6 +110,12 @@ pub struct Config {
     /// Set to 0 to disable the health check endpoint.
     #[zeroize(skip)]
     pub health_port: u16,
+    /// Path to the configuration file used to load this config
+    ///
+    /// This is stored to enable hot-reloading of configuration.
+    /// If None, the config was loaded from environment variables only.
+    #[zeroize(skip)]
+    pub config_path: Option<std::path::PathBuf>,
 }
 
 impl Config {
@@ -139,7 +145,8 @@ impl Config {
     /// - `CLOUDFLARE_RECORD_NAME` - DNS record name
     /// - `CLOUDFLARE_MULTI_RECORD` - Multi-record policy (error|first|all)
     pub fn load(config_path: Option<PathBuf>) -> Result<Self> {
-        let mut config = Self::load_from_file(config_path)?;
+        let mut config = Self::load_from_file(config_path.clone())?;
+        config.config_path = config_path;
         Self::override_with_env(&mut config)?;
         Self::validate(&config)?;
         Ok(config)
@@ -208,6 +215,7 @@ impl Config {
             allow_loopback,
             provider_type,
             health_port,
+            config_path: None,
         })
     }
 
@@ -346,6 +354,36 @@ impl Config {
         }
 
         Ok(())
+    }
+
+    /// Reloads configuration from the original file path
+    ///
+    /// This method reloads configuration from the same file path that was used
+    /// to load the current configuration. It preserves environment variable
+    /// overrides and validates the new configuration.
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the new `Config` or an error if:
+    /// - No config path was stored (config was loaded from env only)
+    /// - The config file cannot be read or parsed
+    /// - The new configuration is invalid
+    ///
+    /// # Behavior
+    ///
+    /// - If reload fails, the old configuration is preserved
+    /// - Environment variables still override file values after reload
+    /// - The new configuration is validated before being returned
+    pub fn reload(&self) -> Result<Self> {
+        let config_path = self.config_path.clone().ok_or_else(|| {
+            anyhow::anyhow!("Cannot reload: config was loaded from environment variables only")
+        })?;
+
+        let mut new_config = Self::load_from_file(Some(config_path.clone()))?;
+        new_config.config_path = Some(config_path);
+        Self::override_with_env(&mut new_config)?;
+        Self::validate(&new_config)?;
+        Ok(new_config)
     }
 }
 
@@ -891,5 +929,128 @@ record_name = "example.com"
             cfg.api_token.as_str(),
             "0123456789012345678901234567890123456789!@#$%^&*()"
         );
+    }
+
+    // Tests for config reload functionality
+
+    #[test]
+    #[serial]
+    fn config_reload_success() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "example.com"
+timeout = 30
+"#,
+        );
+
+        let cfg = Config::load(Some(path.clone())).expect("config load");
+        assert_eq!(cfg.timeout, Duration::from_secs(30));
+
+        // Update config file
+        std::fs::write(
+            &path,
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "example.com"
+timeout = 45
+"#,
+        )
+        .expect("write config");
+
+        let reloaded_cfg = cfg.reload().expect("config reload");
+        assert_eq!(reloaded_cfg.timeout, Duration::from_secs(45));
+        assert_eq!(reloaded_cfg.config_path, Some(path));
+    }
+
+    #[test]
+    #[serial]
+    fn config_reload_invalid_config_preserves_old() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "example.com"
+timeout = 30
+"#,
+        );
+
+        let cfg = Config::load(Some(path.clone())).expect("config load");
+        let original_timeout = cfg.timeout;
+
+        // Update config file with invalid values
+        std::fs::write(
+            &path,
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "example.com"
+timeout = 9999
+"#,
+        )
+        .expect("write config");
+
+        let result = cfg.reload();
+        assert!(result.is_err(), "reload should fail with invalid config");
+
+        // Original config should still be valid
+        assert_eq!(cfg.timeout, original_timeout);
+    }
+
+    #[test]
+    #[serial]
+    fn config_reload_no_path_fails() {
+        let _env = EnvGuard::new();
+        std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
+        std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
+        std::env::set_var(ENV_RECORD_NAME, "example.com");
+
+        // Load config without a file path (env only)
+        let cfg = Config::load(None).expect("config load");
+        assert!(cfg.config_path.is_none());
+
+        // Reload should fail
+        let result = cfg.reload();
+        assert!(result.is_err(), "reload should fail without config path");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("Cannot reload"));
+    }
+
+    #[test]
+    #[serial]
+    fn config_reload_env_overrides_preserved() {
+        let _env = EnvGuard::new();
+        let (_dir, path) = write_config(
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "example.com"
+health_port = 8080
+"#,
+        );
+
+        std::env::set_var(ENV_HEALTH_PORT, "9090");
+        let cfg = Config::load(Some(path.clone())).expect("config load");
+        assert_eq!(cfg.health_port, 9090); // Env override
+
+        // Update config file
+        std::fs::write(
+            &path,
+            r#"
+api_token = "0123456789012345678901234567890123456789"
+zone_id = "0123456789abcdef0123456789abcdef"
+record_name = "example.com"
+health_port = 8081
+"#,
+        )
+        .expect("write config");
+
+        let reloaded_cfg = cfg.reload().expect("config reload");
+        // Env var should still override file value
+        assert_eq!(reloaded_cfg.health_port, 9090);
     }
 }
