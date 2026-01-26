@@ -23,7 +23,7 @@ jobs:
   pre-release-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Rust
         run: |
           curl -fsSL https://sh.rustup.rs | sh -s -- -y
@@ -96,7 +96,7 @@ jobs:
   security-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install Rust
         run: |
           curl -fsSL https://sh.rustup.rs | sh -s -- -y
@@ -112,7 +112,7 @@ jobs:
   build-x86_64:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install deps
         run: |
           sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/microsoft-prod.list
@@ -150,7 +150,7 @@ jobs:
   build-aarch64:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install deps (cross)
         run: |
           sudo rm -f /etc/apt/sources.list.d/azure-cli.list /etc/apt/sources.list.d/microsoft-prod.list
@@ -192,7 +192,7 @@ jobs:
     container: archlinux:base-devel
     needs: [build-x86_64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v7
         with:
           name: ipv6ddns-x86_64
@@ -227,7 +227,7 @@ jobs:
     container: archlinux:base-devel
     needs: [build-aarch64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v7
         with:
           name: ipv6ddns-aarch64
@@ -260,7 +260,7 @@ jobs:
   build-android:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: android-actions/setup-android@v3
       - name: Install Android SDK/NDK
         run: |
@@ -319,7 +319,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [pre-release-check, security-scan, build-x86_64, build-aarch64, build-archpkg, build-archlinuxarm, build-android]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Compute tag
         id: meta
         run: |
@@ -361,7 +361,7 @@ jobs:
     needs: [build-release]
     if: ${{ inputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Compute tag
         id: meta
         run: |
