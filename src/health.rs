@@ -2,12 +2,12 @@
 //!
 //! This module provides a lightweight HTTP endpoint for health checks.
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use chrono::Utc;
 use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::{oneshot, Mutex};
 use tracing::{error, info};
@@ -46,7 +46,9 @@ pub struct HealthServer {
 impl HealthServer {
     /// Starts the health check server
     pub async fn start(addr: SocketAddr, state: Arc<Mutex<AppState>>) -> Result<Self> {
-        let listener = TcpListener::bind(addr).await?;
+        let listener = TcpListener::bind(addr)
+            .await
+            .with_context(|| format!("Failed to bind health check server to address {}", addr))?;
         info!("Health check server listening on {}", addr);
 
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel();
@@ -60,10 +62,17 @@ impl HealthServer {
                     accept = listener.accept() => {
                         match accept {
                             Ok((mut socket, _peer)) => {
+                                use tokio::io::AsyncReadExt;
                                 let state = Arc::clone(&state);
                                 tokio::spawn(async move {
                                     let mut buf = [0u8; 1024];
-                                    let bytes_read = socket.read(&mut buf).await.unwrap_or_default();
+                                    let bytes_read = match socket.read(&mut buf).await {
+                                        Ok(n) => n,
+                                        Err(e) => {
+                                            error!("Health check socket read error: {}", e);
+                                            return;
+                                        }
+                                    };
 
                                     let request_text = String::from_utf8_lossy(&buf[..bytes_read]);
                                     let request_line = request_text.lines().next().unwrap_or("");
@@ -76,7 +85,10 @@ impl HealthServer {
                                         let response = build_response(&snapshot);
                                         let body = match serde_json::to_string(&response) {
                                             Ok(body) => body,
-                                            Err(_) => "{\"status\":\"error\"}".to_string(),
+                                            Err(e) => {
+                                                error!("Failed to serialize health response: {}", e);
+                                                "{\"status\":\"error\"}".to_string()
+                                            }
                                         };
 
                                         let reply = format!(

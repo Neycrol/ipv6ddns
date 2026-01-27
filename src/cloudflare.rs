@@ -460,7 +460,13 @@ impl CloudflareClient {
                         first = Some(updated);
                     }
                 }
-                Ok(first.unwrap())
+                first.with_context(|| {
+                    format!(
+                        "No records found after UpdateAll processing for '{}' in zone '{}'. \
+                         This should not happen under normal circumstances.",
+                        record_name, zone_id
+                    )
+                })
             }
         }
     }

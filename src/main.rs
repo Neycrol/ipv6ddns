@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 use clap::Parser;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 mod cloudflare;
@@ -57,7 +58,10 @@ async fn main() -> Result<()> {
         .context("Netlink socket failed")?;
 
     let mut daemon = Daemon::new(config, std::sync::Arc::new(cf_client), netlink);
-    daemon.run().await?;
 
+    // Run daemon (signal handling is managed internally by daemon)
+    daemon.run().await.context("Daemon run failed")?;
+
+    info!("ipv6ddns stopped");
     Ok(())
 }

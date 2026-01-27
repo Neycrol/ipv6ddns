@@ -5,7 +5,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use chrono::{DateTime, Utc};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, warn};
@@ -228,20 +228,25 @@ impl Daemon {
 
         let mut health_server = if self.config.health_port > 0 {
             let addr = std::net::SocketAddr::from(([127, 0, 0, 1], self.config.health_port));
-            match HealthServer::start(addr, Arc::clone(&self.state)).await {
-                Ok(server) => Some(server),
-                Err(e) => {
-                    error!("Health server failed to start: {:#}", e);
-                    None
-                }
-            }
+            Some(
+                HealthServer::start(addr, Arc::clone(&self.state))
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "Failed to start health server on port {}",
+                            self.config.health_port
+                        )
+                    })?,
+            )
         } else {
             None
         };
 
         if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
             info!("Initial IPv6: {}", ip);
-            _ = self.sync_record(&ip).await;
+            if let Err(e) = self.sync_record(&ip).await {
+                error!("Initial sync failed: {:#}", e);
+            }
         } else {
             warn!("No IPv6 on startup");
         }
@@ -356,7 +361,13 @@ impl Daemon {
                 ip,
                 self.config.multi_record,
             )
-            .await;
+            .await
+            .with_context(|| {
+                format!(
+                    "Failed to upsert AAAA record '{}' with IP '{}' in zone '{}'",
+                    self.config.record, ip, redacted_zone
+                )
+            });
 
         match result {
             Ok(record) => {
