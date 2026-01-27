@@ -10,6 +10,7 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 use clap::Parser;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 mod cloudflare;
@@ -39,35 +40,12 @@ const VERSION: &str = "1.0.0";
 struct Args {
     #[arg(short, long)]
     config: Option<PathBuf>,
-    /// Test configuration file validity without running the daemon
-    #[arg(long)]
-    config_test: bool,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-
-    // Handle config test mode
-    if args.config_test {
-        match Config::load(args.config.clone()) {
-            Ok(config) => {
-                println!("Configuration is valid");
-                println!("Record: {}", config.record);
-                println!("Zone ID: {}", config.zone_id.as_str());
-                println!("Provider: {}", config.provider_type);
-                println!("Health port: {}", config.health_port);
-                println!("Multi-record policy: {:?}", config.multi_record);
-                std::process::exit(0);
-            }
-            Err(e) => {
-                eprintln!("Configuration is invalid: {:#}", e);
-                std::process::exit(1);
-            }
-        }
-    }
-
-    let config = Config::load(args.config.clone()).context("Config load failed")?;
+    let config = Config::load(args.config).context("Config load failed")?;
 
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(if config.verbose { "debug" } else { "info" }));
@@ -81,8 +59,9 @@ async fn main() -> Result<()> {
 
     let mut daemon = Daemon::new(config, std::sync::Arc::new(cf_client), netlink);
 
-    // Pass config path to daemon for file watching
-    daemon.run(args.config).await?;
+    // Run daemon (signal handling is managed internally by daemon)
+    daemon.run().await.context("Daemon run failed")?;
 
+    info!("ipv6ddns stopped");
     Ok(())
 }
