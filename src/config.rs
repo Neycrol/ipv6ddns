@@ -356,24 +356,11 @@ impl Config {
         Ok(())
     }
 
-    /// Reloads configuration from the original file path
+    /// Reloads the configuration from the original file path
     ///
-    /// This method reloads configuration from the same file path that was used
-    /// to load the current configuration. It preserves environment variable
-    /// overrides and validates the new configuration.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing the new `Config` or an error if:
-    /// - No config path was stored (config was loaded from env only)
-    /// - The config file cannot be read or parsed
-    /// - The new configuration is invalid
-    ///
-    /// # Behavior
-    ///
-    /// - If reload fails, the old configuration is preserved
-    /// - Environment variables still override file values after reload
+    /// # Errors
     /// - The new configuration is validated before being returned
+    #[allow(dead_code)]
     pub fn reload(&self) -> Result<Self> {
         let config_path = self.config_path.clone().ok_or_else(|| {
             anyhow::anyhow!("Cannot reload: config was loaded from environment variables only")

@@ -129,4 +129,5 @@ pub const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
 //==============================================================================
 
 /// Configuration file watch debounce duration in milliseconds
+#[allow(dead_code)]
 pub const CONFIG_WATCH_DEBOUNCE_MS: u64 = 500;
