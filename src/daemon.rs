@@ -241,7 +241,9 @@ impl Daemon {
 
         if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
             info!("Initial IPv6: {}", ip);
-            _ = self.sync_record(&ip).await;
+            if let Err(e) = self.sync_record(&ip).await {
+                error!("Initial sync failed: {:#}", e);
+            }
         } else {
             warn!("No IPv6 on startup");
         }
