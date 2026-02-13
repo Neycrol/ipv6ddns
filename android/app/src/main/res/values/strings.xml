@@ -12,8 +12,8 @@
     <string name="multi_record_error">Error</string>
     <string name="multi_record_first">First</string>
     <string name="multi_record_all">All</string>
-    <string name="status_running">Status: Running</string>
-    <string name="status_stopped">Status: Stopped</string>
+    <string name="status_running">Running</string>
+    <string name="status_stopped">Stopped</string>
     <string name="last_sync">Last sync</string>
     <string name="action_start">Start</string>
     <string name="action_stop">Stop</string>
@@ -22,4 +22,11 @@
     <string name="validation_record_name_required">Record Name is required</string>
     <string name="validation_timeout_range" formatted="false">Timeout must be between %1$d and %2$d seconds</string>
     <string name="validation_poll_interval_range" formatted="false">Poll interval must be between %1$d and %2$d seconds</string>
+    <string name="battery_optimization_title">Battery optimization is enabled</string>
+    <string name="battery_optimization_description">This may cause the service to stop unexpectedly. We recommend disabling battery optimization for this app.</string>
+    <string name="battery_optimization_action">Disable Battery Optimization</string>
+    <string name="section_status">Status</string>
+    <string name="label_show_token">Show token</string>
+    <string name="label_hide_token">Hide token</string>
+    <string name="never_synced">Never synced</string>
 </resources>

@@ -8,46 +8,71 @@ import android.provider.Settings
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TopAppBarScrollBehavior
+import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.neycrol.ipv6ddns.data.AppConfig
 import com.neycrol.ipv6ddns.data.ConfigStore
 import com.neycrol.ipv6ddns.data.ConfigToml
 import com.neycrol.ipv6ddns.service.Ipv6DdnsService
+import com.neycrol.ipv6ddns.ui.AppColors
+import com.neycrol.ipv6ddns.ui.Ipv6DdnsTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -58,17 +83,21 @@ import java.util.Locale
 private const val TAG = "ipv6ddns/MainActivity"
 
 class MainActivity : ComponentActivity() {
-
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        setContent { AppScreen() }
+        setContent {
+            Ipv6DdnsTheme {
+                AppScreen()
+            }
+        }
     }
-
 }
 
 private fun isBatteryOptimizationEnabled(context: android.content.Context): Boolean {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        val pm = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+        val pm = context.getSystemService(android.content.Context.POWER_SERVICE)
+                as android.os.PowerManager
         return !pm.isIgnoringBatteryOptimizations(context.packageName)
     }
     return false
@@ -92,14 +121,17 @@ private fun requestBatteryOptimizationExemption(context: android.content.Context
     }
 }
 
+private const val MIN_TIMEOUT = 1L
+private const val MAX_TIMEOUT = 300L
+private const val MIN_POLL_INTERVAL = 10L
+private const val MAX_POLL_INTERVAL = 3600L
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppScreen() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val config by ConfigStore.configFlow(context).collectAsState(
-        initial = AppConfig()
-    )
+    val config by ConfigStore.configFlow(context).collectAsState(initial = AppConfig())
     val running by ConfigStore.runningFlow(context).collectAsState(initial = false)
 
     var apiToken by rememberSaveable { mutableStateOf("") }
@@ -109,7 +141,7 @@ fun AppScreen() {
     var pollIntervalSec by rememberSaveable { mutableStateOf("60") }
     var verbose by rememberSaveable { mutableStateOf(false) }
     var multiRecord by rememberSaveable { mutableStateOf("error") }
-    var showMenu by remember { mutableStateOf(false) }
+    var showMenu by rememberSaveable { mutableStateOf(false) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val clearError = { errorMessage = null }
     val multiRecordOptions = listOf(
@@ -117,33 +149,24 @@ fun AppScreen() {
         "first" to stringResource(R.string.multi_record_first),
         "all" to stringResource(R.string.multi_record_all)
     )
-    val multiRecordLabel = multiRecordOptions.firstOrNull { it.first == multiRecord }?.second ?: multiRecord
+    val multiRecordLabel =
+        multiRecordOptions.firstOrNull { it.first == multiRecord }?.second ?: multiRecord
 
-    // Validation constants
-    val minTimeout = 1L
-    val maxTimeout = 300L
-    val minPollInterval = 10L
-    val maxPollInterval = 3600L
-
-    // Validation function
     fun validateConfig(): String? {
-        if (apiToken.trim().isEmpty()) {
+        if (apiToken.trim().isEmpty())
             return context.getString(R.string.validation_api_token_required)
-        }
-        if (zoneId.trim().isEmpty()) {
+        if (zoneId.trim().isEmpty())
             return context.getString(R.string.validation_zone_id_required)
-        }
-        if (recordName.trim().isEmpty()) {
+        if (recordName.trim().isEmpty())
             return context.getString(R.string.validation_record_name_required)
-        }
         val timeout = timeoutSec.toLongOrNull()
-        if (timeout == null || timeout < minTimeout || timeout > maxTimeout) {
-            return context.getString(R.string.validation_timeout_range, minTimeout, maxTimeout)
-        }
-        val pollInterval = pollIntervalSec.toLongOrNull()
-        if (pollInterval == null || pollInterval < minPollInterval || pollInterval > maxPollInterval) {
-            return context.getString(R.string.validation_poll_interval_range, minPollInterval, maxPollInterval)
-        }
+        if (timeout == null || timeout < MIN_TIMEOUT || timeout > MAX_TIMEOUT)
+            return context.getString(R.string.validation_timeout_range, MIN_TIMEOUT, MAX_TIMEOUT)
+        val poll = pollIntervalSec.toLongOrNull()
+        if (poll == null || poll < MIN_POLL_INTERVAL || poll > MAX_POLL_INTERVAL)
+            return context.getString(
+                R.string.validation_poll_interval_range, MIN_POLL_INTERVAL, MAX_POLL_INTERVAL
+            )
         return null
     }
 
@@ -157,64 +180,22 @@ fun AppScreen() {
         multiRecord = config.multiRecord
     }
 
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
+        rememberTopAppBarState()
+    )
+
     Scaffold(
-        topBar = { TopAppBar(title = { Text(stringResource(R.string.app_name)) }) }
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = { AppTopBar(scrollBehavior) }
     ) { padding ->
         Column(
             modifier = Modifier
                 .padding(padding)
-                .padding(16.dp)
-                .fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            CloudflareConfigCard(
-                apiToken = apiToken,
-                onApiTokenChange = {
-                    apiToken = it
-                    clearError()
-                },
-                zoneId = zoneId,
-                onZoneIdChange = {
-                    zoneId = it
-                    clearError()
-                },
-                recordName = recordName,
-                onRecordNameChange = {
-                    recordName = it
-                    clearError()
-                }
-            )
-
-            RuntimeConfigCard(
-                timeoutSec = timeoutSec,
-                onTimeoutChange = {
-                    timeoutSec = it.filter { ch -> ch.isDigit() }
-                    clearError()
-                },
-                pollIntervalSec = pollIntervalSec,
-                onPollIntervalChange = {
-                    pollIntervalSec = it.filter { ch -> ch.isDigit() }
-                    clearError()
-                },
-                verbose = verbose,
-                onVerboseChange = {
-                    verbose = it
-                    clearError()
-                },
-                multiRecord = multiRecord,
-                multiRecordLabel = multiRecordLabel,
-                multiRecordOptions = multiRecordOptions,
-                showMenu = showMenu,
-                onMenuShow = { showMenu = true },
-                onMenuDismiss = { showMenu = false },
-                onMultiRecordSelect = { option ->
-                    multiRecord = option
-                    clearError()
-                    showMenu = false
-                },
-                context = context
-            )
-
             StatusCard(
                 running = running,
                 config = config,
@@ -235,10 +216,14 @@ fun AppScreen() {
                             ConfigStore.saveConfig(context, cfg)
                             val configFile = ConfigToml.writeConfig(context, cfg)
                             withContext(Dispatchers.Main) {
-                                val intent = Intent(context, Ipv6DdnsService::class.java).apply {
-                                    action = Ipv6DdnsService.ACTION_START
-                                    putExtra(Ipv6DdnsService.EXTRA_CONFIG_PATH, configFile.absolutePath)
-                                }
+                                val intent =
+                                    Intent(context, Ipv6DdnsService::class.java).apply {
+                                        action = Ipv6DdnsService.ACTION_START
+                                        putExtra(
+                                            Ipv6DdnsService.EXTRA_CONFIG_PATH,
+                                            configFile.absolutePath
+                                        )
+                                    }
                                 context.startForegroundService(intent)
                             }
                         }
@@ -251,165 +236,55 @@ fun AppScreen() {
                     context.startService(intent)
                 }
             )
+
+            CloudflareConfigCard(
+                apiToken = apiToken,
+                onApiTokenChange = { apiToken = it; clearError() },
+                zoneId = zoneId,
+                onZoneIdChange = { zoneId = it; clearError() },
+                recordName = recordName,
+                onRecordNameChange = { recordName = it; clearError() },
+                enabled = !running
+            )
+
+            RuntimeConfigCard(
+                timeoutSec = timeoutSec,
+                onTimeoutChange = { timeoutSec = it.filter { ch -> ch.isDigit() }; clearError() },
+                pollIntervalSec = pollIntervalSec,
+                onPollIntervalChange = {
+                    pollIntervalSec = it.filter { ch -> ch.isDigit() }; clearError()
+                },
+                verbose = verbose,
+                onVerboseChange = { verbose = it; clearError() },
+                multiRecordLabel = multiRecordLabel,
+                multiRecordOptions = multiRecordOptions,
+                showMenu = showMenu,
+                onMenuShow = { showMenu = true },
+                onMenuDismiss = { showMenu = false },
+                onMultiRecordSelect = { multiRecord = it; clearError(); showMenu = false },
+                enabled = !running,
+                context = context
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CloudflareConfigCard(
-    apiToken: String,
-    onApiTokenChange: (String) -> Unit,
-    zoneId: String,
-    onZoneIdChange: (String) -> Unit,
-    recordName: String,
-    onRecordNameChange: (String) -> Unit
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(stringResource(R.string.section_cloudflare))
-            OutlinedTextField(
-                value = apiToken,
-                onValueChange = onApiTokenChange,
-                label = { Text(stringResource(R.string.label_api_token)) },
-                modifier = Modifier.fillMaxWidth(),
-                visualTransformation = PasswordVisualTransformation()
-            )
-            OutlinedTextField(
-                value = zoneId,
-                onValueChange = onZoneIdChange,
-                label = { Text(stringResource(R.string.label_zone_id)) },
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = recordName,
-                onValueChange = onRecordNameChange,
-                label = { Text(stringResource(R.string.label_record_name)) },
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-    }
+private fun AppTopBar(scrollBehavior: TopAppBarScrollBehavior) {
+    LargeTopAppBar(
+        title = { Text(stringResource(R.string.app_name)) },
+        scrollBehavior = scrollBehavior,
+        colors = TopAppBarDefaults.largeTopAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+            scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        )
+    )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun RuntimeConfigCard(
-    timeoutSec: String,
-    onTimeoutChange: (String) -> Unit,
-    pollIntervalSec: String,
-    onPollIntervalChange: (String) -> Unit,
-    verbose: Boolean,
-    onVerboseChange: (Boolean) -> Unit,
-    multiRecord: String,
-    multiRecordLabel: String,
-    multiRecordOptions: List<Pair<String, String>>,
-    showMenu: Boolean,
-    onMenuShow: () -> Unit,
-    onMenuDismiss: () -> Unit,
-    onMultiRecordSelect: (String) -> Unit,
-    context: android.content.Context
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(stringResource(R.string.section_runtime))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = timeoutSec,
-                    onValueChange = onTimeoutChange,
-                    label = { Text(stringResource(R.string.label_timeout)) },
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                OutlinedTextField(
-                    value = pollIntervalSec,
-                    onValueChange = onPollIntervalChange,
-                    label = { Text(stringResource(R.string.label_poll)) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(stringResource(R.string.label_verbose))
-                Switch(
-                    checked = verbose,
-                    onCheckedChange = onVerboseChange
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(stringResource(R.string.label_multi_record))
-                Button(onClick = onMenuShow) {
-                    Text(multiRecordLabel)
-                }
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = onMenuDismiss
-                ) {
-                    multiRecordOptions.forEach { (option, label) ->
-                        DropdownMenuItem(
-                            text = { Text(label) },
-                            onClick = { onMultiRecordSelect(option) }
-                        )
-                    }
-                }
-            }
-
-            // Battery optimization exemption card
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && isBatteryOptimizationEnabled(context)) {
-                BatteryOptimizationCard(context = context)
-            }
-        }
-    }
-}
-
-@Composable
-fun BatteryOptimizationCard(context: android.content.Context) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer
-        ),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                "Battery optimization is enabled",
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                "This may cause the service to stop unexpectedly. We recommend disabling battery optimization for this app.",
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                style = MaterialTheme.typography.bodySmall
-            )
-            Button(
-                onClick = { requestBatteryOptimizationExemption(context) },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Disable Battery Optimization")
-            }
-        }
-    }
-}
+// --- Status Card -------------------------------------------------------------
 
 @Composable
 fun StatusCard(
@@ -419,25 +294,59 @@ fun StatusCard(
     onStartClick: () -> Unit,
     onStopClick: () -> Unit
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    val dark = isSystemInDarkTheme()
+    val statusColor by animateColorAsState(
+        targetValue = if (running) {
+            if (dark) AppColors.StatusRunningDark else AppColors.StatusRunning
+        } else {
+            if (dark) AppColors.StatusStoppedDark else AppColors.StatusStopped
+        },
+        animationSpec = tween(400),
+        label = "statusColor"
+    )
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                stringResource(
-                    if (running) R.string.status_running else R.string.status_stopped
-                ),
-                fontWeight = FontWeight.Bold
-            )
-            if (config.lastSyncTime > 0) {
-                val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                val syncTime = dateFormat.format(Date(config.lastSyncTime))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(CircleShape)
+                        .background(statusColor)
+                )
                 Text(
-                    stringResource(R.string.last_sync) + ": $syncTime",
-                    style = MaterialTheme.typography.bodySmall
+                    text = stringResource(
+                        if (running) R.string.status_running else R.string.status_stopped
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = statusColor
                 )
             }
+
+            val syncText = if (config.lastSyncTime > 0) {
+                val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                stringResource(R.string.last_sync) + ": " + fmt.format(Date(config.lastSyncTime))
+            } else {
+                stringResource(R.string.never_synced)
+            }
+            Text(
+                text = syncText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             errorMessage?.let { error ->
                 Card(
                     colors = CardDefaults.cardColors(
@@ -453,23 +362,260 @@ fun StatusCard(
                     )
                 }
             }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Button(
                     modifier = Modifier.weight(1f),
-                    onClick = onStartClick
+                    onClick = onStartClick,
+                    enabled = !running
                 ) {
                     Text(stringResource(R.string.action_start))
                 }
-                Button(
+                OutlinedButton(
                     modifier = Modifier.weight(1f),
-                    onClick = onStopClick
+                    onClick = onStopClick,
+                    enabled = running,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
                 ) {
                     Text(stringResource(R.string.action_stop))
                 }
             }
         }
     }
+}
+
+// --- Cloudflare Config Card --------------------------------------------------
+
+@Composable
+fun CloudflareConfigCard(
+    apiToken: String,
+    onApiTokenChange: (String) -> Unit,
+    zoneId: String,
+    onZoneIdChange: (String) -> Unit,
+    recordName: String,
+    onRecordNameChange: (String) -> Unit,
+    enabled: Boolean
+) {
+    var tokenVisible by rememberSaveable { mutableStateOf(false) }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SectionTitle(stringResource(R.string.section_cloudflare))
+
+            OutlinedTextField(
+                value = apiToken,
+                onValueChange = onApiTokenChange,
+                label = { Text(stringResource(R.string.label_api_token)) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = enabled,
+                singleLine = true,
+                visualTransformation = if (tokenVisible) {
+                    VisualTransformation.None
+                } else {
+                    PasswordVisualTransformation()
+                },
+                trailingIcon = {
+                    IconButton(onClick = { tokenVisible = !tokenVisible }) {
+                        Icon(
+                            painter = painterResource(
+                                if (tokenVisible) android.R.drawable.ic_menu_view
+                                else android.R.drawable.ic_secure
+                            ),
+                            contentDescription = stringResource(
+                                if (tokenVisible) R.string.label_hide_token
+                                else R.string.label_show_token
+                            )
+                        )
+                    }
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+            )
+            OutlinedTextField(
+                value = zoneId,
+                onValueChange = onZoneIdChange,
+                label = { Text(stringResource(R.string.label_zone_id)) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = enabled,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
+            )
+            OutlinedTextField(
+                value = recordName,
+                onValueChange = onRecordNameChange,
+                label = { Text(stringResource(R.string.label_record_name)) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = enabled,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
+            )
+        }
+    }
+}
+
+// --- Runtime Config Card -----------------------------------------------------
+
+@Composable
+fun RuntimeConfigCard(
+    timeoutSec: String,
+    onTimeoutChange: (String) -> Unit,
+    pollIntervalSec: String,
+    onPollIntervalChange: (String) -> Unit,
+    verbose: Boolean,
+    onVerboseChange: (Boolean) -> Unit,
+    multiRecordLabel: String,
+    multiRecordOptions: List<Pair<String, String>>,
+    showMenu: Boolean,
+    onMenuShow: () -> Unit,
+    onMenuDismiss: () -> Unit,
+    onMultiRecordSelect: (String) -> Unit,
+    enabled: Boolean,
+    context: android.content.Context
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            SectionTitle(stringResource(R.string.section_runtime))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = timeoutSec,
+                    onValueChange = onTimeoutChange,
+                    label = { Text(stringResource(R.string.label_timeout)) },
+                    modifier = Modifier.weight(1f),
+                    enabled = enabled,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                OutlinedTextField(
+                    value = pollIntervalSec,
+                    onValueChange = onPollIntervalChange,
+                    label = { Text(stringResource(R.string.label_poll)) },
+                    modifier = Modifier.weight(1f),
+                    enabled = enabled,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    stringResource(R.string.label_verbose),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Switch(
+                    checked = verbose,
+                    onCheckedChange = onVerboseChange,
+                    enabled = enabled
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    stringResource(R.string.label_multi_record),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Box {
+                    OutlinedButton(onClick = onMenuShow, enabled = enabled) {
+                        Text(multiRecordLabel)
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = onMenuDismiss
+                    ) {
+                        multiRecordOptions.forEach { (option, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = { onMultiRecordSelect(option) }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && isBatteryOptimizationEnabled(context)
+            ) {
+                BatteryOptimizationCard(context = context)
+            }
+        }
+    }
+}
+
+// --- Battery Optimization Card -----------------------------------------------
+
+@Composable
+fun BatteryOptimizationCard(context: android.content.Context) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                stringResource(R.string.battery_optimization_title),
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                stringResource(R.string.battery_optimization_description),
+                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedButton(
+                onClick = { requestBatteryOptimizationExemption(context) },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(stringResource(R.string.battery_optimization_action))
+            }
+        }
+    }
+}
+
+// --- Shared Components -------------------------------------------------------
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary
+    )
 }
