@@ -44,9 +44,10 @@
 //!
 //! # Netlink Protocol
 //!
-//! The module uses the NETLINK_ROUTE protocol to subscribe to RTMGRP_IPV6_ADDR
+//! The module uses the NETLINK_ROUTE protocol to subscribe to RTMGRP_IPV6_IFADDR
 //! multicast group, which receives notifications for IPv6 address changes.
 
+use std::collections::VecDeque;
 use std::io::ErrorKind;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::time::Duration;
@@ -118,7 +119,7 @@ const NETLINK_ROUTE: i32 = libc::AF_NETLINK;
 const SOCK_RAW: i32 = libc::SOCK_RAW;
 const SOCK_CLOEXEC: i32 = libc::SOCK_CLOEXEC;
 const NETLINK_ROUTE_PROTOCOL: i32 = libc::NETLINK_ROUTE;
-const RTMGRP_IPV6_ADDR: u32 = 1 << 1;
+const RTMGRP_IPV6_ADDR: u32 = libc::RTMGRP_IPV6_IFADDR as u32;
 const NLM_F_REQUEST: u16 = 0x0001;
 const NLM_F_DUMP: u16 = 0x0300;
 
@@ -200,6 +201,7 @@ pub trait Ipv6Monitor: Send + Sync {
 
 struct NetlinkImpl {
     fd: AsyncFd<OwnedFd>,
+    pending_events: VecDeque<NetlinkEvent>,
 }
 
 impl NetlinkImpl {
@@ -242,7 +244,10 @@ impl NetlinkImpl {
         let owned_fd = unsafe { OwnedFd::from_raw_fd(socket.as_raw_fd()) };
         std::mem::forget(socket); // Prevent double-close
         let fd = AsyncFd::new(owned_fd).context("AsyncFd")?;
-        Ok(Self { fd })
+        Ok(Self {
+            fd,
+            pending_events: VecDeque::new(),
+        })
     }
 
     fn recv_raw_io(&self) -> std::io::Result<Option<Vec<u8>>> {
@@ -269,13 +274,19 @@ impl NetlinkImpl {
         Ok(Some(buf))
     }
 
-    fn parse_message(data: &[u8]) -> Option<NetlinkEvent> {
+    fn parse_messages(data: &[u8]) -> VecDeque<NetlinkEvent> {
         let mut msg_offset = 0usize;
+        let mut events = VecDeque::new();
 
         while msg_offset + NLMSG_HDRLEN <= data.len() {
             // Safely extract nlmsg_len with bounds checking
-            let nlmsg_len_bytes = data.get(msg_offset..msg_offset + 4)?;
-            let nlmsg_len = u32::from_ne_bytes(nlmsg_len_bytes.try_into().ok()?) as usize;
+            let Some(nlmsg_len_bytes) = data.get(msg_offset..msg_offset + 4) else {
+                break;
+            };
+            let Some(nlmsg_len_arr) = <[u8; 4]>::try_from(nlmsg_len_bytes).ok() else {
+                break;
+            };
+            let nlmsg_len = u32::from_ne_bytes(nlmsg_len_arr) as usize;
             if nlmsg_len < NLMSG_HDRLEN {
                 break;
             }
@@ -284,8 +295,13 @@ impl NetlinkImpl {
             }
 
             // Safely extract nlmsg_type with bounds checking
-            let nlmsg_type_bytes = data.get(msg_offset + 4..msg_offset + 6)?;
-            let nlmsg_type = u16::from_ne_bytes(nlmsg_type_bytes.try_into().ok()?);
+            let Some(nlmsg_type_bytes) = data.get(msg_offset + 4..msg_offset + 6) else {
+                break;
+            };
+            let Some(nlmsg_type_arr) = <[u8; 2]>::try_from(nlmsg_type_bytes).ok() else {
+                break;
+            };
+            let nlmsg_type = u16::from_ne_bytes(nlmsg_type_arr);
 
             if nlmsg_type == NLMSG_DONE || nlmsg_type == NLMSG_ERROR {
                 msg_offset += nlmsg_align(nlmsg_len);
@@ -301,13 +317,19 @@ impl NetlinkImpl {
             if let Some(event) =
                 extract_ipv6_from_ifaddrmsg(data, msg_offset, nlmsg_len, nlmsg_type)
             {
-                return Some(event);
+                events.push_back(event);
             }
 
             msg_offset += nlmsg_align(nlmsg_len);
         }
 
-        None
+        events
+    }
+
+    #[cfg(test)]
+    fn parse_message(data: &[u8]) -> Option<NetlinkEvent> {
+        let mut events = Self::parse_messages(data);
+        events.pop_front()
     }
 }
 
@@ -315,6 +337,10 @@ impl NetlinkImpl {
 impl Ipv6Monitor for NetlinkImpl {
     async fn next_event(&mut self) -> NetlinkEvent {
         loop {
+            if let Some(event) = self.pending_events.pop_front() {
+                return event;
+            }
+
             let mut guard = match self.fd.readable().await {
                 Ok(g) => g,
                 Err(_) => return NetlinkEvent::Unknown,
@@ -327,7 +353,9 @@ impl Ipv6Monitor for NetlinkImpl {
                 Err(_would_block) => continue,
             };
 
-            if let Some(event) = Self::parse_message(&data) {
+            let mut events = Self::parse_messages(&data);
+            if let Some(event) = events.pop_front() {
+                self.pending_events.append(&mut events);
                 return event;
             }
         }
@@ -371,9 +399,7 @@ impl Ipv6Monitor for PollingImpl {
                     self.last_ip = Some(new.clone());
                     return NetlinkEvent::Ipv6Added(new.clone());
                 }
-                (Some(old), Some(ip)) if ip == old => {
-                    self.last_ip = Some(ip.clone());
-                }
+                (Some(old), Some(ip)) if ip == old => {}
                 _ => {}
             }
         }
@@ -1166,6 +1192,68 @@ mod tests {
         assert_eq!(
             event,
             Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_parse_messages_multiple_messages_keeps_order() {
+        let mut buf = vec![0u8; 128];
+
+        // First message: RTM_NEWADDR
+        let offset1 = 0;
+        let nlmsg_len1 = 44u32;
+        buf[offset1..offset1 + 4].copy_from_slice(&nlmsg_len1.to_ne_bytes());
+        buf[offset1 + 4..offset1 + 6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[offset1 + 6..offset1 + 8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[offset1 + 8..offset1 + 12].copy_from_slice(&1u32.to_ne_bytes());
+        buf[offset1 + 12..offset1 + 16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset1 = offset1 + 16;
+        buf[ifa_offset1] = AF_INET6;
+        buf[ifa_offset1 + 1] = 64;
+        buf[ifa_offset1 + 2] = 0;
+        buf[ifa_offset1 + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset1 + 4..ifa_offset1 + 8].copy_from_slice(&0u32.to_ne_bytes());
+
+        let rta_offset1 = ifa_offset1 + 8;
+        let rta_len1 = 20u16;
+        buf[rta_offset1..rta_offset1 + 2].copy_from_slice(&rta_len1.to_ne_bytes());
+        buf[rta_offset1 + 2..rta_offset1 + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+        let ip_bytes1 = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+        buf[rta_offset1 + 4..rta_offset1 + 20].copy_from_slice(&ip_bytes1);
+
+        // Second message: RTM_NEWADDR (different IP)
+        let offset2 = 44;
+        let nlmsg_len2 = 44u32;
+        buf[offset2..offset2 + 4].copy_from_slice(&nlmsg_len2.to_ne_bytes());
+        buf[offset2 + 4..offset2 + 6].copy_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+        buf[offset2 + 6..offset2 + 8].copy_from_slice(&0u16.to_ne_bytes());
+        buf[offset2 + 8..offset2 + 12].copy_from_slice(&2u32.to_ne_bytes());
+        buf[offset2 + 12..offset2 + 16].copy_from_slice(&0u32.to_ne_bytes());
+
+        let ifa_offset2 = offset2 + 16;
+        buf[ifa_offset2] = AF_INET6;
+        buf[ifa_offset2 + 1] = 64;
+        buf[ifa_offset2 + 2] = 0;
+        buf[ifa_offset2 + 3] = RT_SCOPE_UNIVERSE;
+        buf[ifa_offset2 + 4..ifa_offset2 + 8].copy_from_slice(&0u32.to_ne_bytes());
+
+        let rta_offset2 = ifa_offset2 + 8;
+        let rta_len2 = 20u16;
+        buf[rta_offset2..rta_offset2 + 2].copy_from_slice(&rta_len2.to_ne_bytes());
+        buf[rta_offset2 + 2..rta_offset2 + 4].copy_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+        let ip_bytes2 = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2];
+        buf[rta_offset2 + 4..rta_offset2 + 20].copy_from_slice(&ip_bytes2);
+
+        let events = NetlinkImpl::parse_messages(&buf);
+        let ordered: Vec<NetlinkEvent> = events.into_iter().collect();
+
+        assert_eq!(
+            ordered,
+            vec![
+                NetlinkEvent::Ipv6Added("2001:db8::1".to_string()),
+                NetlinkEvent::Ipv6Added("2001:db8::2".to_string()),
+            ]
         );
     }
 

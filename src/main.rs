@@ -4,13 +4,13 @@
 //! - Netlink socket for real-time IPv6 address change events (zero CPU when idle)
 //! - Automatic fallback to polling on systems without netlink support
 //! - Minimal state machine for record tracking
-//! - Uses reqwest for HTTP (rustls)
+//! - Uses a compact HTTPS client for Cloudflare API calls
 
 use std::path::PathBuf;
 
 use anyhow::{Context as _, Result};
 use clap::Parser;
-use tracing_subscriber::EnvFilter;
+use tracing::Level;
 
 mod cloudflare;
 mod config;
@@ -27,7 +27,7 @@ use daemon::Daemon;
 use netlink::NetlinkSocket;
 
 /// Application version
-const VERSION: &str = "1.0.0";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 //==============================================================================
 // Main
@@ -41,14 +41,14 @@ struct Args {
     config: Option<PathBuf>,
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let args = Args::parse();
     let config = Config::load(args.config).context("Config load failed")?;
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(if config.verbose { "debug" } else { "info" }));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    tracing_subscriber::fmt()
+        .with_max_level(resolve_log_level(config.verbose))
+        .init();
 
     let cf_client = CloudflareClient::new(config.api_token.as_str(), config.timeout)
         .context("Cloudflare client failed")?;
@@ -60,4 +60,28 @@ async fn main() -> Result<()> {
     daemon.run().await?;
 
     Ok(())
+}
+
+fn resolve_log_level(verbose: bool) -> Level {
+    if let Ok(raw) = std::env::var("RUST_LOG") {
+        for token in raw.split(',') {
+            let value = token.rsplit('=').next().unwrap_or(token).trim();
+            let level = match value.to_ascii_lowercase().as_str() {
+                "trace" => Some(Level::TRACE),
+                "debug" => Some(Level::DEBUG),
+                "info" => Some(Level::INFO),
+                "warn" | "warning" => Some(Level::WARN),
+                "error" => Some(Level::ERROR),
+                _ => None,
+            };
+            if let Some(level) = level {
+                return level;
+            }
+        }
+    }
+    if verbose {
+        Level::DEBUG
+    } else {
+        Level::INFO
+    }
 }

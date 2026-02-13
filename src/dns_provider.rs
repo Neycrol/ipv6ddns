@@ -5,6 +5,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 //==============================================================================
 // Types
@@ -29,6 +30,16 @@ pub struct DnsRecord {
     pub proxied: bool,
     /// Time-to-live value in seconds
     pub ttl: u64,
+}
+
+impl fmt::Display for DnsRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "DNS {} {} -> {} (TTL: {}, Proxied: {})",
+            self.record_type, self.name, self.content, self.ttl, self.proxied
+        )
+    }
 }
 
 /// Policy for handling multiple records with the same name

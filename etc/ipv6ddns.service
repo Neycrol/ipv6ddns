@@ -24,7 +24,8 @@ PrivateTmp=true
 # Environment="CLOUDFLARE_MULTI_RECORD=error"
 
 # Logging
-Environment="RUST_LOG=info"
+# Optional: set `RUST_LOG=debug` when troubleshooting
+# Environment="RUST_LOG=info"
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=ipv6ddns

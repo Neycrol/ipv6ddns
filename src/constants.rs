@@ -119,7 +119,4 @@ pub const ENV_HEALTH_PORT: &str = "IPV6DDNS_HEALTH_PORT";
 //==============================================================================
 
 /// Maximum idle connections per host in HTTP connection pool
-pub const HTTP_POOL_MAX_IDLE_PER_HOST: usize = 10;
-
-/// Idle timeout for HTTP connections in seconds
-pub const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 90;
+pub const HTTP_POOL_MAX_IDLE_PER_HOST: usize = 0;

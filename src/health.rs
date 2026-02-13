@@ -2,11 +2,12 @@
 //!
 //! This module provides a lightweight HTTP endpoint for health checks.
 
-use anyhow::Result;
-use chrono::Utc;
-use serde::Serialize;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::SystemTime;
+
+use anyhow::Result;
+use serde::Serialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::{oneshot, Mutex};
@@ -133,10 +134,10 @@ fn build_response(state: &AppState) -> HealthResponse {
         RecordState::Error(_) => ("error".to_string(), false),
     };
 
-    let last_sync_seconds_ago = state.last_sync.map(|ts| {
-        let seconds = (Utc::now() - ts).num_seconds();
-        seconds.max(0) as f64
-    });
+    let last_sync_seconds_ago = state
+        .last_sync
+        .and_then(|ts| SystemTime::now().duration_since(ts).ok())
+        .map(|d| d.as_secs_f64());
 
     HealthResponse {
         status: if healthy {

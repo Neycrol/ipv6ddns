@@ -1,8 +1,8 @@
 //! Cloudflare API client for DNS operations
 //!
 //! This module provides a client for interacting with the Cloudflare API to manage
-//! DNS records, specifically AAAA records for IPv6 addresses. It uses reqwest with
-//! rustls for HTTP requests.
+//! DNS records, specifically AAAA records for IPv6 addresses. It uses reqwest
+//! with rustls for async HTTP requests.
 //!
 //! # Features
 //!
@@ -39,59 +39,26 @@
 //! Cloudflare has rate limits on API requests. This client reports rate-limit
 //! errors; exponential backoff is handled by the daemon.
 
-use std::fmt;
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
-use reqwest::StatusCode;
+use reqwest::{Method, StatusCode};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 use urlencoding::encode;
-use zeroize::ZeroizeOnDrop;
 
 use crate::constants::{
     CLOUDFLARE_API_BASE, CLOUDFLARE_USER_AGENT, DNS_RECORD_TYPE_AAAA, DNS_TTL_AUTO,
-    HTTP_POOL_IDLE_TIMEOUT_SECS, HTTP_POOL_MAX_IDLE_PER_HOST, HTTP_STATUS_FORBIDDEN,
-    HTTP_STATUS_SERVER_ERROR_MAX, HTTP_STATUS_SERVER_ERROR_MIN, HTTP_STATUS_TOO_MANY_REQUESTS,
-    HTTP_STATUS_UNAUTHORIZED,
+    HTTP_POOL_MAX_IDLE_PER_HOST, HTTP_STATUS_FORBIDDEN, HTTP_STATUS_SERVER_ERROR_MAX,
+    HTTP_STATUS_SERVER_ERROR_MIN, HTTP_STATUS_TOO_MANY_REQUESTS, HTTP_STATUS_UNAUTHORIZED,
 };
-use crate::dns_provider::{DnsProvider, MultiRecordPolicy};
+use crate::dns_provider::{DnsProvider, DnsRecord, MultiRecordPolicy};
 
 //==============================================================================
 // Types
 //==============================================================================
-
-/// Represents a DNS record from Cloudflare API
-///
-/// This struct contains the essential fields for a DNS record, including
-/// its ID, type, name, content, proxy status, and TTL.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct DnsRecord {
-    /// The unique identifier for this DNS record
-    pub id: String,
-    /// The type of DNS record (e.g., "AAAA" for IPv6)
-    #[serde(rename = "type")]
-    pub record_type: String,
-    /// The domain name for this record
-    pub name: String,
-    /// The IP address or other content of the record
-    pub content: String,
-    /// Whether Cloudflare proxy is enabled for this record
-    pub proxied: bool,
-    /// Time-to-live value in seconds (1 = automatic)
-    pub ttl: u64,
-}
-
-impl fmt::Display for DnsRecord {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "DNS {} {} -> {} (TTL: {}, Proxied: {})",
-            self.record_type, self.name, self.content, self.ttl, self.proxied
-        )
-    }
-}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ApiResponse<T> {
@@ -108,7 +75,7 @@ struct ApiError {
 }
 
 impl std::fmt::Display for ApiError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{}] {}", self.code, self.message)
     }
 }
@@ -123,13 +90,10 @@ impl std::fmt::Display for ApiError {
 /// managing DNS records, specifically AAAA records for IPv6 addresses.
 /// It uses reqwest with rustls for HTTP requests. The API token is wrapped
 /// in `Zeroizing` to ensure it is securely cleared from memory when dropped.
-#[derive(ZeroizeOnDrop)]
 pub struct CloudflareClient {
     /// Cloudflare API token with DNS edit permissions
-    #[zeroize(skip)]
     api_token: zeroize::Zeroizing<String>,
     /// HTTP client for making requests
-    #[zeroize(skip)]
     client: reqwest::Client,
 }
 
@@ -177,12 +141,11 @@ impl CloudflareClient {
     /// Returns a `Result` containing the client or an error if client creation fails
     pub fn new(api_token: &str, timeout: Duration) -> Result<Self> {
         let client = reqwest::Client::builder()
+            .http1_only()
             .connect_timeout(timeout)
             .timeout(timeout)
             .user_agent(CLOUDFLARE_USER_AGENT)
             .pool_max_idle_per_host(HTTP_POOL_MAX_IDLE_PER_HOST)
-            .pool_idle_timeout(Duration::from_secs(HTTP_POOL_IDLE_TIMEOUT_SECS))
-            .tcp_keepalive(Duration::from_secs(HTTP_POOL_IDLE_TIMEOUT_SECS))
             .build()
             .context("build reqwest client")?;
 
@@ -190,6 +153,45 @@ impl CloudflareClient {
             api_token: zeroize::Zeroizing::new(api_token.to_string()),
             client,
         })
+    }
+
+    async fn send_json_request<T>(
+        &self,
+        method: Method,
+        url: &str,
+        payload: Option<String>,
+        context: &str,
+    ) -> Result<(StatusCode, ApiResponse<T>)>
+    where
+        T: DeserializeOwned,
+    {
+        let mut request = self
+            .client
+            .request(method, url)
+            .bearer_auth(self.api_token.as_str())
+            .header("Accept", "application/json");
+
+        if let Some(payload) = payload {
+            request = request
+                .header("Content-Type", "application/json")
+                .body(payload);
+        }
+
+        let response = request
+            .send()
+            .await
+            .with_context(|| format!("HTTP request failed for {}", context))?;
+
+        let status = response.status();
+        let response_body = response
+            .bytes()
+            .await
+            .with_context(|| format!("Failed to read HTTP response for {}", context))?;
+
+        let body: ApiResponse<T> = serde_json::from_slice(&response_body)
+            .with_context(|| format!("Failed to parse JSON response for {}", context))?;
+
+        Ok((status, body))
     }
 
     /// Helper function to handle API response errors
@@ -281,13 +283,9 @@ impl CloudflareClient {
         let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
 
         debug!("POST {} (record: {}, ip: {})", url, record_name, ipv6_addr);
-        let resp = self
-            .client
-            .post(&url)
-            .bearer_auth(self.api_token.as_str())
-            .header("Content-Type", "application/json")
-            .body(payload)
-            .send()
+        let context = format!("create record '{}' in zone '{}'", record_name, zone_id);
+        let (status, body): (StatusCode, ApiResponse<DnsRecord>) = self
+            .send_json_request(Method::POST, &url, Some(payload), &context)
             .await
             .with_context(|| {
                 format!(
@@ -295,13 +293,6 @@ impl CloudflareClient {
                     record_name, zone_id
                 )
             })?;
-        let status = resp.status();
-        let body: ApiResponse<DnsRecord> = resp.json().await.with_context(|| {
-            format!(
-                "Failed to parse create response for record '{}'",
-                record_name
-            )
-        })?;
 
         let ctx = format!("Create record '{}' in zone '{}'", record_name, zone_id);
         self.handle_api_response(status, &body, &ctx)?;
@@ -332,13 +323,12 @@ impl CloudflareClient {
             "PUT {} (record: {}, id: {}, ip: {})",
             url, record_name, record_id, ipv6_addr
         );
-        let resp = self
-            .client
-            .put(&url)
-            .bearer_auth(self.api_token.as_str())
-            .header("Content-Type", "application/json")
-            .body(payload)
-            .send()
+        let context = format!(
+            "update record '{}' (ID: {}) in zone '{}'",
+            record_name, record_id, zone_id
+        );
+        let (status, body): (StatusCode, ApiResponse<DnsRecord>) = self
+            .send_json_request(Method::PUT, &url, Some(payload), &context)
             .await
             .with_context(|| {
                 format!(
@@ -346,13 +336,6 @@ impl CloudflareClient {
                     record_name, record_id, zone_id
                 )
             })?;
-        let status = resp.status();
-        let body: ApiResponse<DnsRecord> = resp.json().await.with_context(|| {
-            format!(
-                "Failed to parse update response for record '{}' (ID: {})",
-                record_name, record_id
-            )
-        })?;
 
         let ctx = format!(
             "Update record '{}' (ID: {}) in zone '{}'",
@@ -382,17 +365,8 @@ impl DnsProvider for CloudflareClient {
         ipv6_addr: &str,
         policy: MultiRecordPolicy,
     ) -> Result<crate::dns_provider::DnsRecord> {
-        let record = self
-            .upsert_aaaa_record_impl(zone_id, record_name, ipv6_addr, policy)
-            .await?;
-        Ok(crate::dns_provider::DnsRecord {
-            id: record.id,
-            record_type: record.record_type,
-            name: record.name,
-            content: record.content,
-            proxied: record.proxied,
-            ttl: record.ttl,
-        })
+        self.upsert_aaaa_record_impl(zone_id, record_name, ipv6_addr, policy)
+            .await
     }
 
     // get_records is intentionally omitted from the trait; Cloudflare keeps
@@ -474,11 +448,9 @@ impl CloudflareClient {
         );
 
         debug!("GET {} (record: {})", url, record_name);
-        let resp = self
-            .client
-            .get(&url)
-            .bearer_auth(self.api_token.as_str())
-            .send()
+        let context = format!("get record '{}' in zone '{}'", record_name, zone_id);
+        let (status, body): (StatusCode, ApiResponse<Vec<DnsRecord>>) = self
+            .send_json_request(Method::GET, &url, None, &context)
             .await
             .with_context(|| {
                 format!(
@@ -486,11 +458,6 @@ impl CloudflareClient {
                     record_name, zone_id
                 )
             })?;
-        let status = resp.status();
-        let body: ApiResponse<Vec<DnsRecord>> = resp
-            .json()
-            .await
-            .with_context(|| format!("Failed to parse response for record '{}'", record_name))?;
 
         let ctx = format!("GET record '{}' in zone '{}'", record_name, zone_id);
         self.handle_api_response(status, &body, &ctx)?;

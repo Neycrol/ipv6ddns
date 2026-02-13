@@ -3,10 +3,9 @@
 //! This module contains the main daemon implementation for IPv6 DDNS synchronization.
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{debug, error, info, warn};
 
@@ -40,8 +39,8 @@ pub enum RecordState {
 pub struct AppState {
     /// Current synchronization state
     pub state: RecordState,
-    /// Timestamp of the last successful sync (UTC)
-    pub last_sync: Option<DateTime<Utc>>,
+    /// Timestamp of the last successful sync
+    pub last_sync: Option<SystemTime>,
     /// Number of consecutive errors
     pub error_count: u64,
     /// Next time to retry after an error (if in backoff period)
@@ -70,7 +69,7 @@ impl AppState {
     /// * `ip` - The IPv6 address that was synced
     pub fn mark_synced(&mut self, ip: String) {
         self.state = RecordState::Synced(ip);
-        self.last_sync = Some(Utc::now());
+        self.last_sync = Some(SystemTime::now());
         self.error_count = 0;
         self.next_retry = None;
     }
@@ -296,6 +295,14 @@ impl Daemon {
             }
             Ok(NetlinkEvent::Ipv6Removed) => {
                 warn!("IPv6 address removed");
+                if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
+                    info!("Replacement IPv6 detected after removal: {}", ip);
+                    if let Err(e) = self.sync_record(&ip).await {
+                        error!("Sync failed after IPv6 removal: {:#}", e);
+                    }
+                } else {
+                    warn!("No global IPv6 available after removal; keeping DNS unchanged");
+                }
             }
             Ok(NetlinkEvent::Unknown) => {}
             Err(e) => debug!("Netlink error: {:#}", e),

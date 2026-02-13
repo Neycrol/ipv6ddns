@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
-use zeroize::ZeroizeOnDrop;
 
 use crate::constants::{
     DEFAULT_POLL_INTERVAL_SECS, DEFAULT_TIMEOUT_SECS, ENV_ALLOW_LOOPBACK, ENV_API_TOKEN,
@@ -48,67 +47,57 @@ use crate::validation::validate_record_name;
 /// 1. Environment variables (highest priority)
 /// 2. Config file (`/etc/ipv6ddns/config.toml` or custom path)
 /// 3. Defaults (lowest priority)
-#[derive(Debug, Clone, ZeroizeOnDrop)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// Cloudflare API token with DNS edit permissions
     ///
     /// This token should have the `Zone:DNS:Edit` permission.
     /// It can be set via the `CLOUDFLARE_API_TOKEN` environment variable.
-    #[zeroize(skip)]
     pub api_token: zeroize::Zeroizing<String>,
     /// Cloudflare zone ID for the domain
     ///
     /// The zone ID can be found in the Cloudflare dashboard under your domain's DNS settings.
     /// It can be set via the `CLOUDFLARE_ZONE_ID` environment variable.
-    #[zeroize(skip)]
     pub zone_id: zeroize::Zeroizing<String>,
     /// DNS record name to update (e.g., "example.com")
     ///
     /// This is the full DNS record name including subdomain if applicable.
     /// It can be set via the `CLOUDFLARE_RECORD_NAME` environment variable.
-    #[zeroize(skip)]
     pub record: String,
     /// HTTP request timeout in seconds
     ///
     /// Default: 30 seconds
-    #[zeroize(skip)]
     pub timeout: Duration,
     /// Polling interval in seconds (fallback when netlink unavailable)
     ///
     /// Default: 60 seconds
     /// This is only used when netlink socket creation fails.
-    #[zeroize(skip)]
     pub poll_interval: Duration,
     /// Enable verbose logging
     ///
     /// Default: false
-    #[zeroize(skip)]
     pub verbose: bool,
     /// Policy for handling multiple AAAA records
     ///
     /// Default: `MultiRecordPolicy::Error`
     /// Can be set via the `CLOUDFLARE_MULTI_RECORD` environment variable.
-    #[zeroize(skip)]
     pub multi_record: MultiRecordPolicy,
     /// Allow loopback IPv6 address (::1) to be used for DDNS updates
     ///
     /// Default: false
     /// Can be set via the `IPV6DDNS_ALLOW_LOOPBACK` environment variable.
-    #[zeroize(skip)]
     pub allow_loopback: bool,
     /// DNS provider type
     ///
     /// Default: "cloudflare"
     /// Can be set via the `IPV6DDNS_PROVIDER_TYPE` environment variable.
     /// Currently supported: "cloudflare"
-    #[zeroize(skip)]
     pub provider_type: String,
     /// Port for health check endpoint
     ///
     /// Default: 0 (disabled)
     /// Can be set via the `IPV6DDNS_HEALTH_PORT` environment variable.
     /// Set to 0 to disable the health check endpoint.
-    #[zeroize(skip)]
     pub health_port: u16,
 }
 
