@@ -374,6 +374,25 @@ impl DnsProvider for CloudflareClient {
 }
 
 impl CloudflareClient {
+    async fn upsert_single_record(
+        &self,
+        zone_id: &str,
+        record_name: &str,
+        ipv6_addr: &str,
+        record: Option<DnsRecord>,
+    ) -> Result<DnsRecord> {
+        if let Some(record) = record {
+            if record.content == ipv6_addr {
+                debug!("Record already matches {}", ipv6_addr);
+                return Ok(record);
+            }
+            self.update_record(zone_id, &record.id, record_name, ipv6_addr)
+                .await
+        } else {
+            self.create_record(zone_id, record_name, ipv6_addr).await
+        }
+    }
+
     /// Internal implementation of upsert_aaaa_record
     async fn upsert_aaaa_record_impl(
         &self,
@@ -392,28 +411,22 @@ impl CloudflareClient {
                         record_name
                     );
                 }
-                if let Some(record) = records.into_iter().next() {
-                    if record.content == ipv6_addr {
-                        debug!("Record already matches {}", ipv6_addr);
-                        return Ok(record);
-                    }
-                    self.update_record(zone_id, &record.id, record_name, ipv6_addr)
-                        .await
-                } else {
-                    self.create_record(zone_id, record_name, ipv6_addr).await
-                }
+                self.upsert_single_record(
+                    zone_id,
+                    record_name,
+                    ipv6_addr,
+                    records.into_iter().next(),
+                )
+                .await
             }
             MultiRecordPolicy::UpdateFirst => {
-                if let Some(record) = records.into_iter().next() {
-                    if record.content == ipv6_addr {
-                        debug!("Record already matches {}", ipv6_addr);
-                        return Ok(record);
-                    }
-                    self.update_record(zone_id, &record.id, record_name, ipv6_addr)
-                        .await
-                } else {
-                    self.create_record(zone_id, record_name, ipv6_addr).await
-                }
+                self.upsert_single_record(
+                    zone_id,
+                    record_name,
+                    ipv6_addr,
+                    records.into_iter().next(),
+                )
+                .await
             }
             MultiRecordPolicy::UpdateAll => {
                 if records.is_empty() {
@@ -434,7 +447,12 @@ impl CloudflareClient {
                         first = Some(updated);
                     }
                 }
-                Ok(first.unwrap())
+                first.with_context(|| {
+                    format!(
+                        "No records remained after update-all for '{}' in zone '{}'",
+                        record_name, zone_id
+                    )
+                })
             }
         }
     }

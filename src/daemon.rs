@@ -197,6 +197,31 @@ impl Daemon {
         }
     }
 
+    async fn sync_with_error_context(&self, ip: &str, error_context: &str) {
+        if let Err(e) = self.sync_record(ip).await {
+            error!("{}: {:#}", error_context, e);
+        }
+    }
+
+    async fn detect_and_sync_with_context(
+        &self,
+        detected_info: &str,
+        no_ipv6_warning: &str,
+        sync_error_context: &str,
+    ) -> Option<String> {
+        match detect_global_ipv6(self.config.allow_loopback) {
+            Some(ip) => {
+                info!("{}: {}", detected_info, ip);
+                self.sync_with_error_context(&ip, sync_error_context).await;
+                Some(ip)
+            }
+            None => {
+                warn!("{}", no_ipv6_warning);
+                None
+            }
+        }
+    }
+
     /// Runs the daemon main loop
     ///
     /// This method:
@@ -244,14 +269,12 @@ impl Daemon {
             None
         };
 
-        if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
-            info!("Initial IPv6: {}", ip);
-            if let Err(e) = self.sync_record(&ip).await {
-                error!("Initial sync failed: {:#}", e);
-            }
-        } else {
-            warn!("No IPv6 on startup");
-        }
+        self.detect_and_sync_with_context(
+            "Initial IPv6",
+            "No IPv6 on startup",
+            "Initial sync failed",
+        )
+        .await;
 
         let mut sigterm = signal(SignalKind::terminate())?;
         let mut sighup = signal(SignalKind::hangup())?;
@@ -264,13 +287,8 @@ impl Daemon {
                 }
                 _ = sighup.recv() => {
                     info!("SIGHUP received: forcing resync");
-                    if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
-                        if let Err(e) = self.sync_record(&ip).await {
-                            error!("Sync failed: {:#}", e);
-                        }
-                    } else {
-                        warn!("No IPv6 on SIGHUP");
-                    }
+                    self.detect_and_sync_with_context("Detected IPv6 on SIGHUP", "No IPv6 on SIGHUP", "Sync failed")
+                        .await;
                 }
                 event = self.netlink.recv() => {
                     self.handle_event(event).await;
@@ -305,28 +323,23 @@ impl Daemon {
                                 "Using detected global IPv6 after filtering event: {}",
                                 detected_ip
                             );
-                            if let Err(e) = self.sync_record(&detected_ip).await {
-                                error!("Sync failed: {:#}", e);
-                            }
+                            self.sync_with_error_context(&detected_ip, "Sync failed")
+                                .await;
                         }
                     }
                     return;
                 }
                 info!("IPv6 change detected: {}", ip);
-                if let Err(e) = self.sync_record(&ip).await {
-                    error!("Sync failed: {:#}", e);
-                }
+                self.sync_with_error_context(&ip, "Sync failed").await;
             }
             Ok(NetlinkEvent::Ipv6Removed) => {
                 warn!("IPv6 address removed");
-                if let Some(ip) = detect_global_ipv6(self.config.allow_loopback) {
-                    info!("Replacement IPv6 detected after removal: {}", ip);
-                    if let Err(e) = self.sync_record(&ip).await {
-                        error!("Sync failed after IPv6 removal: {:#}", e);
-                    }
-                } else {
-                    warn!("No global IPv6 available after removal; keeping DNS unchanged");
-                }
+                self.detect_and_sync_with_context(
+                    "Replacement IPv6 detected after removal",
+                    "No global IPv6 available after removal; keeping DNS unchanged",
+                    "Sync failed after IPv6 removal",
+                )
+                .await;
             }
             Ok(NetlinkEvent::Unknown) => {}
             Err(e) => debug!("Netlink error: {:#}", e),
