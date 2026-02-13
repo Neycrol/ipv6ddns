@@ -14,6 +14,7 @@ use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS
 use crate::dns_provider::DnsProvider;
 use crate::health::HealthServer;
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
+use crate::validation::is_valid_ipv6;
 
 //==============================================================================
 // State Machine
@@ -155,6 +156,11 @@ pub fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
     sanitized
 }
 
+#[must_use]
+fn is_syncable_ipv6(ip: &str, allow_loopback: bool) -> bool {
+    is_valid_ipv6(ip, allow_loopback)
+}
+
 //==============================================================================
 // Daemon
 //==============================================================================
@@ -288,6 +294,24 @@ impl Daemon {
     async fn handle_event(&self, event: Result<NetlinkEvent>) {
         match event {
             Ok(NetlinkEvent::Ipv6Added(ip)) => {
+                if !is_syncable_ipv6(&ip, self.config.allow_loopback) {
+                    warn!(
+                        "Ignoring non-routable IPv6 from netlink event: {} (will not sync)",
+                        ip
+                    );
+                    if let Some(detected_ip) = detect_global_ipv6(self.config.allow_loopback) {
+                        if detected_ip != ip {
+                            info!(
+                                "Using detected global IPv6 after filtering event: {}",
+                                detected_ip
+                            );
+                            if let Err(e) = self.sync_record(&detected_ip).await {
+                                error!("Sync failed: {:#}", e);
+                            }
+                        }
+                    }
+                    return;
+                }
                 info!("IPv6 change detected: {}", ip);
                 if let Err(e) = self.sync_record(&ip).await {
                     error!("Sync failed: {:#}", e);
@@ -312,7 +336,7 @@ impl Daemon {
     /// Synchronizes the DNS record with the current IPv6 address
     ///
     /// This method:
-    /// 1. Validates the IPv6 address format
+    /// 1. Validates the IPv6 address is syncable (format + routability rules)
     /// 2. Checks if the IP has changed (skips if same)
     /// 3. Checks if backoff is active (skips if in backoff period)
     /// 4. Calls Cloudflare API to update or create the record
@@ -326,9 +350,14 @@ impl Daemon {
     ///
     /// Returns `Ok(())` on successful sync or an error if sync fails.
     async fn sync_record(&self, ip: &str) -> Result<()> {
-        // Validate IPv6 address format before making API calls
-        if ip.parse::<std::net::Ipv6Addr>().is_err() {
-            return Err(anyhow::anyhow!("Invalid IPv6 address format: {}", ip));
+        // Validate IPv6 address format and routability before making API calls.
+        // This is a hard safety gate against accidentally syncing link-local
+        // addresses (e.g. fe80::/10) even if upstream metadata is inconsistent.
+        if !is_syncable_ipv6(ip, self.config.allow_loopback) {
+            return Err(anyhow::anyhow!(
+                "Invalid or non-routable IPv6 address for sync: {}",
+                ip
+            ));
         }
 
         {
@@ -656,5 +685,17 @@ mod tests {
         for ip in invalid_ips {
             assert!(ip.parse::<std::net::Ipv6Addr>().is_err());
         }
+    }
+
+    #[test]
+    fn test_is_syncable_ipv6_filters_link_local_even_if_syntactically_valid() {
+        assert!(!is_syncable_ipv6("fe80::1", false));
+        assert!(!is_syncable_ipv6("fe80::dead:beef", false));
+    }
+
+    #[test]
+    fn test_is_syncable_ipv6_loopback_respects_flag() {
+        assert!(!is_syncable_ipv6("::1", false));
+        assert!(is_syncable_ipv6("::1", true));
     }
 }
