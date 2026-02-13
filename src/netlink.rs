@@ -385,22 +385,19 @@ impl Ipv6Monitor for PollingImpl {
             tokio::time::sleep(self.interval).await;
 
             let current_ip = detect_global_ipv6(self.allow_loopback);
+            if self.last_ip.as_ref() == current_ip.as_ref() {
+                continue;
+            }
 
-            match (&self.last_ip, &current_ip) {
-                (None, Some(ip)) => {
+            match current_ip {
+                Some(ip) => {
                     self.last_ip = Some(ip.clone());
-                    return NetlinkEvent::Ipv6Added(ip.clone());
+                    return NetlinkEvent::Ipv6Added(ip);
                 }
-                (Some(_), None) => {
+                None => {
                     self.last_ip = None;
                     return NetlinkEvent::Ipv6Removed;
                 }
-                (Some(old), Some(new)) if old != new => {
-                    self.last_ip = Some(new.clone());
-                    return NetlinkEvent::Ipv6Added(new.clone());
-                }
-                (Some(old), Some(ip)) if ip == old => {}
-                _ => {}
             }
         }
     }

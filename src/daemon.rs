@@ -16,6 +16,9 @@ use crate::health::HealthServer;
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
 use crate::validation::is_valid_ipv6;
 
+const EVENT_COALESCE_WINDOW: Duration = Duration::from_millis(80);
+const EVENT_COALESCE_MAX_EVENTS: usize = 32;
+
 //==============================================================================
 // State Machine
 //==============================================================================
@@ -161,6 +164,14 @@ fn is_syncable_ipv6(ip: &str, allow_loopback: bool) -> bool {
     is_valid_ipv6(ip, allow_loopback)
 }
 
+fn merge_burst_event(current: &mut NetlinkEvent, next: NetlinkEvent) {
+    match next {
+        NetlinkEvent::Ipv6Added(ip) => *current = NetlinkEvent::Ipv6Added(ip),
+        NetlinkEvent::Ipv6Removed => *current = NetlinkEvent::Ipv6Removed,
+        NetlinkEvent::Unknown => {}
+    }
+}
+
 //==============================================================================
 // Daemon
 //==============================================================================
@@ -208,18 +219,44 @@ impl Daemon {
         detected_info: &str,
         no_ipv6_warning: &str,
         sync_error_context: &str,
-    ) -> Option<String> {
+    ) {
         match detect_global_ipv6(self.config.allow_loopback) {
             Some(ip) => {
                 info!("{}: {}", detected_info, ip);
                 self.sync_with_error_context(&ip, sync_error_context).await;
-                Some(ip)
             }
             None => {
                 warn!("{}", no_ipv6_warning);
-                None
             }
         }
+    }
+
+    async fn coalesce_burst_event(
+        &mut self,
+        first_event: Result<NetlinkEvent>,
+    ) -> Result<NetlinkEvent> {
+        let mut effective = first_event?;
+        if !matches!(
+            effective,
+            NetlinkEvent::Ipv6Added(_) | NetlinkEvent::Ipv6Removed
+        ) {
+            return Ok(effective);
+        }
+
+        for _ in 0..EVENT_COALESCE_MAX_EVENTS {
+            let next = match tokio::time::timeout(EVENT_COALESCE_WINDOW, self.netlink.recv()).await
+            {
+                Ok(next) => next,
+                Err(_) => break,
+            };
+
+            match next {
+                Ok(next_event) => merge_burst_event(&mut effective, next_event),
+                Err(e) => return Err(e),
+            }
+        }
+
+        Ok(effective)
     }
 
     /// Runs the daemon main loop
@@ -291,7 +328,8 @@ impl Daemon {
                         .await;
                 }
                 event = self.netlink.recv() => {
-                    self.handle_event(event).await;
+                    let coalesced = self.coalesce_burst_event(event).await;
+                    self.handle_event(coalesced).await;
                 }
             }
         }
@@ -710,5 +748,25 @@ mod tests {
     fn test_is_syncable_ipv6_loopback_respects_flag() {
         assert!(!is_syncable_ipv6("::1", false));
         assert!(is_syncable_ipv6("::1", true));
+    }
+
+    #[test]
+    fn test_merge_burst_event_prefers_latest_routable_state() {
+        let mut current = NetlinkEvent::Ipv6Added("2001:db8::1".to_string());
+        merge_burst_event(
+            &mut current,
+            NetlinkEvent::Ipv6Added("2001:db8::2".to_string()),
+        );
+        assert_eq!(current, NetlinkEvent::Ipv6Added("2001:db8::2".to_string()));
+
+        merge_burst_event(&mut current, NetlinkEvent::Ipv6Removed);
+        assert_eq!(current, NetlinkEvent::Ipv6Removed);
+    }
+
+    #[test]
+    fn test_merge_burst_event_ignores_unknown_event() {
+        let mut current = NetlinkEvent::Ipv6Added("2001:db8::1".to_string());
+        merge_burst_event(&mut current, NetlinkEvent::Unknown);
+        assert_eq!(current, NetlinkEvent::Ipv6Added("2001:db8::1".to_string()));
     }
 }

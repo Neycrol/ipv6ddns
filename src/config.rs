@@ -102,6 +102,10 @@ pub struct Config {
 }
 
 impl Config {
+    fn env_non_empty(name: &str) -> Option<String> {
+        env::var(name).ok().filter(|v| !v.is_empty())
+    }
+
     /// Loads configuration from file and environment variables
     ///
     /// This method loads configuration in the following order:
@@ -213,41 +217,27 @@ impl Config {
     ///
     /// Returns `Ok(())` or an error if the multi-record policy is invalid.
     fn override_with_env(config: &mut Self) -> Result<()> {
-        if let Ok(v) = env::var(ENV_API_TOKEN) {
-            if !v.is_empty() {
-                config.api_token = zeroize::Zeroizing::new(v);
-            }
+        if let Some(v) = Self::env_non_empty(ENV_API_TOKEN) {
+            config.api_token = zeroize::Zeroizing::new(v);
         }
-        if let Ok(v) = env::var(ENV_ZONE_ID) {
-            if !v.is_empty() {
-                config.zone_id = zeroize::Zeroizing::new(v);
-            }
+        if let Some(v) = Self::env_non_empty(ENV_ZONE_ID) {
+            config.zone_id = zeroize::Zeroizing::new(v);
         }
-        if let Ok(v) = env::var(ENV_RECORD_NAME) {
-            if !v.is_empty() {
-                config.record = v;
-            }
+        if let Some(v) = Self::env_non_empty(ENV_RECORD_NAME) {
+            config.record = v;
         }
-        if let Ok(v) = env::var(ENV_MULTI_RECORD) {
-            if !v.is_empty() {
-                config.multi_record = parse_multi_record(&v)?;
-            }
+        if let Some(v) = Self::env_non_empty(ENV_MULTI_RECORD) {
+            config.multi_record = parse_multi_record(&v)?;
         }
-        if let Ok(v) = env::var(ENV_ALLOW_LOOPBACK) {
-            if !v.is_empty() {
-                config.allow_loopback =
-                    parse_bool_env(&v).context("Invalid IPV6DDNS_ALLOW_LOOPBACK value")?;
-            }
+        if let Some(v) = Self::env_non_empty(ENV_ALLOW_LOOPBACK) {
+            config.allow_loopback =
+                parse_bool_env(&v).context("Invalid IPV6DDNS_ALLOW_LOOPBACK value")?;
         }
-        if let Ok(v) = env::var(ENV_PROVIDER_TYPE) {
-            if !v.is_empty() {
-                config.provider_type = v;
-            }
+        if let Some(v) = Self::env_non_empty(ENV_PROVIDER_TYPE) {
+            config.provider_type = v;
         }
-        if let Ok(v) = env::var(ENV_HEALTH_PORT) {
-            if !v.is_empty() {
-                config.health_port = v.parse().context("Invalid IPV6DDNS_HEALTH_PORT value")?;
-            }
+        if let Some(v) = Self::env_non_empty(ENV_HEALTH_PORT) {
+            config.health_port = v.parse().context("Invalid IPV6DDNS_HEALTH_PORT value")?;
         }
         Ok(())
     }
