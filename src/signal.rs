@@ -97,7 +97,6 @@ mod tests {
     fn test_signal_type_clone() {
         let term1 = SignalType::Terminate;
         let term2 = term1;
-        
         assert_eq!(term1, term2);
         assert_eq!(term2, SignalType::Terminate);
     }
