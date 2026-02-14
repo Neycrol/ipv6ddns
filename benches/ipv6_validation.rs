@@ -9,8 +9,11 @@ use ipv6ddns::validation::{is_valid_ipv6, validate_record_name};
 
 /// Performance thresholds (in microseconds)
 /// These values define the maximum acceptable time for each operation
+#[allow(dead_code)]
 const IPV6_VALIDATION_THRESHOLD_US: u64 = 5; // IPv6 validation should be < 5μs
+#[allow(dead_code)]
 const DNS_VALIDATION_THRESHOLD_US: u64 = 10; // DNS validation should be < 10μs
+#[allow(dead_code)]
 const REJECTION_PATH_MULTIPLIER: f64 = 2.0; // Rejection paths should be < 2x success path
 
 /// Benchmark IPv6 validation with various input types
@@ -73,14 +76,17 @@ fn bench_dns_record_validation(c: &mut Criterion) {
         "test-record.example.com",
     ];
 
+    // Create long string for invalid record test
+    let long_record = "a".repeat(256);
+
     // Invalid DNS record names (rejection paths)
     let invalid_records = vec![
-        "",              // Empty
-        "-invalid.com",  // Starts with hyphen
-        "invalid-.com",  // Ends with hyphen
-        "invalid..com",  // Double dot
-        "invalid@.com",  // Invalid character
-        "a".repeat(256), // Too long
+        "",             // Empty
+        "-invalid.com", // Starts with hyphen
+        "invalid-.com", // Ends with hyphen
+        "invalid..com", // Double dot
+        "invalid@.com", // Invalid character
+        &long_record,   // Too long
     ];
 
     // Benchmark valid DNS record names (success path)
@@ -93,7 +99,7 @@ fn bench_dns_record_validation(c: &mut Criterion) {
     // Benchmark invalid DNS record names (rejection path)
     for record in &invalid_records {
         // Skip empty string for ID generation
-        let id = if record.is_empty() {
+        let id: &str = if record.is_empty() {
             "empty"
         } else {
             &record[..record.len().min(20)]
@@ -174,7 +180,7 @@ fn bench_throughput(c: &mut Criterion) {
     group.bench_function("batch_dns_validation", |b| {
         b.iter(|| {
             for record in &batch_records {
-                black_box(validate_record_name(black_box(record)));
+                let _ = black_box(validate_record_name(black_box(record)));
             }
         })
     });
@@ -183,6 +189,7 @@ fn bench_throughput(c: &mut Criterion) {
 }
 
 /// Validate performance thresholds
+#[allow(dead_code)]
 fn validate_thresholds() {
     use std::time::Instant;
 
@@ -250,6 +257,7 @@ fn run_benchmarks(c: &mut Criterion) {
 // Test mode for CI validation
 #[cfg(test)]
 mod tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
