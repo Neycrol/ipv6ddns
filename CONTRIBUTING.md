@@ -10,6 +10,23 @@ Thank you for your interest in contributing to ipv6ddns! This document provides 
 - Linux with netlink support (for development and testing)
 - Cloudflare API Token with DNS edit permissions (for testing)
 - Git
+- (Optional) valgrind for memory benchmarking
+
+### Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/Neycrol/ipv6ddns.git
+cd ipv6ddns
+
+# Run all checks (format, lint, test)
+cargo fmt --all
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test --all-features
+
+# Build the project
+cargo build --release
+```
 
 ### Building the Project
 
@@ -159,6 +176,30 @@ ipv6ddns/
 
 ## Testing
 
+### CI/CD Pipeline
+
+The project uses GitHub Actions for continuous integration and deployment. The following workflows are available:
+
+- **CI Pull Request** (`.github/workflows/ci-pr.yml`): Runs on every PR
+  - Format checking (`cargo fmt`)
+  - Linting (`cargo clippy`)
+  - Testing (`cargo test`)
+  - Building on multiple platforms (ubuntu-latest, ubuntu-20.04)
+  - Security audit (`cargo audit`)
+  - Minimal features check
+
+- **Benchmarks** (`.github/workflows/benchmark.yml`): Performance testing
+  - Criterion benchmarks
+  - Rejection path benchmarks (error handling performance)
+  - Memory usage benchmarks (valgrind)
+  - Performance regression detection
+
+- **Documentation** (`.github/workflows/docs.yml`): Documentation checks
+  - Documentation formatting and link checking
+  - Markdown linting
+  - Link validation
+  - Automatic deployment to GitHub Pages
+
 ### Unit Tests
 
 Write unit tests for individual functions and modules:
@@ -267,6 +308,44 @@ cargo test netlink
 # Run tests in CI
 # Tests are automatically run in CI on every PR
 ```
+
+### Performance Testing
+
+Performance is critical for this project. Always run benchmarks before submitting changes:
+
+```bash
+# Run all benchmarks
+cargo bench
+
+# Run specific benchmark
+cargo bench --bench ipv6_validation
+
+# Run benchmarks in test mode (for validation)
+cargo bench -- --test-mode
+
+# Check for performance regressions (requires baseline)
+cargo bench -- --baseline <previous-baseline>
+```
+
+#### Performance Thresholds
+
+The following performance thresholds must be met:
+
+- **IPv6 validation**: < 5μs per validation
+- **DNS record validation**: < 10μs per validation
+- **Memory usage**: Minimal allocations in hot paths
+- **Error handling**: Rejection paths should not significantly impact performance
+
+#### Rejection Path Benchmarks
+
+Special benchmarks test error handling performance:
+
+```bash
+# Run rejection path benchmarks
+cargo bench --bench ipv6_validation -- --test-mode rejection
+```
+
+These benchmarks ensure that error handling code doesn't introduce performance regressions.
 
 ## Security Considerations
 

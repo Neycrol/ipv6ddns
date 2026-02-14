@@ -161,7 +161,7 @@ impl CloudflareClient {
         url: &str,
         payload: Option<String>,
         context: &str,
-    ) -> Result<(StatusCode, ApiResponse<T>)>
+    ) -> Result<(StatusCode, ApiResponse<T>, Option<String>)>
     where
         T: DeserializeOwned,
     {
@@ -183,6 +183,12 @@ impl CloudflareClient {
             .with_context(|| format!("HTTP request failed for {}", context))?;
 
         let status = response.status();
+        let ray_id = response
+            .headers()
+            .get("cf-ray")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string());
+
         let response_body = response
             .bytes()
             .await
@@ -191,7 +197,7 @@ impl CloudflareClient {
         let body: ApiResponse<T> = serde_json::from_slice(&response_body)
             .with_context(|| format!("Failed to parse JSON response for {}", context))?;
 
-        Ok((status, body))
+        Ok((status, body, ray_id))
     }
 
     /// Helper function to handle API response errors
@@ -201,6 +207,7 @@ impl CloudflareClient {
     /// * `status` - The HTTP status code
     /// * `body` - The API response body
     /// * `context` - Context message for the error
+    /// * `ray_id` - Cloudflare Ray ID for debugging
     ///
     /// # Returns
     ///
@@ -210,23 +217,30 @@ impl CloudflareClient {
         status: StatusCode,
         body: &ApiResponse<T>,
         context: &str,
+        ray_id: Option<&str>,
     ) -> Result<()> {
         if !body.success {
             let status_code = status.as_u16();
+            let ray_id_str = ray_id
+                .map(|id| format!(" (Ray ID: {})", id))
+                .unwrap_or_default();
+
             match status_code {
                 HTTP_STATUS_UNAUTHORIZED => {
                     bail!(
-                        "API error: Authentication failed (401): {}. \
+                        "API error: Authentication failed (401){}: {}. \
                          Please verify your API token has 'Zone - DNS - Edit' permissions at \
                          https://dash.cloudflare.com/profile/api-tokens",
+                        ray_id_str,
                         context
                     );
                 }
                 HTTP_STATUS_FORBIDDEN => {
                     bail!(
-                        "API error: Permission denied (403): {}. \
+                        "API error: Permission denied (403){}: {}. \
                          Please verify your API token has 'Zone - DNS - Edit' permissions. \
                          Details: {}",
+                        ray_id_str,
                         context,
                         body.errors
                             .iter()
@@ -237,9 +251,10 @@ impl CloudflareClient {
                 }
                 HTTP_STATUS_TOO_MANY_REQUESTS => {
                     bail!(
-                        "Rate limited by Cloudflare (429): {}. \
+                        "Rate limited by Cloudflare (429){}: {}. \
                          The daemon will automatically retry with exponential backoff. \
                          Please wait before retrying manually.",
+                        ray_id_str,
                         context
                     );
                 }
@@ -247,18 +262,20 @@ impl CloudflareClient {
                     .contains(&code) =>
                 {
                     bail!(
-                        "Cloudflare server error ({}): {}. \
+                        "Cloudflare server error ({}){}: {}. \
                          This is a temporary issue on Cloudflare's side. \
                          The daemon will automatically retry with exponential backoff.",
                         code,
+                        ray_id_str,
                         context
                     );
                 }
                 _ => {
                     bail!(
-                        "API error ({}): {}: {}. \
+                        "API error ({}){}: {}: {}. \
                          For more information, see https://developers.cloudflare.com/api/troubleshooting/",
                         status_code,
+                        ray_id_str,
                         context,
                         body.errors
                             .iter()
@@ -284,7 +301,7 @@ impl CloudflareClient {
 
         debug!("POST {} (record: {}, ip: {})", url, record_name, ipv6_addr);
         let context = format!("create record '{}' in zone '{}'", record_name, zone_id);
-        let (status, body): (StatusCode, ApiResponse<DnsRecord>) = self
+        let (status, body, ray_id): (StatusCode, ApiResponse<DnsRecord>, Option<String>) = self
             .send_json_request(Method::POST, &url, Some(payload), &context)
             .await
             .with_context(|| {
@@ -295,7 +312,7 @@ impl CloudflareClient {
             })?;
 
         let ctx = format!("Create record '{}' in zone '{}'", record_name, zone_id);
-        self.handle_api_response(status, &body, &ctx)?;
+        self.handle_api_response(status, &body, &ctx, ray_id.as_deref())?;
 
         body.result.with_context(|| {
             format!(
@@ -327,7 +344,7 @@ impl CloudflareClient {
             "update record '{}' (ID: {}) in zone '{}'",
             record_name, record_id, zone_id
         );
-        let (status, body): (StatusCode, ApiResponse<DnsRecord>) = self
+        let (status, body, ray_id): (StatusCode, ApiResponse<DnsRecord>, Option<String>) = self
             .send_json_request(Method::PUT, &url, Some(payload), &context)
             .await
             .with_context(|| {
@@ -341,7 +358,7 @@ impl CloudflareClient {
             "Update record '{}' (ID: {}) in zone '{}'",
             record_name, record_id, zone_id
         );
-        self.handle_api_response(status, &body, &ctx)?;
+        self.handle_api_response(status, &body, &ctx, ray_id.as_deref())?;
 
         body.result.with_context(|| {
             format!(
@@ -467,18 +484,18 @@ impl CloudflareClient {
 
         debug!("GET {} (record: {})", url, record_name);
         let context = format!("get record '{}' in zone '{}'", record_name, zone_id);
-        let (status, body): (StatusCode, ApiResponse<Vec<DnsRecord>>) = self
-            .send_json_request(Method::GET, &url, None, &context)
-            .await
-            .with_context(|| {
-                format!(
-                    "GET request failed for record '{}' in zone '{}'",
-                    record_name, zone_id
-                )
-            })?;
+        let (status, body, ray_id): (StatusCode, ApiResponse<Vec<DnsRecord>>, Option<String>) =
+            self.send_json_request(Method::GET, &url, None, &context)
+                .await
+                .with_context(|| {
+                    format!(
+                        "GET request failed for record '{}' in zone '{}'",
+                        record_name, zone_id
+                    )
+                })?;
 
         let ctx = format!("GET record '{}' in zone '{}'", record_name, zone_id);
-        self.handle_api_response(status, &body, &ctx)?;
+        self.handle_api_response(status, &body, &ctx, ray_id.as_deref())?;
 
         Ok(body.result.unwrap_or_default())
     }

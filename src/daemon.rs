@@ -5,8 +5,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
-use anyhow::Result;
-use tokio::signal::unix::{signal, SignalKind};
+use anyhow::{Context as _, Result};
 use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
@@ -14,6 +13,7 @@ use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS
 use crate::dns_provider::DnsProvider;
 use crate::health::HealthServer;
 use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
+use crate::signal::{SignalHandler, SignalType};
 use crate::validation::is_valid_ipv6;
 
 const EVENT_COALESCE_WINDOW: Duration = Duration::from_millis(80);
@@ -72,6 +72,11 @@ impl AppState {
     ///
     /// * `ip` - The IPv6 address that was synced
     pub fn mark_synced(&mut self, ip: String) {
+        tracing::info!(
+            ip = %ip,
+            previous_errors = %self.error_count,
+            "Marking record as synced"
+        );
         self.state = RecordState::Synced(ip);
         self.last_sync = Some(SystemTime::now());
         self.error_count = 0;
@@ -84,8 +89,14 @@ impl AppState {
     /// and schedules a retry using exponential backoff.
     pub fn mark_error(&mut self) {
         self.error_count = self.error_count.saturating_add(1);
+        let backoff_duration = backoff_delay(self.error_count);
+        tracing::warn!(
+            error_count = %self.error_count,
+            ?backoff_duration,
+            "Marking record as error, scheduling retry with backoff"
+        );
         self.state = RecordState::Error(self.error_count);
-        self.next_retry = Some(Instant::now() + backoff_delay(self.error_count));
+        self.next_retry = Some(Instant::now() + backoff_duration);
     }
 }
 
@@ -274,23 +285,19 @@ impl Daemon {
     /// Returns `Ok(())` on graceful shutdown or an error if the daemon fails.
     pub async fn run(&mut self) -> Result<()> {
         info!("Starting ipv6ddns daemon");
-        info!("Record: {}", self.config.record);
+        info!(record = %self.config.record, "DNS record configured");
         info!(
-            "Mode: {}",
-            if self.netlink.is_event_driven() {
-                "event-driven (netlink)"
-            } else {
-                "polling"
-            }
+            mode = %if self.netlink.is_event_driven() { "event-driven (netlink)" } else { "polling" },
+            "Operating mode"
         );
-        info!("Multi-record policy: {:?}", self.config.multi_record);
+        info!(policy = ?self.config.multi_record, "Multi-record policy");
         debug!(
-            "Zone ID: {}",
-            redact_secrets(
+            zone_id = %redact_secrets(
                 self.config.zone_id.as_str(),
                 self.config.api_token.as_str(),
                 self.config.zone_id.as_str()
-            )
+            ),
+            "Zone configuration"
         );
 
         let mut health_server = if self.config.health_port > 0 {
@@ -313,19 +320,19 @@ impl Daemon {
         )
         .await;
 
-        let mut sigterm = signal(SignalKind::terminate())?;
-        let mut sighup = signal(SignalKind::hangup())?;
+        let mut signal_handler =
+            SignalHandler::new().context("Failed to initialize signal handler")?;
 
         loop {
             tokio::select! {
-                _ = sigterm.recv() => {
-                    info!("SIGTERM received");
-                    break;
-                }
-                _ = sighup.recv() => {
-                    info!("SIGHUP received: forcing resync");
-                    self.detect_and_sync_with_context("Detected IPv6 on SIGHUP", "No IPv6 on SIGHUP", "Sync failed")
-                        .await;
+                signal = signal_handler.recv() => {
+                    match signal {
+                        SignalType::Terminate => break,
+                        SignalType::Hangup => {
+                            self.detect_and_sync_with_context("Detected IPv6 on SIGHUP", "No IPv6 on SIGHUP", "Sync failed")
+                                .await;
+                        }
+                    }
                 }
                 event = self.netlink.recv() => {
                     let coalesced = self.coalesce_burst_event(event).await;
@@ -352,14 +359,16 @@ impl Daemon {
             Ok(NetlinkEvent::Ipv6Added(ip)) => {
                 if !is_syncable_ipv6(&ip, self.config.allow_loopback) {
                     warn!(
-                        "Ignoring non-routable IPv6 from netlink event: {} (will not sync)",
-                        ip
+                        ip = %ip,
+                        reason = "non-routable",
+                        "Ignoring IPv6 from netlink event"
                     );
                     if let Some(detected_ip) = detect_global_ipv6(self.config.allow_loopback) {
                         if detected_ip != ip {
                             info!(
-                                "Using detected global IPv6 after filtering event: {}",
-                                detected_ip
+                                detected_ip = %detected_ip,
+                                event_ip = %ip,
+                                "Using alternative global IPv6 after filtering"
                             );
                             self.sync_with_error_context(&detected_ip, "Sync failed")
                                 .await;
@@ -367,11 +376,11 @@ impl Daemon {
                     }
                     return;
                 }
-                info!("IPv6 change detected: {}", ip);
+                info!(ip = %ip, "IPv6 address change detected");
                 self.sync_with_error_context(&ip, "Sync failed").await;
             }
             Ok(NetlinkEvent::Ipv6Removed) => {
-                warn!("IPv6 address removed");
+                warn!("IPv6 address removed from interface");
                 self.detect_and_sync_with_context(
                     "Replacement IPv6 detected after removal",
                     "No global IPv6 available after removal; keeping DNS unchanged",
@@ -379,8 +388,10 @@ impl Daemon {
                 )
                 .await;
             }
-            Ok(NetlinkEvent::Unknown) => {}
-            Err(e) => debug!("Netlink error: {:#}", e),
+            Ok(NetlinkEvent::Unknown) => {
+                debug!("Received unknown netlink event");
+            }
+            Err(e) => debug!(error = %e, "Netlink error occurred"),
         }
     }
 
@@ -415,13 +426,13 @@ impl Daemon {
             let state = self.state.lock().await;
             if let RecordState::Synced(current) = &state.state {
                 if current == ip {
-                    debug!("No change: {}", ip);
+                    debug!(ip = %ip, "No change detected, skipping sync");
                     return Ok(());
                 }
             }
             if let Some(next_retry) = state.next_retry {
                 if next_retry > Instant::now() {
-                    debug!("Backoff active; skipping sync until {:?}", next_retry);
+                    debug!(?next_retry, "Backoff active, skipping sync");
                     return Ok(());
                 }
             }
@@ -433,8 +444,10 @@ impl Daemon {
             self.config.zone_id.as_str(),
         );
         info!(
-            "Syncing {} -> {} (zone: {})",
-            self.config.record, ip, redacted_zone
+            record = %self.config.record,
+            ip = %ip,
+            zone = %redacted_zone,
+            "Initiating DNS sync"
         );
 
         let result = self
@@ -451,13 +464,22 @@ impl Daemon {
             Ok(record) => {
                 let mut state = self.state.lock().await;
                 state.mark_synced(ip.to_string());
-                info!("Synced (ID: {})", record.id);
+                info!(
+                    record_id = %record.id,
+                    ip = %ip,
+                    "DNS sync successful"
+                );
                 Ok(())
             }
             Err(e) => {
                 let mut state = self.state.lock().await;
                 state.mark_error();
-                error!("Sync failed: {:#}", e);
+                error!(
+                    error = %e,
+                    ip = %ip,
+                    record = %self.config.record,
+                    "DNS sync failed"
+                );
                 Err(e)
             }
         }

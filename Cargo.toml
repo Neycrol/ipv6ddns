@@ -6,6 +6,13 @@ rust-version = "1.70.0"
 description = "Event-driven IPv6 DDNS client for Cloudflare"
 authors = ["Neycrol <neycrol@users.noreply.github.com>"]
 license = "MIT"
+repository = "https://github.com/Neycrol/ipv6ddns"
+homepage = "https://github.com/Neycrol/ipv6ddns"
+documentation = "https://github.com/Neycrol/ipv6ddns#readme"
+readme = "README.md"
+keywords = ["ipv6", "ddns", "cloudflare", "dns", "dynamic-dns"]
+categories = ["network-programming", "command-line-utilities"]
+exclude = [".github/", "scripts/", "packaging/", "android/"]
 
 [dependencies]
 tokio = { version = "1.35", features = ["rt", "net", "time", "macros", "signal", "sync", "io-util"] }
@@ -25,6 +32,7 @@ zeroize = { version = "1.8", features = ["serde", "zeroize_derive"] }
 [dev-dependencies]
 serial_test = "3.0"
 tempfile = "3.10"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [profile.release]
 opt-level = 3
@@ -33,6 +41,22 @@ codegen-units = 1
 
 [profile.dev]
 opt-level = 0
+
+# Benchmark configuration
+[[bench]]
+name = "ipv6_validation"
+harness = false
+
+[lib]
+name = "ipv6ddns"
+path = "src/lib.rs"
+
+# Benchmark profile for consistent performance testing
+[profile.bench]
+inherits = "release"
+opt-level = 3
+lto = true
+codegen-units = 1
 
 [package.metadata.deb]
 maintainer = "Neycrol <neycrol@users.noreply.github.com>"

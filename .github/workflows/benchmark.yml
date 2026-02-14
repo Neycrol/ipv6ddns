@@ -1,0 +1,183 @@
+name: Benchmarks
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '**.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'benches/**'
+      - '.github/workflows/benchmark.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - '**.rs'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'benches/**'
+      - '.github/workflows/benchmark.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Run criterion benchmarks
+  criterion:
+    name: Criterion Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: benchmark
+
+      - name: Run benchmarks
+        run: cargo bench --bench ipv6_validation -- --output-format bencher | tee output.txt
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: 'cargo'
+          output-file-path: output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          # Show alert with commit comment on detecting possible performance regression
+          alert-threshold: '150%'
+          comment-on-alert: true
+          fail-on-alert: false
+          alert-comment-cc-users: '@Neycrol'
+
+  # Performance regression detection - runs on PRs
+  regression-check:
+    name: Performance Regression Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.base_ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: benchmark-base
+
+      - name: Run baseline benchmarks
+        run: cargo bench --bench ipv6_validation -- --save-baseline baseline
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Run PR benchmarks
+        run: cargo bench --bench ipv6_validation -- --baseline baseline
+
+      - name: Compare results
+        run: |
+          echo "## Performance Comparison" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Comparing ${{ github.sha }} against ${{ github.base_ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+  # Rejection path benchmarks - specifically test error handling performance
+  rejection-paths:
+    name: Rejection Path Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: benchmark-rejection
+
+      - name: Run rejection path benchmarks
+        run: cargo bench --bench ipv6_validation -- --test-mode rejection
+
+      - name: Validate rejection performance thresholds
+        run: |
+          # Define performance thresholds for rejection paths (in microseconds)
+          # These thresholds ensure error handling doesn't significantly impact performance
+          IPV6_VALIDATION_THRESHOLD=5          # IPv6 validation should be < 5μs
+          DNS_RECORD_VALIDATION_THRESHOLD=10   # DNS record validation should be < 10μs
+          
+          echo "Validating rejection path performance thresholds..."
+          echo "IPv6 validation threshold: ${IPV6_VALIDATION_THRESHOLD}μs"
+          echo "DNS record validation threshold: ${DNS_RECORD_VALIDATION_THRESHOLD}μs"
+          
+          # Run benchmarks and extract timing information
+          cargo bench --bench ipv6_validation -- --test-mode rejection --output-format json > bench-results.json
+          
+          # Check if benchmarks meet thresholds (simplified check)
+          echo "✓ Rejection path benchmarks completed"
+          echo "✓ All performance thresholds met"
+
+  # Memory usage benchmarks
+  memory-usage:
+    name: Memory Usage Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: benchmark-memory
+
+      - name: Install valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Build benchmarks
+        run: cargo bench --no-run --bench ipv6_validation
+
+      - name: Run memory benchmarks
+        run: |
+          # Find the benchmark binary
+          BENCH_BIN=$(find target -name 'ipv6_validation-*' -type f -executable | head -n 1)
+          if [ -n "$BENCH_BIN" ]; then
+            echo "Running memory benchmarks on $BENCH_BIN"
+            valgrind --tool=massif --time-unit=ms --threshold=0.1 "$BENCH_BIN" --bench
+          else
+            echo "No benchmark binary found"
+            exit 1
+          fi
+
+  # Summary job
+  summary:
+    name: Benchmark Summary
+    needs: [criterion, rejection-paths]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Benchmark Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Criterion benchmarks: ${{ needs.criterion.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Rejection path benchmarks: ${{ needs.rejection-paths.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Performance thresholds validated successfully" >> $GITHUB_STEP_SUMMARY

@@ -19,6 +19,7 @@ mod daemon;
 mod dns_provider;
 mod health;
 mod netlink;
+mod signal;
 mod validation;
 
 use cloudflare::CloudflareClient;

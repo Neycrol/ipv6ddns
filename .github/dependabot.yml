@@ -1,15 +1,24 @@
+# Dependabot configuration for automated dependency updates
+# This file configures Dependabot to automatically check for dependency updates
+# and create pull requests to keep the project up to date.
+
 version: 2
 updates:
-  # Update Rust dependencies
+  # Rust/Cargo dependencies
+  # Checks for updates to Rust crates in Cargo.toml and Cargo.lock
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    # Limit concurrent PRs to avoid overwhelming reviewers
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "rust"
+      - "automated"
     reviewers:
       - "Neycrol"
     assignees:
@@ -18,17 +27,28 @@ updates:
       prefix: "deps"
       prefix-development: "chore(deps-dev)"
       include: "scope"
+    # Group minor and patch updates to reduce PR noise
+    groups:
+      minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
 
-  # Update GitHub Actions dependencies
+  # GitHub Actions dependencies
+  # Checks for updates to GitHub Actions used in workflows
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    # Limit concurrent PRs for CI dependencies
     open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "ci"
+      - "automated"
     reviewers:
       - "Neycrol"
     assignees:
@@ -36,3 +56,9 @@ updates:
     commit-message:
       prefix: "ci"
       include: "scope"
+    # Group GitHub Actions updates
+    groups:
+      actions:
+        patterns:
+          - "actions/*"
+          - "docker/*"

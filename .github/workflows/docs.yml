@@ -1,0 +1,166 @@
+name: Documentation
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - '**.rs'
+      - 'Cargo.toml'
+      - '**.md'
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - '**.rs'
+      - 'Cargo.toml'
+      - '**.md'
+      - 'docs/**'
+      - '.github/workflows/docs.yml'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Check documentation formatting and links
+  docs-check:
+    name: Check Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: docs
+
+      - name: Check documentation formatting
+        run: |
+          # Check for common documentation issues
+          echo "Checking documentation formatting..."
+          
+          # Check for broken intra-doc links
+          cargo doc --no-deps --all-features 2>&1 | tee doc-output.txt
+          if grep -q "warning:" doc-output.txt; then
+            echo "Documentation warnings found:"
+            grep "warning:" doc-output.txt
+            exit 1
+          fi
+
+      - name: Check README.md
+        run: |
+          # Check if README.md exists and has basic structure
+          if [ ! -f README.md ]; then
+            echo "README.md not found"
+            exit 1
+          fi
+          
+          # Check for basic sections
+          for section in "## Installation" "## Usage" "## Configuration"; do
+            if ! grep -q "$section" README.md; then
+              echo "README.md missing section: $section"
+            fi
+          done
+
+      - name: Check code documentation coverage
+        run: |
+          # Generate documentation and check coverage
+          cargo doc --no-deps --all-features
+          
+          # Check for undocumented public items (basic check)
+          echo "Checking for undocumented public items..."
+          # This is a simplified check - a more sophisticated tool could be used
+
+  # Build and deploy documentation to GitHub Pages
+  docs-deploy:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: docs-deploy
+
+      - name: Build documentation
+        run: cargo doc --no-deps --all-features
+
+      - name: Add redirect index
+        run: |
+          # Create an index.html that redirects to the main crate documentation
+          cat > target/doc/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta http-equiv="refresh" content="0; url=ipv6ddns/index.html">
+              <title>ipv6ddns Documentation</title>
+          </head>
+          <body>
+              <p>Redirecting to <a href="ipv6ddns/index.html">ipv6ddns documentation</a>...</p>
+          </body>
+          </html>
+          EOF
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./target/doc
+          destination_dir: docs
+          allow_empty_commit: false
+
+  # Check markdown files for common issues
+  markdown-lint:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Lint markdown files
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: '**/*.md'
+
+  # Check for broken links in documentation
+  link-check:
+    name: Link Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@v1
+        with:
+          args: --verbose --no-progress './**/*.md'
+          fail: true
+
+  # Summary job
+  summary:
+    name: Documentation Summary
+    needs: [docs-check, markdown-lint, link-check]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Generate summary
+        run: |
+          echo "## Documentation Checks" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Documentation check: ${{ needs.docs-check.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Markdown lint: ${{ needs.markdown-lint.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Link check: ${{ needs.link-check.result }}" >> $GITHUB_STEP_SUMMARY

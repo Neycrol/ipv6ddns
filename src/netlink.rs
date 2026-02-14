@@ -83,7 +83,8 @@ impl NetlinkFd {
             )
         };
         if fd < 0 {
-            return Err(std::io::Error::last_os_error()).context("create netlink socket");
+            let err = std::io::Error::last_os_error();
+            return Err(err).context("Failed to create netlink socket");
         }
         Ok(Self(fd))
     }
@@ -206,7 +207,8 @@ struct NetlinkImpl {
 
 impl NetlinkImpl {
     fn new() -> Result<Self> {
-        let socket = NetlinkFd::new()?;
+        let socket =
+            NetlinkFd::new().context("Failed to create netlink socket for IPv6 monitoring")?;
 
         let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
         addr.nl_family = NETLINK_ROUTE as libc::sa_family_t;
@@ -221,15 +223,18 @@ impl NetlinkImpl {
             )
         };
         if res < 0 {
-            return Err(std::io::Error::last_os_error()).context("netlink bind");
+            let err = std::io::Error::last_os_error();
+            return Err(err).context("Failed to bind netlink socket for IPv6 address monitoring");
         }
 
         let flags = unsafe { libc::fcntl(socket.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
-            return Err(std::io::Error::last_os_error()).context("fcntl F_GETFL");
+            let err = std::io::Error::last_os_error();
+            return Err(err).context("Failed to get file descriptor flags for netlink socket");
         }
         if unsafe { libc::fcntl(socket.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0 {
-            return Err(std::io::Error::last_os_error()).context("fcntl F_SETFL");
+            let err = std::io::Error::last_os_error();
+            return Err(err).context("Failed to set non-blocking mode on netlink socket");
         }
 
         // Convert to OwnedFd and then to AsyncFd
@@ -243,7 +248,8 @@ impl NetlinkImpl {
         // - This is a common pattern in Rust when converting RAII wrappers
         let owned_fd = unsafe { OwnedFd::from_raw_fd(socket.as_raw_fd()) };
         std::mem::forget(socket); // Prevent double-close
-        let fd = AsyncFd::new(owned_fd).context("AsyncFd")?;
+        let fd = AsyncFd::new(owned_fd)
+            .context("Failed to create AsyncFd for netlink socket event monitoring")?;
         Ok(Self {
             fd,
             pending_events: VecDeque::new(),
@@ -698,7 +704,8 @@ fn extract_ipv6_addresses_for_dump(
 }
 
 fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
-    let socket = NetlinkFd::new()?;
+    let socket =
+        NetlinkFd::new().context("Failed to create netlink socket for IPv6 address detection")?;
 
     let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
     addr.nl_family = NETLINK_ROUTE as libc::sa_family_t;
@@ -713,7 +720,8 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
         )
     };
     if res < 0 {
-        return Err(std::io::Error::last_os_error()).context("netlink bind");
+        let err = std::io::Error::last_os_error();
+        return Err(err).context("Failed to bind netlink socket for IPv6 address dump");
     }
 
     let seq = 1u32;
@@ -735,7 +743,8 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
         )
     };
     if send_res < 0 {
-        return Err(std::io::Error::last_os_error()).context("netlink send");
+        let err = std::io::Error::last_os_error();
+        return Err(err).context("Failed to send netlink dump request for IPv6 addresses");
     }
 
     let mut stable: Option<String> = None;
@@ -752,7 +761,8 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
             )
         };
         if n < 0 {
-            return Err(std::io::Error::last_os_error()).context("netlink recv");
+            let err = std::io::Error::last_os_error();
+            return Err(err).context("Failed to receive netlink response during IPv6 address dump");
         }
         if n == 0 {
             break;
@@ -781,7 +791,9 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
                 return Ok((stable, temporary));
             }
             if nlmsg_type == NLMSG_ERROR {
-                return Err(anyhow::anyhow!("netlink error response"));
+                return Err(anyhow::anyhow!(
+                    "Received netlink error response during IPv6 address dump"
+                ));
             }
 
             if nlmsg_type == RTM_NEWADDR_VAL {
