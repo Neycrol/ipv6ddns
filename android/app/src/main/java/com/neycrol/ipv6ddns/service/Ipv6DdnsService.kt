@@ -12,6 +12,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.neycrol.ipv6ddns.MainActivity
+import com.neycrol.ipv6ddns.R
 import com.neycrol.ipv6ddns.data.AppConfig
 import com.neycrol.ipv6ddns.data.ConfigStore
 import kotlinx.coroutines.CoroutineScope
@@ -21,15 +22,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /**
  * Foreground service that monitors IPv6 address changes using
  * ConnectivityManager.NetworkCallback and updates Cloudflare AAAA records.
  *
  * Uses connectedDevice foreground service type for Android 14+ compliance.
+ * Notification uses IMPORTANCE_MIN for minimal user disturbance.
  */
 class Ipv6DdnsService : Service() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -45,32 +44,42 @@ class Ipv6DdnsService : Service() {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     startForeground(
                         NOTIFICATION_ID,
-                        buildNotification(null, null),
+                        buildNotification(),
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
                     )
                 } else {
-                    startForeground(NOTIFICATION_ID, buildNotification(null, null))
+                    startForeground(NOTIFICATION_ID, buildNotification())
                 }
                 startMonitoring()
+                ServiceKeepAliveWorker.schedule(this)
             }
             ACTION_STOP -> {
                 stopMonitoring()
+                ServiceKeepAliveWorker.cancel(this)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
             else -> {
-                // Service restarted by system without action
-                Log.w(TAG, "Service restarted without action; attempting to resume monitoring")
+                // Service restarted by system (START_STICKY) without action.
+                // Read persisted config from DataStore and resume monitoring.
+                Log.w(TAG, "Service restarted without action; resuming from persisted config")
+                val config = runBlocking { ConfigStore.configFlow(this@Ipv6DdnsService).first() }
+                if (config.apiToken.isBlank()) {
+                    Log.w(TAG, "No persisted config found, cannot resume")
+                    stopSelf()
+                    return START_STICKY
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     startForeground(
                         NOTIFICATION_ID,
-                        buildNotification(null, null),
+                        buildNotification(),
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
                     )
                 } else {
-                    startForeground(NOTIFICATION_ID, buildNotification(null, null))
+                    startForeground(NOTIFICATION_ID, buildNotification())
                 }
                 startMonitoring()
+                ServiceKeepAliveWorker.schedule(this)
             }
         }
         return START_STICKY
@@ -109,9 +118,6 @@ class Ipv6DdnsService : Service() {
             ConfigStore.clearError(this@Ipv6DdnsService)
         }
 
-        // Update notification with new address
-        updateNotification(newIpv6, null)
-
         // Trigger Cloudflare DNS update
         scope.launch {
             val config = ConfigStore.configFlow(this@Ipv6DdnsService).first()
@@ -119,7 +125,6 @@ class Ipv6DdnsService : Service() {
                 Log.w(TAG, "Cloudflare config incomplete, skipping DNS update")
                 val error = "Configuration incomplete"
                 ConfigStore.updateLastError(this@Ipv6DdnsService, error)
-                updateNotification(newIpv6, error)
                 return@launch
             }
 
@@ -138,23 +143,16 @@ class Ipv6DdnsService : Service() {
                         System.currentTimeMillis()
                     )
                     ConfigStore.clearError(this@Ipv6DdnsService)
-                    updateNotification(newIpv6, null)
                 }
                 is CloudflareApi.ApiResult.Error -> {
                     Log.e(TAG, "DNS update failed: ${result.message}")
                     ConfigStore.updateLastError(this@Ipv6DdnsService, result.message)
-                    updateNotification(newIpv6, result.message)
                 }
             }
         }
     }
 
-    private fun updateNotification(ipv6: String?, error: String?) {
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, buildNotification(ipv6, error))
-    }
-
-    private fun buildNotification(ipv6: String?, error: String?): Notification {
+    private fun buildNotification(): Notification {
         val channelId = ensureChannel()
 
         val contentIntent = PendingIntent.getActivity(
@@ -163,24 +161,13 @@ class Ipv6DdnsService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val contentText = buildString {
-            if (ipv6 != null) {
-                append("IPv6: $ipv6")
-            } else {
-                append("Waiting for IPv6 address...")
-            }
-            if (error != null) {
-                append("\n⚠ $error")
-            }
-        }
-
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("ipv6ddns running")
-            .setContentText(contentText)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(contentText))
+            .setContentTitle(getString(R.string.notification_title))
+            .setContentText(getString(R.string.notification_text))
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
             .setContentIntent(contentIntent)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
     }
 
@@ -191,9 +178,10 @@ class Ipv6DdnsService : Service() {
             val channel = NotificationChannel(
                 channelId,
                 "ipv6ddns",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
-                description = "IPv6 DDNS monitoring service"
+                description = getString(R.string.notification_channel_description)
+                setShowBadge(false)
             }
             manager.createNotificationChannel(channel)
         }

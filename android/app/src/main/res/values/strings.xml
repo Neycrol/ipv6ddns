@@ -26,4 +26,7 @@
     <string name="label_auto_start">Auto-start on boot</string>
     <string name="section_settings">Settings</string>
     <string name="last_error">Last error</string>
+    <string name="notification_title">IPv6 DDNS</string>
+    <string name="notification_text">IPv6 DDNS running</string>
+    <string name="notification_channel_description">IPv6 DDNS monitoring service</string>
 </resources>

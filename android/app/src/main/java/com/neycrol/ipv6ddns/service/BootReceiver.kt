@@ -7,7 +7,8 @@ import android.util.Log
 
 /**
  * Receives BOOT_COMPLETED broadcast to auto-start the IPv6 DDNS monitoring service.
- * Only starts if the service was previously running (persisted in ConfigStore).
+ * Only starts if the user has enabled auto-start in settings.
+ * Also schedules the WorkManager keep-alive worker as a safety net.
  */
 class BootReceiver : BroadcastReceiver() {
     companion object {
@@ -29,6 +30,8 @@ class BootReceiver : BroadcastReceiver() {
                 action = Ipv6DdnsService.ACTION_START
             }
             context.startForegroundService(serviceIntent)
+            // Schedule keep-alive worker as safety net
+            ServiceKeepAliveWorker.schedule(context)
         } else {
             Log.i(TAG, "Auto-start not enabled, skipping")
         }
