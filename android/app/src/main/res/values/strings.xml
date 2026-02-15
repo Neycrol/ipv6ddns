@@ -24,6 +24,7 @@
     <string name="current_ipv6">Current IPv6</string>
     <string name="no_ipv6">No IPv6 detected</string>
     <string name="label_auto_start">Auto-start on boot</string>
+    <string name="label_auto_start_description">Automatically resume DDNS service after device restart</string>
     <string name="section_settings">Settings</string>
     <string name="last_error">Last error</string>
     <string name="notification_title">IPv6 DDNS</string>
