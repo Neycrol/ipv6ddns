@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "ipv6ddns_config")
@@ -22,6 +23,7 @@ object ConfigStore {
     private val KEY_MULTI = stringPreferencesKey("multi_record")
     private val KEY_RUNNING = booleanPreferencesKey("running")
     private val KEY_LAST_SYNC = longPreferencesKey("last_sync_time")
+    private val KEY_ENABLED = booleanPreferencesKey("service_enabled")
 
     fun configFlow(context: Context): Flow<AppConfig> {
         return context.dataStore.data.map { prefs: Preferences ->
@@ -40,6 +42,18 @@ object ConfigStore {
 
     fun runningFlow(context: Context): Flow<Boolean> {
         return context.dataStore.data.map { prefs -> prefs[KEY_RUNNING] ?: false }
+    }
+
+    fun enabledFlow(context: Context): Flow<Boolean> {
+        return context.dataStore.data.map { prefs -> prefs[KEY_ENABLED] ?: false }
+    }
+
+    suspend fun getConfig(context: Context): AppConfig {
+        return configFlow(context).first()
+    }
+
+    suspend fun isEnabled(context: Context): Boolean {
+        return context.dataStore.data.first()[KEY_ENABLED] ?: false
     }
 
     suspend fun saveConfig(context: Context, cfg: AppConfig) {
@@ -64,6 +78,12 @@ object ConfigStore {
     suspend fun setRunning(context: Context, running: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[KEY_RUNNING] = running
+        }
+    }
+
+    suspend fun setEnabled(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_ENABLED] = enabled
         }
     }
 }

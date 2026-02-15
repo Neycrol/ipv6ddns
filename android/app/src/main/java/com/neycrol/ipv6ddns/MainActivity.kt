@@ -71,6 +71,7 @@ import com.neycrol.ipv6ddns.data.AppConfig
 import com.neycrol.ipv6ddns.data.ConfigStore
 import com.neycrol.ipv6ddns.data.ConfigToml
 import com.neycrol.ipv6ddns.service.Ipv6DdnsService
+import com.neycrol.ipv6ddns.service.ServiceGuardWorker
 import com.neycrol.ipv6ddns.ui.AppColors
 import com.neycrol.ipv6ddns.ui.Ipv6DdnsTheme
 import kotlinx.coroutines.Dispatchers
@@ -133,6 +134,7 @@ fun AppScreen() {
     val scope = rememberCoroutineScope()
     val config by ConfigStore.configFlow(context).collectAsState(initial = AppConfig())
     val running by ConfigStore.runningFlow(context).collectAsState(initial = false)
+    val enabled by ConfigStore.enabledFlow(context).collectAsState(initial = false)
 
     var apiToken by rememberSaveable { mutableStateOf("") }
     var zoneId by rememberSaveable { mutableStateOf("") }
@@ -170,6 +172,47 @@ fun AppScreen() {
         return null
     }
 
+    /** Start the service: save config, write TOML, launch foreground service, schedule guard. */
+    fun startService() {
+        errorMessage = validateConfig()
+        if (errorMessage != null) return
+
+        val cfg = AppConfig(
+            apiToken = apiToken.trim(),
+            zoneId = zoneId.trim(),
+            recordName = recordName.trim(),
+            timeoutSec = timeoutSec.toLong(),
+            pollIntervalSec = pollIntervalSec.toLong(),
+            verbose = verbose,
+            multiRecord = multiRecord
+        )
+        scope.launch(Dispatchers.IO) {
+            ConfigStore.saveConfig(context, cfg)
+            ConfigStore.setEnabled(context, true)
+            val configFile = ConfigToml.writeConfig(context, cfg)
+            withContext(Dispatchers.Main) {
+                Ipv6DdnsService.startFromSavedConfig(context, configFile)
+            }
+            // Schedule WorkManager guard to keep service alive
+            ServiceGuardWorker.schedule(context)
+        }
+    }
+
+    /** Stop the service: send stop intent, clear enabled flag, cancel guard. */
+    fun stopService() {
+        scope.launch(Dispatchers.IO) {
+            ConfigStore.setEnabled(context, false)
+            withContext(Dispatchers.Main) {
+                val intent = Intent(context, Ipv6DdnsService::class.java).apply {
+                    action = Ipv6DdnsService.ACTION_STOP
+                }
+                context.startService(intent)
+            }
+            // Cancel WorkManager guard
+            ServiceGuardWorker.cancel(context)
+        }
+    }
+
     LaunchedEffect(config) {
         apiToken = config.apiToken
         zoneId = config.zoneId
@@ -196,44 +239,17 @@ fun AppScreen() {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            StatusCard(
+            MasterSwitchCard(
+                enabled = enabled,
                 running = running,
                 config = config,
                 errorMessage = errorMessage,
-                onStartClick = {
-                    errorMessage = validateConfig()
-                    if (errorMessage == null) {
-                        val cfg = AppConfig(
-                            apiToken = apiToken.trim(),
-                            zoneId = zoneId.trim(),
-                            recordName = recordName.trim(),
-                            timeoutSec = timeoutSec.toLong(),
-                            pollIntervalSec = pollIntervalSec.toLong(),
-                            verbose = verbose,
-                            multiRecord = multiRecord
-                        )
-                        scope.launch(Dispatchers.IO) {
-                            ConfigStore.saveConfig(context, cfg)
-                            val configFile = ConfigToml.writeConfig(context, cfg)
-                            withContext(Dispatchers.Main) {
-                                val intent =
-                                    Intent(context, Ipv6DdnsService::class.java).apply {
-                                        action = Ipv6DdnsService.ACTION_START
-                                        putExtra(
-                                            Ipv6DdnsService.EXTRA_CONFIG_PATH,
-                                            configFile.absolutePath
-                                        )
-                                    }
-                                context.startForegroundService(intent)
-                            }
-                        }
+                onToggle = { turnOn ->
+                    if (turnOn) {
+                        startService()
+                    } else {
+                        stopService()
                     }
-                },
-                onStopClick = {
-                    val intent = Intent(context, Ipv6DdnsService::class.java).apply {
-                        action = Ipv6DdnsService.ACTION_STOP
-                    }
-                    context.startService(intent)
                 }
             )
 
@@ -244,7 +260,7 @@ fun AppScreen() {
                 onZoneIdChange = { zoneId = it; clearError() },
                 recordName = recordName,
                 onRecordNameChange = { recordName = it; clearError() },
-                enabled = !running
+                enabled = !enabled
             )
 
             RuntimeConfigCard(
@@ -262,7 +278,7 @@ fun AppScreen() {
                 onMenuShow = { showMenu = true },
                 onMenuDismiss = { showMenu = false },
                 onMultiRecordSelect = { multiRecord = it; clearError(); showMenu = false },
-                enabled = !running,
+                enabled = !enabled,
                 context = context
             )
 
@@ -284,15 +300,15 @@ private fun AppTopBar(scrollBehavior: TopAppBarScrollBehavior) {
     )
 }
 
-// --- Status Card -------------------------------------------------------------
+// --- Master Switch Card ------------------------------------------------------
 
 @Composable
-fun StatusCard(
+fun MasterSwitchCard(
+    enabled: Boolean,
     running: Boolean,
     config: AppConfig,
     errorMessage: String?,
-    onStartClick: () -> Unit,
-    onStopClick: () -> Unit
+    onToggle: (Boolean) -> Unit
 ) {
     val dark = isSystemInDarkTheme()
     val statusColor by animateColorAsState(
@@ -316,22 +332,32 @@ fun StatusCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .clip(CircleShape)
-                        .background(statusColor)
-                )
-                Text(
-                    text = stringResource(
-                        if (running) R.string.status_running else R.string.status_stopped
-                    ),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = statusColor
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(statusColor)
+                    )
+                    Text(
+                        text = stringResource(
+                            if (running) R.string.status_running else R.string.status_stopped
+                        ),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = statusColor
+                    )
+                }
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onToggle
                 )
             }
 
@@ -347,6 +373,14 @@ fun StatusCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            if (enabled && !running) {
+                Text(
+                    text = stringResource(R.string.service_starting),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             errorMessage?.let { error ->
                 Card(
                     colors = CardDefaults.cardColors(
@@ -360,29 +394,6 @@ fun StatusCard(
                         modifier = Modifier.padding(12.dp),
                         style = MaterialTheme.typography.bodySmall
                     )
-                }
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Button(
-                    modifier = Modifier.weight(1f),
-                    onClick = onStartClick,
-                    enabled = !running
-                ) {
-                    Text(stringResource(R.string.action_start))
-                }
-                OutlinedButton(
-                    modifier = Modifier.weight(1f),
-                    onClick = onStopClick,
-                    enabled = running,
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text(stringResource(R.string.action_stop))
                 }
             }
         }

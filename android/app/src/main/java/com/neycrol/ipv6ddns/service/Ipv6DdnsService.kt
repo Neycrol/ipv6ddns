@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.neycrol.ipv6ddns.data.ConfigStore
+import com.neycrol.ipv6ddns.data.ConfigToml
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,16 +36,7 @@ class Ipv6DdnsService : Service() {
             ACTION_START -> {
                 val configPath = intent.getStringExtra(EXTRA_CONFIG_PATH)
                 if (configPath != null) {
-                    // Android 14+ requires explicit foreground service type
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        startForeground(
-                            NOTIFICATION_ID,
-                            buildNotification(),
-                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
-                        )
-                    } else {
-                        startForeground(NOTIFICATION_ID, buildNotification())
-                    }
+                    startForegroundWithNotification()
                     scope.launch { startProcess(File(configPath)) }
                 } else {
                     Log.e(TAG, "Missing config path")
@@ -56,13 +48,62 @@ class Ipv6DdnsService : Service() {
                 stopSelf()
             }
             else -> {
-                Log.w(TAG, "Service restarted without action; stopping.")
-                runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                // Service restarted by system (START_STICKY) without intent extras.
+                // Recover config from persistent storage instead of stopping.
+                Log.i(TAG, "Service restarted by system, recovering from saved config")
+                scope.launch { recoverFromSavedConfig() }
             }
         }
         return START_STICKY
+    }
+
+    /**
+     * Recover service after system kill by reading config from DataStore.
+     * If the master switch is enabled and config is valid, resume operation.
+     * Otherwise, stop gracefully.
+     */
+    private suspend fun recoverFromSavedConfig() {
+        try {
+            val enabled = ConfigStore.isEnabled(this@Ipv6DdnsService)
+            if (!enabled) {
+                Log.i(TAG, "Service not enabled, stopping after system restart")
+                runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return
+            }
+
+            val config = ConfigStore.getConfig(this@Ipv6DdnsService)
+            if (config.apiToken.isEmpty() || config.zoneId.isEmpty() || config.recordName.isEmpty()) {
+                Log.w(TAG, "Incomplete config, cannot recover service")
+                runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return
+            }
+
+            val configFile = ConfigToml.writeConfig(this@Ipv6DdnsService, config)
+            startForegroundWithNotification()
+            startProcess(configFile)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to recover service: ${e.message}", e)
+            runBlocking { ConfigStore.setRunning(this@Ipv6DdnsService, false) }
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
+    }
+
+    private fun startForegroundWithNotification() {
+        // Android 14+ requires explicit foreground service type
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
     }
 
     @Synchronized
@@ -160,10 +201,11 @@ class Ipv6DdnsService : Service() {
     private fun buildNotification(): Notification {
         val channelId = ensureChannel()
         return NotificationCompat.Builder(this, channelId)
-            .setContentTitle("ipv6ddns running")
-            .setContentText("Monitoring IPv6 changes")
+            .setContentTitle("IPv6 DDNS")
+            .setContentText("IPv6 DDNS 运行中")
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_MIN)
             .build()
     }
 
@@ -173,9 +215,10 @@ class Ipv6DdnsService : Service() {
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             val channel = NotificationChannel(
                 channelId,
-                "ipv6ddns",
-                NotificationManager.IMPORTANCE_LOW
+                "IPv6 DDNS Service",
+                NotificationManager.IMPORTANCE_MIN
             )
+            channel.setShowBadge(false)
             manager.createNotificationChannel(channel)
         }
         return channelId
@@ -187,5 +230,17 @@ class Ipv6DdnsService : Service() {
         const val EXTRA_CONFIG_PATH = "config_path"
         private const val NOTIFICATION_ID = 1001
         private const val TAG = "ipv6ddns/Service"
+
+        /**
+         * Helper to start the service from any context (BootReceiver, WorkManager, etc.)
+         * using saved config from DataStore.
+         */
+        fun startFromSavedConfig(context: Context, configFile: File) {
+            val intent = Intent(context, Ipv6DdnsService::class.java).apply {
+                action = ACTION_START
+                putExtra(EXTRA_CONFIG_PATH, configFile.absolutePath)
+            }
+            context.startForegroundService(intent)
+        }
     }
 }
