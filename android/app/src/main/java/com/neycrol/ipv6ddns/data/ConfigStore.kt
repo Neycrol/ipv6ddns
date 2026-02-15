@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "ipv6ddns_config")
@@ -18,6 +19,7 @@ object ConfigStore {
     private val KEY_RECORD = stringPreferencesKey("record_name")
     private val KEY_TIMEOUT = longPreferencesKey("timeout_sec")
     private val KEY_RUNNING = booleanPreferencesKey("running")
+    private val KEY_AUTO_START_ON_BOOT = booleanPreferencesKey("auto_start_on_boot")
     private val KEY_LAST_SYNC = longPreferencesKey("last_sync_time")
     private val KEY_CURRENT_IPV6 = stringPreferencesKey("current_ipv6")
     private val KEY_LAST_ERROR = stringPreferencesKey("last_error")
@@ -38,6 +40,21 @@ object ConfigStore {
 
     fun runningFlow(context: Context): Flow<Boolean> {
         return context.dataStore.data.map { prefs -> prefs[KEY_RUNNING] ?: false }
+    }
+
+    fun autoStartOnBootFlow(context: Context): Flow<Boolean> {
+        return context.dataStore.data.map { prefs -> prefs[KEY_AUTO_START_ON_BOOT] ?: false }
+    }
+
+    suspend fun setAutoStartOnBoot(context: Context, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_AUTO_START_ON_BOOT] = enabled
+        }
+    }
+
+    suspend fun isAutoStartOnBoot(context: Context): Boolean {
+        return context.dataStore.data.map { prefs -> prefs[KEY_AUTO_START_ON_BOOT] ?: false }
+            .first()
     }
 
     suspend fun saveConfig(context: Context, cfg: AppConfig) {

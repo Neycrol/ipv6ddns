@@ -23,7 +23,8 @@
     <string name="never_synced">从未同步</string>
     <string name="current_ipv6">当前 IPv6</string>
     <string name="no_ipv6">未检测到 IPv6</string>
-    <string name="label_auto_start">开机自启</string>
+    <string name="label_auto_start">开机自动启动</string>
+    <string name="label_auto_start_description">设备重启后自动恢复 DDNS 服务</string>
     <string name="section_settings">设置</string>
     <string name="last_error">最近错误</string>
     <string name="notification_title">IPv6 DDNS</string>

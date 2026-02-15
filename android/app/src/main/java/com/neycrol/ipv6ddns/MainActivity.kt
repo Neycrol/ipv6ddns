@@ -131,7 +131,7 @@ fun AppScreen() {
     var zoneId by rememberSaveable { mutableStateOf("") }
     var recordName by rememberSaveable { mutableStateOf("") }
     var timeoutSec by rememberSaveable { mutableStateOf("30") }
-    var autoStart by rememberSaveable { mutableStateOf(false) }
+    val autoStart by ConfigStore.autoStartOnBootFlow(context).collectAsState(initial = false)
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val clearError = { errorMessage = null }
 
@@ -153,12 +153,6 @@ fun AppScreen() {
         zoneId = config.zoneId
         recordName = config.recordName
         timeoutSec = config.timeoutSec.toString()
-    }
-
-    // Load auto-start preference
-    LaunchedEffect(Unit) {
-        val prefs = context.getSharedPreferences("ipv6ddns_boot", Context.MODE_PRIVATE)
-        autoStart = prefs.getBoolean("auto_start", false)
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
@@ -222,11 +216,9 @@ fun AppScreen() {
             SettingsCard(
                 autoStart = autoStart,
                 onAutoStartChange = { enabled ->
-                    autoStart = enabled
-                    context.getSharedPreferences("ipv6ddns_boot", Context.MODE_PRIVATE)
-                        .edit()
-                        .putBoolean("auto_start", enabled)
-                        .apply()
+                    scope.launch(Dispatchers.IO) {
+                        ConfigStore.setAutoStartOnBoot(context, enabled)
+                    }
                 },
                 context = context
             )
@@ -497,10 +489,17 @@ fun SettingsCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    stringResource(R.string.label_auto_start),
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.label_auto_start),
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        stringResource(R.string.label_auto_start_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Switch(
                     checked = autoStart,
                     onCheckedChange = onAutoStartChange
