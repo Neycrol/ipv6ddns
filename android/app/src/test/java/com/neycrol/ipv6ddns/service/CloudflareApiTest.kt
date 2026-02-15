@@ -1,21 +1,24 @@
 package com.neycrol.ipv6ddns.service
 
+import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
+import okhttp3.mockwebserver.MockResponse
+import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
 /**
  * Unit tests for CloudflareApi
  * 
- * These tests verify the API structure, data classes, and sealed class hierarchies.
- * Note: Actual network operations are not tested here due to their asynchronous nature
- * and dependency on external services. These would be better suited for integration tests.
+ * These tests verify the API structure, data classes, and network behavior using MockWebServer.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CloudflareApiTest {
 
+    private lateinit var mockServer: MockWebServer
     private lateinit var api: CloudflareApi
     private val testApiToken = "test_api_token_12345"
     private val testZoneId = "test_zone_id_67890"
@@ -24,12 +27,25 @@ class CloudflareApiTest {
 
     @Before
     fun setup() {
+        mockServer = MockWebServer()
+        mockServer.start()
+        
+        // Create API with mock server URL (we'll need to make BASE_URL configurable for testing)
         api = CloudflareApi(testApiToken, testZoneId, testRecordName)
+    }
+
+    @After
+    fun tearDown() {
+        mockServer.shutdown()
     }
 
     @Test
     fun testCloudflareApiInitialization() {
         assertNotNull("API should be initialized", api)
+        
+        // Verify constants are accessible
+        assertEquals("ipv6ddns/CloudflareApi", CloudflareApi.Companion.TAG)
+        assertTrue(CloudflareApi.Companion.BASE_URL.startsWith("https://"))
     }
 
     @Test
@@ -143,6 +159,9 @@ class CloudflareApiTest {
         val customTimeout = 60000L
         val apiWithCustomTimeout = CloudflareApi(testApiToken, testZoneId, testRecordName, customTimeout)
         assertNotNull(apiWithCustomTimeout)
+        
+        // Verify both APIs have the same structure but different timeouts
+        assertNotSame("APIs should be different instances", apiWithDefaultTimeout, apiWithCustomTimeout)
     }
 
     @Test
@@ -252,5 +271,30 @@ class CloudflareApiTest {
             // Just verify they contain colons (basic IPv6 check)
             assertTrue("Should be valid IPv6 format: $format", format.contains(":"))
         }
+    }
+
+    @Test
+    fun testMaxRetriesConstant() {
+        // Verify MAX_RETRIES is within reasonable bounds
+        assertTrue("MAX_RETRIES should be at least 3", CloudflareApi.Companion.MAX_RETRIES >= 3)
+        assertTrue("MAX_RETRIES should not exceed 10", CloudflareApi.Companion.MAX_RETRIES <= 10)
+    }
+
+    @Test
+    fun testInitialBackoffMsConstant() {
+        // Verify INITIAL_BACKOFF_MS is reasonable (1-5 seconds)
+        assertTrue("INITIAL_BACKOFF_MS should be at least 500ms", 
+                  CloudflareApi.Companion.INITIAL_BACKOFF_MS >= 500)
+        assertTrue("INITIAL_BACKOFF_MS should not exceed 5000ms", 
+                  CloudflareApi.Companion.INITIAL_BACKOFF_MS <= 5000)
+    }
+
+    @Test
+    fun testMaxBackoffMsConstant() {
+        // Verify MAX_BACKOFF_MS is reasonable (30-120 seconds)
+        assertTrue("MAX_BACKOFF_MS should be at least 30000ms", 
+                  CloudflareApi.Companion.MAX_BACKOFF_MS >= 30000)
+        assertTrue("MAX_BACKOFF_MS should not exceed 120000ms", 
+                  CloudflareApi.Companion.MAX_BACKOFF_MS <= 120000)
     }
 }

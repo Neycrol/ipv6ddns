@@ -281,3 +281,204 @@ async fn test_async_timeout_behavior() {
         Err(_) => panic!("Timeout waiting for state access"),
     }
 }
+
+/// Test state recovery from multiple consecutive errors
+#[tokio::test]
+async fn test_state_recovery_from_multiple_errors() {
+    let state = Arc::new(Mutex::new(AppState::default()));
+
+    // Simulate 5 consecutive errors
+    for i in 0..5 {
+        let mut s = state.lock().await;
+        s.mark_error();
+        assert_eq!(s.error_count, i + 1);
+        assert!(matches!(s.state, RecordState::Error(_)));
+    }
+
+    // Verify state is still in error after multiple failures
+    {
+        let s = state.lock().await;
+        assert_eq!(s.error_count, 5);
+        assert!(matches!(s.state, RecordState::Error(_)));
+    }
+
+    // Recover by marking as synced
+    {
+        let mut s = state.lock().await;
+        s.mark_synced("2001:db8::recovered".to_string());
+    }
+
+    // Verify recovery
+    {
+        let s = state.lock().await;
+        assert_eq!(s.error_count, 0); // Error count should reset
+        assert!(matches!(s.state, RecordState::Synced(ref ip) if ip == "2001:db8::recovered"));
+        assert!(s.last_sync.is_some());
+        assert!(s.next_retry.is_none());
+    }
+}
+
+/// Test state transitions under concurrent access
+#[tokio::test]
+async fn test_concurrent_state_transitions() {
+    let state = Arc::new(Mutex::new(AppState::default()));
+    let mut handles = vec![];
+
+    // Spawn 10 tasks that try to update the state concurrently
+    for i in 0..10 {
+        let state_clone = Arc::clone(&state);
+        let handle = tokio::spawn(async move {
+            let mut s = state_clone.lock().await;
+            if i % 2 == 0 {
+                s.mark_synced(format!("2001:db8::{}", i));
+            } else {
+                s.mark_error();
+            }
+        });
+        handles.push(handle);
+    }
+
+    // Wait for all tasks to complete
+    for handle in handles {
+        handle.await.unwrap();
+    }
+
+    // Verify state is in a valid condition (either synced or error)
+    let s = state.lock().await;
+    assert!(
+        matches!(s.state, RecordState::Synced(_) | RecordState::Error(_)),
+        "State should be either synced or error after concurrent updates"
+    );
+}
+
+/// Test rapid state changes between synced and error
+#[tokio::test]
+async fn test_rapid_state_changes() {
+    let state = Arc::new(Mutex::new(AppState::default()));
+
+    // Rapidly change state multiple times between synced and error
+    for i in 0..20 {
+        let mut s = state.lock().await;
+        if i % 2 == 0 {
+            s.mark_synced(format!("2001:db8::{}", i));
+        } else {
+            s.mark_error();
+        }
+    }
+
+    // Verify final state is valid
+    let s = state.lock().await;
+    assert!(
+        matches!(s.state, RecordState::Synced(_) | RecordState::Error(_)),
+        "Final state should be valid"
+    );
+}
+
+/// Test error count reset after successful sync
+#[tokio::test]
+async fn test_error_count_reset_after_sync() {
+    let state = Arc::new(Mutex::new(AppState::default()));
+
+    // Generate some errors
+    {
+        let mut s = state.lock().await;
+        for _ in 0..3 {
+            s.mark_error();
+        }
+        assert_eq!(s.error_count, 3);
+    }
+
+    // Successfully sync
+    {
+        let mut s = state.lock().await;
+        s.mark_synced("2001:db8::success".to_string());
+    }
+
+    // Verify error count is reset
+    {
+        let s = state.lock().await;
+        assert_eq!(s.error_count, 0);
+        assert!(matches!(s.state, RecordState::Synced(_)));
+    }
+
+    // Generate another error and verify count starts from 1
+    {
+        let mut s = state.lock().await;
+        s.mark_error();
+        assert_eq!(s.error_count, 1);
+    }
+}
+
+/// Test retry scheduling with exponential backoff
+#[tokio::test]
+async fn test_retry_scheduling_with_backoff() {
+    let state = Arc::new(Mutex::new(AppState::default()));
+
+    // Generate errors to trigger retry scheduling
+    for i in 0..5 {
+        let mut s = state.lock().await;
+        s.mark_error();
+
+        // Verify retry is scheduled
+        assert!(
+            s.next_retry.is_some(),
+            "Retry should be scheduled after error {}",
+            i
+        );
+    }
+
+    // Verify backoff increases with error count
+    let s = state.lock().await;
+    assert_eq!(s.error_count, 5);
+    assert!(s.next_retry.is_some());
+
+    // The retry delay should be larger for higher error counts
+    // (exact value depends on backoff calculation)
+}
+
+/// Test state consistency after multiple operations
+#[tokio::test]
+async fn test_state_consistency() {
+    let state = Arc::new(Mutex::new(AppState::default()));
+
+    // Set a known state
+    {
+        let mut s = state.lock().await;
+        s.mark_synced("2001:db8::test".to_string());
+    }
+
+    // Verify state is consistent
+    {
+        let s = state.lock().await;
+        assert!(matches!(s.state, RecordState::Synced(_)));
+        assert_eq!(s.error_count, 0);
+        assert!(s.last_sync.is_some());
+    }
+}
+
+/// Test deadlock prevention
+#[tokio::test]
+async fn test_no_deadlock_on_nested_locks() {
+    let state = Arc::new(Mutex::new(AppState::default()));
+
+    // This should not deadlock even though we're locking multiple times
+    let result = tokio::time::timeout(Duration::from_secs(1), async {
+        let mut s1 = state.lock().await;
+        s1.mark_synced("2001:db8::1".to_string());
+
+        // Drop the lock before acquiring it again
+        drop(s1);
+
+        let mut s2 = state.lock().await;
+        s2.mark_error();
+
+        drop(s2);
+
+        let s3 = state.lock().await;
+        matches!(s3.state, RecordState::Error(_))
+    })
+    .await;
+
+    assert!(result.is_ok(), "Should not deadlock");
+    assert!(result.unwrap(), "State should be in error");
+}

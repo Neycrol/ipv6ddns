@@ -1,5 +1,11 @@
 package com.neycrol.ipv6ddns.service
 
+import android.content.Context
+import android.net.ConnectivityManager
+import io.mockk.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -7,20 +13,30 @@ import org.junit.Test
 /**
  * Unit tests for Ipv6Monitor
  * 
- * These tests verify the structure and constants of the Ipv6Monitor class.
- * Note: Actual network monitoring tests would require a running Android environment
- * and are better suited for integration or instrumentation tests.
+ * These tests verify the Ipv6Monitor class behavior using MockK for mocking.
  */
 class Ipv6MonitorTest {
 
-    private val testContext = org.mockito.kotlin.mock<android.content.Context>()
+    private lateinit var mockContext: Context
+    private lateinit var mockConnectivityManager: ConnectivityManager
     private var lastReportedAddress: String? = null
     private lateinit var monitor: Ipv6Monitor
 
     @Before
     fun setup() {
+        MockKAnnotations.init(this)
+        
+        // Create mock objects
+        mockContext = mockk(relaxed = true)
+        mockConnectivityManager = mockk(relaxed = true)
+        
+        // Setup context to return mock ConnectivityManager
+        every { 
+            mockContext.getSystemService(Context.CONNECTIVITY_SERVICE) 
+        } returns mockConnectivityManager
+        
         lastReportedAddress = null
-        monitor = Ipv6Monitor(testContext) { address ->
+        monitor = Ipv6Monitor(mockContext) { address ->
             lastReportedAddress = address
         }
     }
@@ -28,6 +44,11 @@ class Ipv6MonitorTest {
     @Test
     fun testIpv6MonitorInitialization() {
         assertNotNull("Monitor should be initialized", monitor)
+        
+        // Verify that getSystemService was called during initialization
+        verify(exactly = 1) { 
+            mockContext.getSystemService(Context.CONNECTIVITY_SERVICE) 
+        }
     }
 
     @Test
@@ -40,9 +61,6 @@ class Ipv6MonitorTest {
     @Test
     fun testCallbackInvocation() {
         // Test that the callback mechanism is set up correctly
-        // We can't actually trigger the callback without a real network event,
-        // but we can verify the callback is stored
-        
         val testAddress = "2001:db8::1"
         
         // Simulate what would happen when a valid IPv6 is detected
@@ -83,7 +101,6 @@ class Ipv6MonitorTest {
         
         for (address in validAddresses) {
             assertTrue("Should contain colons for IPv6: $address", address.contains(":"))
-            // In a real test, we would verify the address format more thoroughly
         }
     }
 
@@ -113,7 +130,6 @@ class Ipv6MonitorTest {
         fun onAddressChanged(newAddress: String) {
             if (newAddress != lastAddress) {
                 lastAddress = newAddress
-                // In real code, this would trigger the callback
             }
         }
         
@@ -136,31 +152,36 @@ class Ipv6MonitorTest {
         var address1: String? = null
         var address2: String? = null
         
-        val monitor1 = Ipv6Monitor(testContext) { address ->
+        val monitor1 = Ipv6Monitor(mockContext) { address ->
             address1 = address
         }
         
-        val monitor2 = Ipv6Monitor(testContext) { address ->
+        val monitor2 = Ipv6Monitor(mockContext) { address ->
             address2 = address
         }
         
         assertNotNull(monitor1)
         assertNotNull(monitor2)
         assertNotSame("Monitor instances should be different", monitor1, monitor2)
+        
+        // Verify getSystemService was called for each monitor
+        verify(exactly = 2) { 
+            mockContext.getSystemService(Context.CONNECTIVITY_SERVICE) 
+        }
     }
 
     @Test
     fun testNetworkCallbackRegistration() {
-        // Test that the network callback can be registered multiple times
-        // (first registration should succeed, subsequent should be handled gracefully)
-        
+        // Test that the network callback registration attempts to access connectivity manager
         // We can't actually test registration without a real Android environment,
         // but we can verify the code structure
         
-        val monitor = Ipv6Monitor(testContext) {}
         assertNotNull(monitor)
         
-        // In a real test, we would call monitor.start() and verify it registers the callback
+        // Verify that connectivity manager was obtained during initialization
+        verify { 
+            mockContext.getSystemService(Context.CONNECTIVITY_SERVICE) 
+        }
     }
 
     @Test
@@ -168,11 +189,13 @@ class Ipv6MonitorTest {
         // Verify that the monitor holds a reference to the context
         // This is important for accessing system services
         
-        val monitorWithContext = Ipv6Monitor(testContext) {}
+        val monitorWithContext = Ipv6Monitor(mockContext) {}
         assertNotNull(monitorWithContext)
         
-        // The context is used to get ConnectivityManager
-        // We can't verify this without reflection or a real environment
+        // Verify context was used to get system service
+        verify { 
+            mockContext.getSystemService(Context.CONNECTIVITY_SERVICE) 
+        }
     }
 
     @Test
@@ -218,7 +241,7 @@ class Ipv6MonitorTest {
         // Test that a monitor can be stopped and restarted
         // (this tests the lifecycle management)
         
-        val monitor = Ipv6Monitor(testContext) {}
+        val monitor = Ipv6Monitor(mockContext) {}
         assertNotNull(monitor)
         
         // In a real test, we would:

@@ -58,6 +58,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -356,14 +357,14 @@ fun StatusCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Button(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("startButton"),
                     onClick = onStartClick,
                     enabled = !running
                 ) {
                     Text(stringResource(R.string.action_start))
                 }
                 OutlinedButton(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).testTag("stopButton"),
                     onClick = onStopClick,
                     enabled = running,
                     colors = ButtonDefaults.outlinedButtonColors(
@@ -409,7 +410,7 @@ fun CloudflareConfigCard(
                 value = apiToken,
                 onValueChange = onApiTokenChange,
                 label = { Text(stringResource(R.string.label_api_token)) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("apiTokenField"),
                 enabled = enabled,
                 singleLine = true,
                 visualTransformation = if (tokenVisible) {
@@ -437,7 +438,7 @@ fun CloudflareConfigCard(
                 value = zoneId,
                 onValueChange = onZoneIdChange,
                 label = { Text(stringResource(R.string.label_zone_id)) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("zoneIdField"),
                 enabled = enabled,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii)
@@ -446,7 +447,7 @@ fun CloudflareConfigCard(
                 value = recordName,
                 onValueChange = onRecordNameChange,
                 label = { Text(stringResource(R.string.label_record_name)) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("recordNameField"),
                 enabled = enabled,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
@@ -455,7 +456,7 @@ fun CloudflareConfigCard(
                 value = timeoutSec,
                 onValueChange = onTimeoutChange,
                 label = { Text(stringResource(R.string.label_timeout)) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().testTag("timeoutField"),
                 enabled = enabled,
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
