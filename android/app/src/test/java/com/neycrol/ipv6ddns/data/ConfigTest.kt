@@ -15,10 +15,9 @@ class ConfigTest {
         assertEquals("", config.zoneId)
         assertEquals("", config.recordName)
         assertEquals(30L, config.timeoutSec)
-        assertEquals(60L, config.pollIntervalSec)
-        assertFalse(config.verbose)
-        assertEquals("error", config.multiRecord)
         assertEquals(0L, config.lastSyncTime)
+        assertEquals("", config.currentIpv6)
+        assertEquals("", config.lastError)
     }
 
     @Test
@@ -28,37 +27,17 @@ class ConfigTest {
             zoneId = "test_zone",
             recordName = "example.com",
             timeoutSec = 45,
-            pollIntervalSec = 90,
-            verbose = true,
-            multiRecord = "first",
-            lastSyncTime = 1234567890L
+            lastSyncTime = 1234567890L,
+            currentIpv6 = "2001:db8::1",
+            lastError = "some error"
         )
         assertEquals("test_token", config.apiToken)
         assertEquals("test_zone", config.zoneId)
         assertEquals("example.com", config.recordName)
         assertEquals(45L, config.timeoutSec)
-        assertEquals(90L, config.pollIntervalSec)
-        assertTrue(config.verbose)
-        assertEquals("first", config.multiRecord)
         assertEquals(1234567890L, config.lastSyncTime)
-    }
-
-    @Test
-    fun testMultiRecordPolicyError() {
-        val config = AppConfig(multiRecord = "error")
-        assertEquals("error", config.multiRecord)
-    }
-
-    @Test
-    fun testMultiRecordPolicyFirst() {
-        val config = AppConfig(multiRecord = "first")
-        assertEquals("first", config.multiRecord)
-    }
-
-    @Test
-    fun testMultiRecordPolicyAll() {
-        val config = AppConfig(multiRecord = "all")
-        assertEquals("all", config.multiRecord)
+        assertEquals("2001:db8::1", config.currentIpv6)
+        assertEquals("some error", config.lastError)
     }
 
     @Test
@@ -83,30 +62,6 @@ class ConfigTest {
     fun testTimeoutSecCustom() {
         val config = AppConfig(timeoutSec = 120)
         assertEquals(120L, config.timeoutSec)
-    }
-
-    @Test
-    fun testPollIntervalSecDefault() {
-        val config = AppConfig()
-        assertEquals(60L, config.pollIntervalSec)
-    }
-
-    @Test
-    fun testPollIntervalSecCustom() {
-        val config = AppConfig(pollIntervalSec = 300)
-        assertEquals(300L, config.pollIntervalSec)
-    }
-
-    @Test
-    fun testVerboseDefault() {
-        val config = AppConfig()
-        assertFalse(config.verbose)
-    }
-
-    @Test
-    fun testVerboseEnabled() {
-        val config = AppConfig(verbose = true)
-        assertTrue(config.verbose)
     }
 
     @Test
@@ -135,5 +90,17 @@ class ConfigTest {
         assertEquals("new_token", copy.apiToken)
         assertEquals("zone", copy.zoneId)
         assertEquals("record", copy.recordName)
+    }
+
+    @Test
+    fun testCurrentIpv6() {
+        val config = AppConfig(currentIpv6 = "2001:db8::1")
+        assertEquals("2001:db8::1", config.currentIpv6)
+    }
+
+    @Test
+    fun testLastError() {
+        val config = AppConfig(lastError = "Connection timeout")
+        assertEquals("Connection timeout", config.lastError)
     }
 }

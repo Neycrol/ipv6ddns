@@ -5,8 +5,7 @@ data class AppConfig(
     val zoneId: String = "",
     val recordName: String = "",
     val timeoutSec: Long = 30,
-    val pollIntervalSec: Long = 60,
-    val verbose: Boolean = false,
-    val multiRecord: String = "error",
-    val lastSyncTime: Long = 0L  // Unix timestamp of last successful sync
+    val lastSyncTime: Long = 0L,
+    val currentIpv6: String = "",
+    val lastError: String = ""
 )
