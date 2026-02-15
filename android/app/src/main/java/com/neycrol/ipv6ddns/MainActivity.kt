@@ -1,5 +1,6 @@
 package com.neycrol.ipv6ddns
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -23,7 +24,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -32,8 +32,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,13 +67,11 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.neycrol.ipv6ddns.data.AppConfig
 import com.neycrol.ipv6ddns.data.ConfigStore
-import com.neycrol.ipv6ddns.data.ConfigToml
 import com.neycrol.ipv6ddns.service.Ipv6DdnsService
 import com.neycrol.ipv6ddns.ui.AppColors
 import com.neycrol.ipv6ddns.ui.Ipv6DdnsTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -94,16 +90,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun isBatteryOptimizationEnabled(context: android.content.Context): Boolean {
+private fun isBatteryOptimizationEnabled(context: Context): Boolean {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        val pm = context.getSystemService(android.content.Context.POWER_SERVICE)
-                as android.os.PowerManager
+        val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         return !pm.isIgnoringBatteryOptimizations(context.packageName)
     }
     return false
 }
 
-private fun requestBatteryOptimizationExemption(context: android.content.Context) {
+private fun requestBatteryOptimizationExemption(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         try {
             val intent = Intent().apply {
@@ -123,8 +118,6 @@ private fun requestBatteryOptimizationExemption(context: android.content.Context
 
 private const val MIN_TIMEOUT = 1L
 private const val MAX_TIMEOUT = 300L
-private const val MIN_POLL_INTERVAL = 10L
-private const val MAX_POLL_INTERVAL = 3600L
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -138,19 +131,9 @@ fun AppScreen() {
     var zoneId by rememberSaveable { mutableStateOf("") }
     var recordName by rememberSaveable { mutableStateOf("") }
     var timeoutSec by rememberSaveable { mutableStateOf("30") }
-    var pollIntervalSec by rememberSaveable { mutableStateOf("60") }
-    var verbose by rememberSaveable { mutableStateOf(false) }
-    var multiRecord by rememberSaveable { mutableStateOf("error") }
-    var showMenu by rememberSaveable { mutableStateOf(false) }
+    var autoStart by rememberSaveable { mutableStateOf(false) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val clearError = { errorMessage = null }
-    val multiRecordOptions = listOf(
-        "error" to stringResource(R.string.multi_record_error),
-        "first" to stringResource(R.string.multi_record_first),
-        "all" to stringResource(R.string.multi_record_all)
-    )
-    val multiRecordLabel =
-        multiRecordOptions.firstOrNull { it.first == multiRecord }?.second ?: multiRecord
 
     fun validateConfig(): String? {
         if (apiToken.trim().isEmpty())
@@ -162,11 +145,6 @@ fun AppScreen() {
         val timeout = timeoutSec.toLongOrNull()
         if (timeout == null || timeout < MIN_TIMEOUT || timeout > MAX_TIMEOUT)
             return context.getString(R.string.validation_timeout_range, MIN_TIMEOUT, MAX_TIMEOUT)
-        val poll = pollIntervalSec.toLongOrNull()
-        if (poll == null || poll < MIN_POLL_INTERVAL || poll > MAX_POLL_INTERVAL)
-            return context.getString(
-                R.string.validation_poll_interval_range, MIN_POLL_INTERVAL, MAX_POLL_INTERVAL
-            )
         return null
     }
 
@@ -175,9 +153,12 @@ fun AppScreen() {
         zoneId = config.zoneId
         recordName = config.recordName
         timeoutSec = config.timeoutSec.toString()
-        pollIntervalSec = config.pollIntervalSec.toString()
-        verbose = config.verbose
-        multiRecord = config.multiRecord
+    }
+
+    // Load auto-start preference
+    LaunchedEffect(Unit) {
+        val prefs = context.getSharedPreferences("ipv6ddns_boot", Context.MODE_PRIVATE)
+        autoStart = prefs.getBoolean("auto_start", false)
     }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
@@ -207,26 +188,15 @@ fun AppScreen() {
                             apiToken = apiToken.trim(),
                             zoneId = zoneId.trim(),
                             recordName = recordName.trim(),
-                            timeoutSec = timeoutSec.toLong(),
-                            pollIntervalSec = pollIntervalSec.toLong(),
-                            verbose = verbose,
-                            multiRecord = multiRecord
+                            timeoutSec = timeoutSec.toLong()
                         )
                         scope.launch(Dispatchers.IO) {
                             ConfigStore.saveConfig(context, cfg)
-                            val configFile = ConfigToml.writeConfig(context, cfg)
-                            withContext(Dispatchers.Main) {
-                                val intent =
-                                    Intent(context, Ipv6DdnsService::class.java).apply {
-                                        action = Ipv6DdnsService.ACTION_START
-                                        putExtra(
-                                            Ipv6DdnsService.EXTRA_CONFIG_PATH,
-                                            configFile.absolutePath
-                                        )
-                                    }
-                                context.startForegroundService(intent)
-                            }
                         }
+                        val intent = Intent(context, Ipv6DdnsService::class.java).apply {
+                            action = Ipv6DdnsService.ACTION_START
+                        }
+                        context.startForegroundService(intent)
                     }
                 },
                 onStopClick = {
@@ -244,25 +214,20 @@ fun AppScreen() {
                 onZoneIdChange = { zoneId = it; clearError() },
                 recordName = recordName,
                 onRecordNameChange = { recordName = it; clearError() },
+                timeoutSec = timeoutSec,
+                onTimeoutChange = { timeoutSec = it.filter { ch -> ch.isDigit() }; clearError() },
                 enabled = !running
             )
 
-            RuntimeConfigCard(
-                timeoutSec = timeoutSec,
-                onTimeoutChange = { timeoutSec = it.filter { ch -> ch.isDigit() }; clearError() },
-                pollIntervalSec = pollIntervalSec,
-                onPollIntervalChange = {
-                    pollIntervalSec = it.filter { ch -> ch.isDigit() }; clearError()
+            SettingsCard(
+                autoStart = autoStart,
+                onAutoStartChange = { enabled ->
+                    autoStart = enabled
+                    context.getSharedPreferences("ipv6ddns_boot", Context.MODE_PRIVATE)
+                        .edit()
+                        .putBoolean("auto_start", enabled)
+                        .apply()
                 },
-                verbose = verbose,
-                onVerboseChange = { verbose = it; clearError() },
-                multiRecordLabel = multiRecordLabel,
-                multiRecordOptions = multiRecordOptions,
-                showMenu = showMenu,
-                onMenuShow = { showMenu = true },
-                onMenuDismiss = { showMenu = false },
-                onMultiRecordSelect = { multiRecord = it; clearError(); showMenu = false },
-                enabled = !running,
                 context = context
             )
 
@@ -335,6 +300,19 @@ fun StatusCard(
                 )
             }
 
+            // Current IPv6 address
+            val ipv6Text = if (config.currentIpv6.isNotEmpty()) {
+                stringResource(R.string.current_ipv6) + ": " + config.currentIpv6
+            } else {
+                stringResource(R.string.no_ipv6)
+            }
+            Text(
+                text = ipv6Text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            // Last sync time
             val syncText = if (config.lastSyncTime > 0) {
                 val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 stringResource(R.string.last_sync) + ": " + fmt.format(Date(config.lastSyncTime))
@@ -347,6 +325,24 @@ fun StatusCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
+            // Last error from service
+            if (config.lastError.isNotEmpty()) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = stringResource(R.string.last_error) + ": " + config.lastError,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            // Validation error from UI
             errorMessage?.let { error ->
                 Card(
                     colors = CardDefaults.cardColors(
@@ -399,6 +395,8 @@ fun CloudflareConfigCard(
     onZoneIdChange: (String) -> Unit,
     recordName: String,
     onRecordNameChange: (String) -> Unit,
+    timeoutSec: String,
+    onTimeoutChange: (String) -> Unit,
     enabled: Boolean
 ) {
     var tokenVisible by rememberSaveable { mutableStateOf(false) }
@@ -461,28 +459,26 @@ fun CloudflareConfigCard(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri)
             )
+            OutlinedTextField(
+                value = timeoutSec,
+                onValueChange = onTimeoutChange,
+                label = { Text(stringResource(R.string.label_timeout)) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = enabled,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
         }
     }
 }
 
-// --- Runtime Config Card -----------------------------------------------------
+// --- Settings Card -----------------------------------------------------------
 
 @Composable
-fun RuntimeConfigCard(
-    timeoutSec: String,
-    onTimeoutChange: (String) -> Unit,
-    pollIntervalSec: String,
-    onPollIntervalChange: (String) -> Unit,
-    verbose: Boolean,
-    onVerboseChange: (Boolean) -> Unit,
-    multiRecordLabel: String,
-    multiRecordOptions: List<Pair<String, String>>,
-    showMenu: Boolean,
-    onMenuShow: () -> Unit,
-    onMenuDismiss: () -> Unit,
-    onMultiRecordSelect: (String) -> Unit,
-    enabled: Boolean,
-    context: android.content.Context
+fun SettingsCard(
+    autoStart: Boolean,
+    onAutoStartChange: (Boolean) -> Unit,
+    context: Context
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -494,32 +490,7 @@ fun RuntimeConfigCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            SectionTitle(stringResource(R.string.section_runtime))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = timeoutSec,
-                    onValueChange = onTimeoutChange,
-                    label = { Text(stringResource(R.string.label_timeout)) },
-                    modifier = Modifier.weight(1f),
-                    enabled = enabled,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                OutlinedTextField(
-                    value = pollIntervalSec,
-                    onValueChange = onPollIntervalChange,
-                    label = { Text(stringResource(R.string.label_poll)) },
-                    modifier = Modifier.weight(1f),
-                    enabled = enabled,
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                )
-            }
+            SectionTitle(stringResource(R.string.section_settings))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -527,41 +498,13 @@ fun RuntimeConfigCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    stringResource(R.string.label_verbose),
+                    stringResource(R.string.label_auto_start),
                     style = MaterialTheme.typography.bodyLarge
                 )
                 Switch(
-                    checked = verbose,
-                    onCheckedChange = onVerboseChange,
-                    enabled = enabled
+                    checked = autoStart,
+                    onCheckedChange = onAutoStartChange
                 )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    stringResource(R.string.label_multi_record),
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Box {
-                    OutlinedButton(onClick = onMenuShow, enabled = enabled) {
-                        Text(multiRecordLabel)
-                    }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = onMenuDismiss
-                    ) {
-                        multiRecordOptions.forEach { (option, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = { onMultiRecordSelect(option) }
-                            )
-                        }
-                    }
-                }
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
@@ -576,7 +519,7 @@ fun RuntimeConfigCard(
 // --- Battery Optimization Card -----------------------------------------------
 
 @Composable
-fun BatteryOptimizationCard(context: android.content.Context) {
+fun BatteryOptimizationCard(context: Context) {
     Card(
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.tertiaryContainer

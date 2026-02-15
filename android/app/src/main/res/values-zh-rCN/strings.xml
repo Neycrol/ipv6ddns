@@ -4,14 +4,7 @@
     <string name="label_api_token">API Token</string>
     <string name="label_zone_id">Zone ID</string>
     <string name="label_record_name">记录名</string>
-    <string name="section_runtime">运行设置</string>
     <string name="label_timeout">超时（秒）</string>
-    <string name="label_poll">轮询（秒）</string>
-    <string name="label_verbose">详细日志</string>
-    <string name="label_multi_record">多记录</string>
-    <string name="multi_record_error">报错</string>
-    <string name="multi_record_first">第一个</string>
-    <string name="multi_record_all">全部</string>
     <string name="status_running">运行中</string>
     <string name="status_stopped">已停止</string>
     <string name="last_sync">上次同步</string>
@@ -21,7 +14,6 @@
     <string name="validation_zone_id_required">Zone ID 不能为空</string>
     <string name="validation_record_name_required">记录名不能为空</string>
     <string name="validation_timeout_range" formatted="false">超时时间必须在 %1$d 到 %2$d 秒之间</string>
-    <string name="validation_poll_interval_range" formatted="false">轮询间隔必须在 %1$d 到 %2$d 秒之间</string>
     <string name="battery_optimization_title">电池优化已启用</string>
     <string name="battery_optimization_description">这可能导致服务意外停止。建议为此应用关闭电池优化。</string>
     <string name="battery_optimization_action">关闭电池优化</string>
@@ -29,4 +21,9 @@
     <string name="label_show_token">显示令牌</string>
     <string name="label_hide_token">隐藏令牌</string>
     <string name="never_synced">从未同步</string>
+    <string name="current_ipv6">当前 IPv6</string>
+    <string name="no_ipv6">未检测到 IPv6</string>
+    <string name="label_auto_start">开机自启</string>
+    <string name="section_settings">设置</string>
+    <string name="last_error">最近错误</string>
 </resources>

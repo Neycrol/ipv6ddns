@@ -17,11 +17,10 @@ object ConfigStore {
     private val KEY_ZONE = stringPreferencesKey("zone_id")
     private val KEY_RECORD = stringPreferencesKey("record_name")
     private val KEY_TIMEOUT = longPreferencesKey("timeout_sec")
-    private val KEY_POLL = longPreferencesKey("poll_interval_sec")
-    private val KEY_VERBOSE = booleanPreferencesKey("verbose")
-    private val KEY_MULTI = stringPreferencesKey("multi_record")
     private val KEY_RUNNING = booleanPreferencesKey("running")
     private val KEY_LAST_SYNC = longPreferencesKey("last_sync_time")
+    private val KEY_CURRENT_IPV6 = stringPreferencesKey("current_ipv6")
+    private val KEY_LAST_ERROR = stringPreferencesKey("last_error")
 
     fun configFlow(context: Context): Flow<AppConfig> {
         return context.dataStore.data.map { prefs: Preferences ->
@@ -30,10 +29,9 @@ object ConfigStore {
                 zoneId = prefs[KEY_ZONE] ?: "",
                 recordName = prefs[KEY_RECORD] ?: "",
                 timeoutSec = prefs[KEY_TIMEOUT] ?: 30,
-                pollIntervalSec = prefs[KEY_POLL] ?: 60,
-                verbose = prefs[KEY_VERBOSE] ?: false,
-                multiRecord = prefs[KEY_MULTI] ?: "error",
-                lastSyncTime = prefs[KEY_LAST_SYNC] ?: 0L
+                lastSyncTime = prefs[KEY_LAST_SYNC] ?: 0L,
+                currentIpv6 = prefs[KEY_CURRENT_IPV6] ?: "",
+                lastError = prefs[KEY_LAST_ERROR] ?: ""
             )
         }
     }
@@ -48,16 +46,30 @@ object ConfigStore {
             prefs[KEY_ZONE] = cfg.zoneId
             prefs[KEY_RECORD] = cfg.recordName
             prefs[KEY_TIMEOUT] = cfg.timeoutSec
-            prefs[KEY_POLL] = cfg.pollIntervalSec
-            prefs[KEY_VERBOSE] = cfg.verbose
-            prefs[KEY_MULTI] = cfg.multiRecord
-            prefs[KEY_LAST_SYNC] = cfg.lastSyncTime
         }
     }
 
     suspend fun updateLastSyncTime(context: Context, timestamp: Long) {
         context.dataStore.edit { prefs ->
             prefs[KEY_LAST_SYNC] = timestamp
+        }
+    }
+
+    suspend fun updateCurrentIpv6(context: Context, ipv6: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_CURRENT_IPV6] = ipv6
+        }
+    }
+
+    suspend fun updateLastError(context: Context, error: String) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LAST_ERROR] = error
+        }
+    }
+
+    suspend fun clearError(context: Context) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_LAST_ERROR] = ""
         }
     }
 
