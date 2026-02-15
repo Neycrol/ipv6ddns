@@ -26,4 +26,7 @@
     <string name="label_auto_start">开机自启</string>
     <string name="section_settings">设置</string>
     <string name="last_error">最近错误</string>
+    <string name="notification_title">IPv6 DDNS</string>
+    <string name="notification_text">IPv6 DDNS 运行中</string>
+    <string name="notification_channel_description">IPv6 DDNS 监控服务</string>
 </resources>
