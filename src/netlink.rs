@@ -495,21 +495,9 @@ pub fn detect_global_ipv6(allow_loopback: bool) -> Option<String> {
         Ok((stable, temporary)) => {
             // Validate the IPv6 address format
             stable
-                .and_then(|ip| {
-                    if is_valid_ipv6(&ip, allow_loopback) {
-                        Some(ip)
-                    } else {
-                        None
-                    }
-                })
+                .filter(|ip| is_valid_ipv6(ip, allow_loopback))
                 .or_else(|| {
-                    temporary.and_then(|ip| {
-                        if is_valid_ipv6(&ip, allow_loopback) {
-                            Some(ip)
-                        } else {
-                            None
-                        }
-                    })
+                    temporary.filter(|ip| is_valid_ipv6(ip, allow_loopback))
                 })
         }
         Err(_) => None,
@@ -764,7 +752,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
             // Safely extract nlmsg_len with bounds checking
             let nlmsg_len_bytes = data.get(msg_offset..msg_offset + 4);
             let nlmsg_len = match nlmsg_len_bytes {
-                Some(bytes) => u32::from_ne_bytes(bytes.try_into().unwrap_or([0; 4])) as usize,
+                Some(bytes) => u32::from_ne_bytes(bytes.try_into().expect("slice is exactly 4 bytes")) as usize,
                 None => break,
             };
             if nlmsg_len < NLMSG_HDRLEN || nlmsg_len == 0 {
@@ -774,7 +762,7 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
             // Safely extract nlmsg_type with bounds checking
             let nlmsg_type_bytes = data.get(msg_offset + 4..msg_offset + 6);
             let nlmsg_type = match nlmsg_type_bytes {
-                Some(bytes) => u16::from_ne_bytes(bytes.try_into().unwrap_or([0; 2])),
+                Some(bytes) => u16::from_ne_bytes(bytes.try_into().expect("slice is exactly 2 bytes")),
                 None => break,
             };
             if nlmsg_type == NLMSG_DONE {

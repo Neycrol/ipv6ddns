@@ -8,7 +8,7 @@
 pub const CLOUDFLARE_API_BASE: &str = "https://api.cloudflare.com/client/v4";
 
 /// User agent string for Cloudflare API requests
-pub const CLOUDFLARE_USER_AGENT: &str = "ipv6ddns/1.0";
+pub const CLOUDFLARE_USER_AGENT: &str = concat!("ipv6ddns/", env!("CARGO_PKG_VERSION"));
 
 /// DNS record type for IPv6 addresses
 pub const DNS_RECORD_TYPE_AAAA: &str = "AAAA";

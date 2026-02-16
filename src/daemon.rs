@@ -159,6 +159,11 @@ pub fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
     sanitized
 }
 
+/// Determines whether an IPv6 address is eligible for DNS synchronization.
+///
+/// This wrapper provides an abstraction layer over basic validation, allowing
+/// future filtering logic (e.g., prefix matching, blocklists) to be added
+/// without changing call sites.
 #[must_use]
 fn is_syncable_ipv6(ip: &str, allow_loopback: bool) -> bool {
     is_valid_ipv6(ip, allow_loopback)
