@@ -206,7 +206,6 @@ impl CloudflareClient {
     ///
     /// Returns `Ok(())` if the response was successful, otherwise returns an error
     fn handle_api_response<T>(
-        &self,
         status: StatusCode,
         body: &ApiResponse<T>,
         context: &str,
@@ -295,7 +294,7 @@ impl CloudflareClient {
             })?;
 
         let ctx = format!("Create record '{}' in zone '{}'", record_name, zone_id);
-        self.handle_api_response(status, &body, &ctx)?;
+        Self::handle_api_response(status, &body, &ctx)?;
 
         body.result.with_context(|| {
             format!(
@@ -341,7 +340,7 @@ impl CloudflareClient {
             "Update record '{}' (ID: {}) in zone '{}'",
             record_name, record_id, zone_id
         );
-        self.handle_api_response(status, &body, &ctx)?;
+        Self::handle_api_response(status, &body, &ctx)?;
 
         body.result.with_context(|| {
             format!(
@@ -478,7 +477,7 @@ impl CloudflareClient {
             })?;
 
         let ctx = format!("GET record '{}' in zone '{}'", record_name, zone_id);
-        self.handle_api_response(status, &body, &ctx)?;
+        Self::handle_api_response(status, &body, &ctx)?;
 
         Ok(body.result.unwrap_or_default())
     }
@@ -832,67 +831,6 @@ mod tests {
     }
 
     #[test]
-    fn test_dns_record_equality() {
-        let record1 = DnsRecord {
-            id: "abc123".to_string(),
-            record_type: "AAAA".to_string(),
-            name: "example.com".to_string(),
-            content: "2001:db8::1".to_string(),
-            proxied: false,
-            ttl: 1,
-        };
-
-        let record2 = DnsRecord {
-            id: "abc123".to_string(),
-            record_type: "AAAA".to_string(),
-            name: "example.com".to_string(),
-            content: "2001:db8::1".to_string(),
-            proxied: false,
-            ttl: 1,
-        };
-
-        assert_eq!(record1, record2);
-    }
-
-    #[test]
-    fn test_dns_record_inequality() {
-        let record1 = DnsRecord {
-            id: "abc123".to_string(),
-            record_type: "AAAA".to_string(),
-            name: "example.com".to_string(),
-            content: "2001:db8::1".to_string(),
-            proxied: false,
-            ttl: 1,
-        };
-
-        let record2 = DnsRecord {
-            id: "def456".to_string(),
-            record_type: "AAAA".to_string(),
-            name: "example.com".to_string(),
-            content: "2001:db8::1".to_string(),
-            proxied: false,
-            ttl: 1,
-        };
-
-        assert_ne!(record1, record2);
-    }
-
-    #[test]
-    fn test_dns_record_clone() {
-        let record = DnsRecord {
-            id: "abc123".to_string(),
-            record_type: "AAAA".to_string(),
-            name: "example.com".to_string(),
-            content: "2001:db8::1".to_string(),
-            proxied: false,
-            ttl: 1,
-        };
-
-        let cloned = record.clone();
-        assert_eq!(record, cloned);
-    }
-
-    #[test]
     fn test_api_error_with_large_code() {
         let err = ApiError {
             code: 999999,
@@ -902,7 +840,7 @@ mod tests {
     }
 
     #[test]
-    fn test_api_error_with_negative_code() {
+    fn test_api_error_with_large_code_deserialization() {
         let json = r#"{
             "code": 9999,
             "message": "Large error code"

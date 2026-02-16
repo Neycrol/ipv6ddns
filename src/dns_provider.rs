@@ -164,18 +164,4 @@ mod tests {
 
         assert_ne!(record1, record2);
     }
-
-    #[test]
-    fn test_multi_record_policy_variants() {
-        let policies = [
-            MultiRecordPolicy::Error,
-            MultiRecordPolicy::UpdateFirst,
-            MultiRecordPolicy::UpdateAll,
-        ];
-
-        assert_eq!(policies.len(), 3);
-        assert!(policies.contains(&MultiRecordPolicy::Error));
-        assert!(policies.contains(&MultiRecordPolicy::UpdateFirst));
-        assert!(policies.contains(&MultiRecordPolicy::UpdateAll));
-    }
 }

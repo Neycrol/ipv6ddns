@@ -149,7 +149,13 @@ ipv6ddns/
 ├── src/
 │   ├── main.rs          # Main daemon entry point
 │   ├── cloudflare.rs    # Cloudflare API client
-│   └── netlink.rs       # IPv6 address monitoring
+│   ├── config.rs        # Configuration loading and validation
+│   ├── constants.rs     # Common constants
+│   ├── daemon.rs        # Daemon state machine and event loop
+│   ├── dns_provider.rs  # DNS provider trait abstraction
+│   ├── health.rs        # Health check endpoint
+│   ├── netlink.rs       # IPv6 address monitoring
+│   └── validation.rs    # Input validation utilities
 ├── android/             # Android companion app
 ├── packaging/           # Packaging scripts
 ├── scripts/             # Build and CI scripts

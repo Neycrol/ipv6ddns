@@ -134,7 +134,7 @@ impl Config {
     pub fn load(config_path: Option<PathBuf>) -> Result<Self> {
         let mut config = Self::load_from_file(config_path)?;
         Self::override_with_env(&mut config)?;
-        Self::validate(&config)?;
+        config.validate()?;
         Ok(config)
     }
 

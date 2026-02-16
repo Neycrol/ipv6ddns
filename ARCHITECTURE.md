@@ -68,7 +68,7 @@ When multiple AAAA records exist for the same name, the client supports three po
 - Server errors (5xx): Triggers exponential backoff
 - Client errors (4xx): Returns error immediately
 
-### 3. State Machine (`src/main.rs`)
+### 3. State Machine (`src/daemon.rs`)
 
 The daemon uses a simple state machine to track record synchronization state.
 
@@ -98,7 +98,7 @@ On errors, the daemon uses exponential backoff with these parameters:
 
 Backoff formula: `min(5 * 2^(error_count - 1), 600)` seconds
 
-### 4. Configuration (`src/main.rs`)
+### 4. Configuration (`src/config.rs`)
 
 Configuration is loaded from multiple sources in order of precedence:
 
@@ -326,7 +326,6 @@ To add support for a new DNS provider:
 The `DnsProvider` trait requires implementing:
 
 - `upsert_aaaa_record()`: Create or update an AAAA record
-- `get_records()`: Retrieve existing AAAA records
 
 ## References
 
