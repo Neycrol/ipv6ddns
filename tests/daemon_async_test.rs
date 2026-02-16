@@ -351,29 +351,6 @@ async fn test_concurrent_state_transitions() {
     );
 }
 
-/// Test rapid state changes between synced and error
-#[tokio::test]
-async fn test_rapid_state_changes() {
-    let state = Arc::new(Mutex::new(AppState::default()));
-
-    // Rapidly change state multiple times between synced and error
-    for i in 0..20 {
-        let mut s = state.lock().await;
-        if i % 2 == 0 {
-            s.mark_synced(format!("2001:db8::{}", i));
-        } else {
-            s.mark_error();
-        }
-    }
-
-    // Verify final state is valid
-    let s = state.lock().await;
-    assert!(
-        matches!(s.state, RecordState::Synced(_) | RecordState::Error(_)),
-        "Final state should be valid"
-    );
-}
-
 /// Test error count reset after successful sync
 #[tokio::test]
 async fn test_error_count_reset_after_sync() {

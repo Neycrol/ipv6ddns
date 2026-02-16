@@ -12,19 +12,10 @@ use anyhow::{Context as _, Result};
 use clap::Parser;
 use tracing::Level;
 
-mod cloudflare;
-mod config;
-mod constants;
-mod daemon;
-mod dns_provider;
-mod health;
-mod netlink;
-mod validation;
-
-use cloudflare::CloudflareClient;
-use config::Config;
-use daemon::Daemon;
-use netlink::NetlinkSocket;
+use ipv6ddns::cloudflare::CloudflareClient;
+use ipv6ddns::config::Config;
+use ipv6ddns::daemon::Daemon;
+use ipv6ddns::netlink::NetlinkSocket;
 
 /// Application version
 const VERSION: &str = env!("CARGO_PKG_VERSION");
