@@ -119,4 +119,8 @@ pub const ENV_HEALTH_PORT: &str = "IPV6DDNS_HEALTH_PORT";
 //==============================================================================
 
 /// Maximum idle connections per host in HTTP connection pool
-pub const HTTP_POOL_MAX_IDLE_PER_HOST: usize = 0;
+///
+/// Set to 1 because the daemon only communicates with a single host
+/// (api.cloudflare.com). Keeping one idle connection avoids repeated
+/// TCP + TLS handshakes on consecutive API calls.
+pub const HTTP_POOL_MAX_IDLE_PER_HOST: usize = 1;

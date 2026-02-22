@@ -130,6 +130,8 @@ class CloudflareApi(
                 put("type", "AAAA")
                 put("name", recordName)
                 put("content", ipv6Address)
+                put("ttl", 1) // Auto TTL
+                put("proxied", false)
             }
 
             OutputStreamWriter(conn.outputStream).use { writer ->
@@ -174,6 +176,7 @@ class CloudflareApi(
                 put("type", "AAAA")
                 put("name", recordName)
                 put("content", ipv6Address)
+                put("ttl", 1) // Auto TTL
                 put("proxied", false)
             }
 
