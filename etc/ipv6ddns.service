@@ -1,6 +1,6 @@
 [Unit]
 Description=Event-driven IPv6 DDNS client for Cloudflare
-Documentation=https://github.com/xishaoa/ipv6ddns
+Documentation=https://github.com/Neycrol/ipv6ddns
 After=network-online.target
 Wants=network-online.target
 

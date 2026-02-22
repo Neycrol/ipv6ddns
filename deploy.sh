@@ -48,8 +48,7 @@ build() {
         exit 1
     fi
 
-    # Strip binary for smaller size
-    strip --strip-all "${BINARY}"
+    # Note: binary is already stripped by Cargo (profile.release.strip = true)
 
     log_info "Build successful: ${BINARY}"
     log_info "Binary size: $(du -h "${BINARY}" | cut -f1)"
