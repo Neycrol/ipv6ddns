@@ -24,7 +24,7 @@ zeroize = { version = "1.8", features = ["serde", "zeroize_derive"] }
 
 [dev-dependencies]
 serial_test = "3.0"
-tempfile = "3.25"
+tempfile = "3.26"
 
 [profile.release]
 opt-level = 3
