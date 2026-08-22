@@ -49,11 +49,11 @@
 
 use std::collections::VecDeque;
 use std::io::ErrorKind;
+use std::net::Ipv6Addr;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::time::Duration;
 
 use anyhow::{Context as _, Result};
-use async_trait::async_trait;
 use tokio::io::unix::AsyncFd;
 
 use crate::validation::is_valid_ipv6;
@@ -170,8 +170,10 @@ const POLL_INTERVAL_DEFAULT: Duration = Duration::from_secs(60);
 pub enum NetlinkEvent {
     /// An IPv6 address was added or changed
     ///
-    /// Contains the string representation of the IPv6 address
-    Ipv6Added(String),
+    /// Carries the address as a native [`Ipv6Addr`] (16 bytes, `Copy`) so the
+    /// hot event path performs no heap allocation; callers format to `String`
+    /// only when they actually need text (logging or API payloads).
+    Ipv6Added(Ipv6Addr),
     /// An IPv6 address was removed
     ///
     /// This event does not contain the specific address that was removed
@@ -182,26 +184,12 @@ pub enum NetlinkEvent {
     Unknown,
 }
 
-/// Trait for monitoring IPv6 address changes
-///
-/// This trait defines the interface for both event-driven (netlink) and
-/// polling-based IPv6 address monitoring implementations.
-#[async_trait]
-pub trait Ipv6Monitor: Send + Sync {
-    /// Waits for the next IPv6 address change event
-    ///
-    /// This method is async and will block until a new event is detected.
-    /// The method returns a `NetlinkEvent` describing what changed.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `NetlinkEvent` indicating the type of change detected
-    async fn next_event(&mut self) -> NetlinkEvent;
-}
-
 struct NetlinkImpl {
     fd: AsyncFd<OwnedFd>,
     pending_events: VecDeque<NetlinkEvent>,
+    /// Preallocated receive buffer, reused across reads so the event-driven
+    /// hot path performs no heap allocation (and no 8 KiB zeroing) per event.
+    recv_buf: Box<[u8; NETLINK_RECV_BUFFER_SIZE]>,
 }
 
 impl NetlinkImpl {
@@ -247,19 +235,16 @@ impl NetlinkImpl {
         Ok(Self {
             fd,
             pending_events: VecDeque::new(),
+            recv_buf: Box::new([0u8; NETLINK_RECV_BUFFER_SIZE]),
         })
     }
 
-    fn recv_raw_io(&self) -> std::io::Result<Option<Vec<u8>>> {
-        let mut buf = vec![0u8; NETLINK_RECV_BUFFER_SIZE];
-        let n = unsafe {
-            libc::recv(
-                self.fd.as_raw_fd(),
-                buf.as_mut_ptr() as *mut libc::c_void,
-                buf.len(),
-                0,
-            )
-        };
+    /// Reads pending bytes from the netlink socket into `buf`.
+    ///
+    /// Returns `Ok(None)` when the read would block or the socket delivered no
+    /// data; otherwise returns the number of bytes written into `buf`.
+    fn recv_raw_fd(fd: i32, buf: &mut [u8]) -> std::io::Result<Option<usize>> {
+        let n = unsafe { libc::recv(fd, buf.as_mut_ptr().cast::<libc::c_void>(), buf.len(), 0) };
         if n < 0 {
             let err = std::io::Error::last_os_error();
             if err.kind() == ErrorKind::WouldBlock {
@@ -270,8 +255,7 @@ impl NetlinkImpl {
         if n == 0 {
             return Ok(None);
         }
-        buf.truncate(n as usize);
-        Ok(Some(buf))
+        Ok(Some(n as usize))
     }
 
     fn parse_messages(data: &[u8]) -> VecDeque<NetlinkEvent> {
@@ -333,8 +317,8 @@ impl NetlinkImpl {
     }
 }
 
-#[async_trait]
-impl Ipv6Monitor for NetlinkImpl {
+impl NetlinkImpl {
+    /// Waits for the next IPv6 address change event
     async fn next_event(&mut self) -> NetlinkEvent {
         loop {
             if let Some(event) = self.pending_events.pop_front() {
@@ -346,17 +330,24 @@ impl Ipv6Monitor for NetlinkImpl {
                 Err(_) => return NetlinkEvent::Unknown,
             };
 
-            let data = match guard.try_io(|_| self.recv_raw_io()) {
-                Ok(Ok(Some(d))) => d,
+            let received = guard.try_io(|inner| {
+                // Reuses the preallocated buffer: no allocation on the hot
+                // path. Only `recv_buf` is captured, keeping the borrow
+                // disjoint from the guard's borrow of `fd`.
+                Self::recv_raw_fd(inner.get_ref().as_raw_fd(), self.recv_buf.as_mut())
+            });
+            match received {
+                Ok(Ok(Some(n))) => {
+                    drop(guard);
+                    let mut events = Self::parse_messages(&self.recv_buf[..n]);
+                    if let Some(event) = events.pop_front() {
+                        self.pending_events.append(&mut events);
+                        return event;
+                    }
+                }
                 Ok(Ok(None)) => continue,
                 Ok(Err(_)) => return NetlinkEvent::Unknown,
                 Err(_would_block) => continue,
-            };
-
-            let mut events = Self::parse_messages(&data);
-            if let Some(event) = events.pop_front() {
-                self.pending_events.append(&mut events);
-                return event;
             }
         }
     }
@@ -365,7 +356,7 @@ impl Ipv6Monitor for NetlinkImpl {
 struct PollingImpl {
     interval: Duration,
     allow_loopback: bool,
-    last_ip: Option<String>,
+    last_ip: Option<Ipv6Addr>,
 }
 
 impl PollingImpl {
@@ -378,8 +369,8 @@ impl PollingImpl {
     }
 }
 
-#[async_trait]
-impl Ipv6Monitor for PollingImpl {
+impl PollingImpl {
+    /// Waits for the next IPv6 address change event
     async fn next_event(&mut self) -> NetlinkEvent {
         loop {
             tokio::time::sleep(self.interval).await;
@@ -391,7 +382,8 @@ impl Ipv6Monitor for PollingImpl {
 
             match current_ip {
                 Some(ip) => {
-                    self.last_ip = Some(ip.clone());
+                    // Ipv6Addr is Copy — no clone needed.
+                    self.last_ip = Some(ip);
                     return NetlinkEvent::Ipv6Added(ip);
                 }
                 None => {
@@ -408,8 +400,26 @@ impl Ipv6Monitor for PollingImpl {
 /// This struct provides a unified interface for IPv6 address monitoring,
 /// automatically falling back to polling if netlink is not available.
 pub struct NetlinkSocket {
-    monitor: Box<dyn Ipv6Monitor>,
-    is_event_driven: bool,
+    monitor: Monitor,
+}
+
+/// Internal dispatcher for the two monitoring strategies.
+///
+/// An enum instead of a trait object keeps dispatch static and makes the
+/// (closed) set of strategies explicit.
+enum Monitor {
+    EventDriven(NetlinkImpl),
+    Polling(PollingImpl),
+}
+
+impl Monitor {
+    /// Waits for the next IPv6 address change event
+    async fn next_event(&mut self) -> NetlinkEvent {
+        match self {
+            Self::EventDriven(monitor) => monitor.next_event().await,
+            Self::Polling(monitor) => monitor.next_event().await,
+        }
+    }
 }
 
 impl NetlinkSocket {
@@ -438,16 +448,14 @@ impl NetlinkSocket {
             Ok(netlink) => {
                 tracing::info!("Using event-driven netlink socket");
                 Ok(Self {
-                    monitor: Box::new(netlink),
-                    is_event_driven: true,
+                    monitor: Monitor::EventDriven(netlink),
                 })
             }
             Err(e) => {
                 tracing::warn!("Netlink socket failed ({:#}), falling back to polling", e);
                 tracing::info!("Polling interval: {} seconds", interval.as_secs());
                 Ok(Self {
-                    monitor: Box::new(PollingImpl::new(interval, allow_loopback)),
-                    is_event_driven: false,
+                    monitor: Monitor::Polling(PollingImpl::new(interval, allow_loopback)),
                 })
             }
         }
@@ -471,7 +479,7 @@ impl NetlinkSocket {
     ///
     /// `true` if using netlink (event-driven), `false` if using polling
     pub fn is_event_driven(&self) -> bool {
-        self.is_event_driven
+        matches!(self.monitor, Monitor::EventDriven(_))
     }
 }
 
@@ -490,15 +498,13 @@ impl NetlinkSocket {
 /// - Falls back to temporary addresses if no stable address exists
 /// - Returns `None` if no global IPv6 address is found or an error occurs
 #[must_use]
-pub fn detect_global_ipv6(allow_loopback: bool) -> Option<String> {
+pub fn detect_global_ipv6(allow_loopback: bool) -> Option<Ipv6Addr> {
     match netlink_dump_ipv6() {
         Ok((stable, temporary)) => {
-            // Validate the IPv6 address format
+            // Validate routability before handing the address to callers
             stable
-                .filter(|ip| is_valid_ipv6(ip, allow_loopback))
-                .or_else(|| {
-                    temporary.filter(|ip| is_valid_ipv6(ip, allow_loopback))
-                })
+                .filter(|ip| is_valid_ipv6(*ip, allow_loopback))
+                .or_else(|| temporary.filter(|ip| is_valid_ipv6(*ip, allow_loopback)))
         }
         Err(_) => None,
     }
@@ -525,8 +531,8 @@ fn rta_align(len: usize) -> usize {
 ///
 /// # Returns
 ///
-/// Returns `Some(String)` containing the IPv6 address if found, `None` otherwise
-fn parse_rta_ipv6_address(data: &[u8], msg_offset: usize, msg_end: usize) -> Option<String> {
+/// Returns `Some(Ipv6Addr)` if found, `None` otherwise
+fn parse_rta_ipv6_address(data: &[u8], msg_offset: usize, msg_end: usize) -> Option<Ipv6Addr> {
     let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
     while rta_offset + RTA_HEADER_SIZE <= msg_end {
         let rta_len = u16::from_ne_bytes([data[rta_offset], data[rta_offset + 1]]) as usize;
@@ -550,7 +556,9 @@ fn parse_rta_ipv6_address(data: &[u8], msg_offset: usize, msg_end: usize) -> Opt
                     Ok(a) => a,
                     Err(_) => return None,
                 };
-            return Some(std::net::Ipv6Addr::from(addr).to_string());
+            // Keep the address in its native 16-byte form; converting to text
+            // is deferred until something actually needs a string.
+            return Some(Ipv6Addr::from(addr));
         }
 
         rta_offset += rta_align(rta_len);
@@ -636,13 +644,13 @@ fn extract_ipv6_from_ifaddrmsg(
 ///
 /// # Returns
 ///
-/// Returns `Some((stable, temporary))` where each is an Option<String> containing
-/// the IPv6 address, or `None` if no valid address is found
+/// Returns `Some((stable, temporary))` where each is an `Option<Ipv6Addr>`,
+/// or `None` if no valid address is found
 fn extract_ipv6_addresses_for_dump(
     data: &[u8],
     msg_offset: usize,
     nlmsg_len: usize,
-) -> Option<(Option<String>, Option<String>)> {
+) -> Option<(Option<Ipv6Addr>, Option<Ipv6Addr>)> {
     let msg_end = (msg_offset + nlmsg_len).min(data.len());
     if msg_end < msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN {
         return None;
@@ -685,7 +693,7 @@ fn extract_ipv6_addresses_for_dump(
     None
 }
 
-fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
+fn netlink_dump_ipv6() -> Result<(Option<Ipv6Addr>, Option<Ipv6Addr>)> {
     let socket = NetlinkFd::new()?;
 
     let mut addr: libc::sockaddr_nl = unsafe { std::mem::zeroed() };
@@ -726,8 +734,8 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
         return Err(std::io::Error::last_os_error()).context("netlink send");
     }
 
-    let mut stable: Option<String> = None;
-    let mut temporary: Option<String> = None;
+    let mut stable: Option<Ipv6Addr> = None;
+    let mut temporary: Option<Ipv6Addr> = None;
     let mut recv_buf = vec![0u8; NETLINK_DUMP_BUFFER_SIZE];
 
     loop {
@@ -752,7 +760,9 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
             // Safely extract nlmsg_len with bounds checking
             let nlmsg_len_bytes = data.get(msg_offset..msg_offset + 4);
             let nlmsg_len = match nlmsg_len_bytes {
-                Some(bytes) => u32::from_ne_bytes(bytes.try_into().expect("slice is exactly 4 bytes")) as usize,
+                Some(bytes) => {
+                    u32::from_ne_bytes(bytes.try_into().expect("slice is exactly 4 bytes")) as usize
+                }
                 None => break,
             };
             if nlmsg_len < NLMSG_HDRLEN || nlmsg_len == 0 {
@@ -762,7 +772,9 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
             // Safely extract nlmsg_type with bounds checking
             let nlmsg_type_bytes = data.get(msg_offset + 4..msg_offset + 6);
             let nlmsg_type = match nlmsg_type_bytes {
-                Some(bytes) => u16::from_ne_bytes(bytes.try_into().expect("slice is exactly 2 bytes")),
+                Some(bytes) => {
+                    u16::from_ne_bytes(bytes.try_into().expect("slice is exactly 2 bytes"))
+                }
                 None => break,
             };
             if nlmsg_type == NLMSG_DONE {
@@ -804,6 +816,11 @@ fn netlink_dump_ipv6() -> Result<(Option<String>, Option<String>)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Builds an `Ipv6Added` event from a textual address (test helper).
+    fn ipv6_added(s: &str) -> NetlinkEvent {
+        NetlinkEvent::Ipv6Added(s.parse().unwrap())
+    }
 
     #[test]
     fn test_nlmsg_align() {
@@ -856,10 +873,7 @@ mod tests {
         buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
         let event = NetlinkImpl::parse_message(&buf);
 
-        assert_eq!(
-            event,
-            Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string()))
-        );
+        assert_eq!(event, Some(ipv6_added("2001:db8::1")));
     }
 
     #[test]
@@ -1174,10 +1188,7 @@ mod tests {
         let event = NetlinkImpl::parse_message(&buf);
 
         // Should return the first valid event
-        assert_eq!(
-            event,
-            Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string()))
-        );
+        assert_eq!(event, Some(ipv6_added("2001:db8::1")));
     }
 
     #[test]
@@ -1235,10 +1246,7 @@ mod tests {
 
         assert_eq!(
             ordered,
-            vec![
-                NetlinkEvent::Ipv6Added("2001:db8::1".to_string()),
-                NetlinkEvent::Ipv6Added("2001:db8::2".to_string()),
-            ]
+            vec![ipv6_added("2001:db8::1"), ipv6_added("2001:db8::2"),]
         );
     }
 
@@ -1320,9 +1328,6 @@ mod tests {
         buf[rta_offset + 4..rta_offset + 20].copy_from_slice(&ip_bytes);
         let event = NetlinkImpl::parse_message(&buf);
 
-        assert_eq!(
-            event,
-            Some(NetlinkEvent::Ipv6Added("2001:db8::1".to_string()))
-        );
+        assert_eq!(event, Some(ipv6_added("2001:db8::1")));
     }
 }

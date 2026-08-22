@@ -2,18 +2,20 @@
 //!
 //! This module contains the main daemon implementation for IPv6 DDNS synchronization.
 
+use std::borrow::Cow;
+use std::net::Ipv6Addr;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::Result;
-use tokio::signal::unix::{signal, SignalKind};
+use tokio::signal::unix::{SignalKind, signal};
 use tracing::{debug, error, info, warn};
 
 use crate::config::Config;
 use crate::constants::{BACKOFF_BASE_SECS, BACKOFF_MAX_EXPONENT, BACKOFF_MAX_SECS};
 use crate::dns_provider::DnsProvider;
 use crate::health::HealthServer;
-use crate::netlink::{detect_global_ipv6, NetlinkEvent, NetlinkSocket};
+use crate::netlink::{NetlinkEvent, NetlinkSocket, detect_global_ipv6};
 use crate::validation::is_valid_ipv6;
 
 const EVENT_COALESCE_WINDOW: Duration = Duration::from_millis(80);
@@ -31,7 +33,10 @@ pub enum RecordState {
     /// Initial state, no record has been synced yet
     Unknown,
     /// Record successfully synced with Cloudflare, contains the current IP
-    Synced(String),
+    ///
+    /// Stored as a native [`Ipv6Addr`] so change detection is a cheap 16-byte
+    /// comparison instead of a heap-backed string compare.
+    Synced(Ipv6Addr),
     /// Last sync attempt failed, contains the error count
     Error(u64),
 }
@@ -71,7 +76,7 @@ impl AppState {
     /// # Arguments
     ///
     /// * `ip` - The IPv6 address that was synced
-    pub fn mark_synced(&mut self, ip: String) {
+    pub fn mark_synced(&mut self, ip: Ipv6Addr) {
         self.state = RecordState::Synced(ip);
         self.last_sync = Some(SystemTime::now());
         self.error_count = 0;
@@ -126,6 +131,9 @@ pub fn backoff_delay(error_count: u64) -> Duration {
 /// This function replaces occurrences of the API token and zone ID with
 /// `***REDACTED***` to prevent sensitive data from appearing in logs.
 ///
+/// CPU note: when neither secret appears in the message (the common case)
+/// the original string is borrowed as-is — no allocation, no rewrite pass.
+///
 /// # Arguments
 ///
 /// * `message` - The message to sanitize
@@ -146,17 +154,22 @@ pub fn backoff_delay(error_count: u64) -> Duration {
 /// assert!(redacted.contains("***REDACTED***"));
 /// ```
 #[must_use]
-pub fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
-    let mut sanitized = message.to_string();
+pub fn redact_secrets<'a>(message: &'a str, api_token: &str, zone_id: &str) -> Cow<'a, str> {
+    let has_token = !api_token.is_empty() && message.contains(api_token);
+    let has_zone = !zone_id.is_empty() && message.contains(zone_id);
+    if !has_token && !has_zone {
+        return Cow::Borrowed(message);
+    }
 
-    if !api_token.is_empty() {
+    let mut sanitized = message.to_string();
+    if has_token {
         sanitized = sanitized.replace(api_token, "***REDACTED***");
     }
-    if !zone_id.is_empty() {
+    if has_zone {
         sanitized = sanitized.replace(zone_id, "***REDACTED***");
     }
 
-    sanitized
+    Cow::Owned(sanitized)
 }
 
 /// Determines whether an IPv6 address is eligible for DNS synchronization.
@@ -165,7 +178,7 @@ pub fn redact_secrets(message: &str, api_token: &str, zone_id: &str) -> String {
 /// future filtering logic (e.g., prefix matching, blocklists) to be added
 /// without changing call sites.
 #[must_use]
-fn is_syncable_ipv6(ip: &str, allow_loopback: bool) -> bool {
+fn is_syncable_ipv6(ip: Ipv6Addr, allow_loopback: bool) -> bool {
     is_valid_ipv6(ip, allow_loopback)
 }
 
@@ -185,26 +198,26 @@ fn merge_burst_event(current: &mut NetlinkEvent, next: NetlinkEvent) {
 ///
 /// The daemon monitors IPv6 address changes and updates DNS records
 /// accordingly. It supports both event-driven (netlink) and polling-based monitoring.
-pub struct Daemon {
+pub struct Daemon<P: DnsProvider> {
     /// Shared configuration
     config: Arc<Config>,
     /// Shared application state (protected by mutex)
     state: Arc<tokio::sync::Mutex<AppState>>,
-    /// DNS provider client (trait object)
-    dns_provider: Arc<dyn DnsProvider>,
+    /// DNS provider client
+    dns_provider: Arc<P>,
     /// Netlink socket for IPv6 address monitoring
     netlink: NetlinkSocket,
 }
 
-impl Daemon {
+impl<P: DnsProvider> Daemon<P> {
     /// Creates a new daemon instance
     ///
     /// # Arguments
     ///
     /// * `config` - Configuration for the daemon
-    /// * `dns_provider` - DNS provider client (trait object)
+    /// * `dns_provider` - DNS provider client
     /// * `netlink` - Netlink socket for IPv6 monitoring
-    pub fn new(config: Config, dns_provider: Arc<dyn DnsProvider>, netlink: NetlinkSocket) -> Self {
+    pub fn new(config: Config, dns_provider: Arc<P>, netlink: NetlinkSocket) -> Self {
         Self {
             config: Arc::new(config),
             state: Arc::new(tokio::sync::Mutex::new(AppState::default())),
@@ -213,7 +226,7 @@ impl Daemon {
         }
     }
 
-    async fn sync_with_error_context(&self, ip: &str, error_context: &str) {
+    async fn sync_with_error_context(&self, ip: Ipv6Addr, error_context: &str) {
         if let Err(e) = self.sync_record(ip).await {
             error!("{}: {:#}", error_context, e);
         }
@@ -228,7 +241,7 @@ impl Daemon {
         match detect_global_ipv6(self.config.allow_loopback) {
             Some(ip) => {
                 info!("{}: {}", detected_info, ip);
-                self.sync_with_error_context(&ip, sync_error_context).await;
+                self.sync_with_error_context(ip, sync_error_context).await;
             }
             None => {
                 warn!("{}", no_ipv6_warning);
@@ -355,7 +368,7 @@ impl Daemon {
     async fn handle_event(&self, event: Result<NetlinkEvent>) {
         match event {
             Ok(NetlinkEvent::Ipv6Added(ip)) => {
-                if !is_syncable_ipv6(&ip, self.config.allow_loopback) {
+                if !is_syncable_ipv6(ip, self.config.allow_loopback) {
                     warn!(
                         "Ignoring non-routable IPv6 from netlink event: {} (will not sync)",
                         ip
@@ -366,14 +379,14 @@ impl Daemon {
                                 "Using detected global IPv6 after filtering event: {}",
                                 detected_ip
                             );
-                            self.sync_with_error_context(&detected_ip, "Sync failed")
+                            self.sync_with_error_context(detected_ip, "Sync failed")
                                 .await;
                         }
                     }
                     return;
                 }
                 info!("IPv6 change detected: {}", ip);
-                self.sync_with_error_context(&ip, "Sync failed").await;
+                self.sync_with_error_context(ip, "Sync failed").await;
             }
             Ok(NetlinkEvent::Ipv6Removed) => {
                 warn!("IPv6 address removed");
@@ -405,8 +418,8 @@ impl Daemon {
     /// # Returns
     ///
     /// Returns `Ok(())` on successful sync or an error if sync fails.
-    async fn sync_record(&self, ip: &str) -> Result<()> {
-        // Validate IPv6 address format and routability before making API calls.
+    async fn sync_record(&self, ip: Ipv6Addr) -> Result<()> {
+        // Validate IPv6 address routability before making API calls.
         // This is a hard safety gate against accidentally syncing link-local
         // addresses (e.g. fe80::/10) even if upstream metadata is inconsistent.
         if !is_syncable_ipv6(ip, self.config.allow_loopback) {
@@ -419,7 +432,7 @@ impl Daemon {
         {
             let state = self.state.lock().await;
             if let RecordState::Synced(current) = &state.state {
-                if current == ip {
+                if *current == ip {
                     debug!("No change: {}", ip);
                     return Ok(());
                 }
@@ -455,7 +468,7 @@ impl Daemon {
         match result {
             Ok(record) => {
                 let mut state = self.state.lock().await;
-                state.mark_synced(ip.to_string());
+                state.mark_synced(ip);
                 info!("Synced (ID: {})", record.id);
                 Ok(())
             }
@@ -476,6 +489,11 @@ impl Daemon {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Builds an `Ipv6Added` event from a textual address (test helper).
+    fn ipv6_added(s: &str) -> NetlinkEvent {
+        NetlinkEvent::Ipv6Added(s.parse().unwrap())
+    }
     use crate::constants::BACKOFF_MAX_SECS;
 
     #[test]
@@ -511,9 +529,12 @@ mod tests {
     #[test]
     fn test_app_state_mark_synced() {
         let mut state = AppState::default();
-        state.mark_synced("2001:db8::1".to_string());
+        state.mark_synced("2001:db8::1".parse().unwrap());
 
-        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        assert_eq!(
+            state.state,
+            RecordState::Synced("2001:db8::1".parse().unwrap())
+        );
         assert!(state.last_sync.is_some());
         assert_eq!(state.error_count, 0);
         assert!(state.next_retry.is_none());
@@ -522,7 +543,7 @@ mod tests {
     #[test]
     fn test_app_state_mark_error() {
         let mut state = AppState::default();
-        state.mark_synced("2001:db8::1".to_string());
+        state.mark_synced("2001:db8::1".parse().unwrap());
         state.mark_error();
 
         assert!(matches!(state.state, RecordState::Error(_)));
@@ -546,9 +567,12 @@ mod tests {
     fn test_app_state_sync_resets_error() {
         let mut state = AppState::default();
         state.mark_error();
-        state.mark_synced("2001:db8::1".to_string());
+        state.mark_synced("2001:db8::1".parse().unwrap());
 
-        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        assert_eq!(
+            state.state,
+            RecordState::Synced("2001:db8::1".parse().unwrap())
+        );
         assert_eq!(state.error_count, 0);
         assert!(state.next_retry.is_none());
     }
@@ -579,8 +603,11 @@ mod tests {
         let mut state = AppState::default();
         assert_eq!(state.state, RecordState::Unknown);
 
-        state.mark_synced("2001:db8::1".to_string());
-        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        state.mark_synced("2001:db8::1".parse().unwrap());
+        assert_eq!(
+            state.state,
+            RecordState::Synced("2001:db8::1".parse().unwrap())
+        );
         assert!(state.last_sync.is_some());
         assert_eq!(state.error_count, 0);
         assert!(state.next_retry.is_none());
@@ -589,7 +616,7 @@ mod tests {
     #[test]
     fn test_state_machine_synced_to_error() {
         let mut state = AppState::default();
-        state.mark_synced("2001:db8::1".to_string());
+        state.mark_synced("2001:db8::1".parse().unwrap());
 
         state.mark_error();
         assert!(matches!(state.state, RecordState::Error(1)));
@@ -600,11 +627,14 @@ mod tests {
     #[test]
     fn test_state_machine_error_to_synced() {
         let mut state = AppState::default();
-        state.mark_synced("2001:db8::1".to_string());
+        state.mark_synced("2001:db8::1".parse().unwrap());
         state.mark_error();
 
-        state.mark_synced("2001:db8::2".to_string());
-        assert_eq!(state.state, RecordState::Synced("2001:db8::2".to_string()));
+        state.mark_synced("2001:db8::2".parse().unwrap());
+        assert_eq!(
+            state.state,
+            RecordState::Synced("2001:db8::2".parse().unwrap())
+        );
         assert_eq!(state.error_count, 0);
         assert!(state.next_retry.is_none());
     }
@@ -660,22 +690,28 @@ mod tests {
     #[test]
     fn test_state_machine_sync_with_same_ip_no_change() {
         let mut state = AppState::default();
-        state.mark_synced("2001:db8::1".to_string());
+        state.mark_synced("2001:db8::1".parse().unwrap());
 
         // Simulate sync with same IP (should be idempotent)
-        state.mark_synced("2001:db8::1".to_string());
-        assert_eq!(state.state, RecordState::Synced("2001:db8::1".to_string()));
+        state.mark_synced("2001:db8::1".parse().unwrap());
+        assert_eq!(
+            state.state,
+            RecordState::Synced("2001:db8::1".parse().unwrap())
+        );
         assert_eq!(state.error_count, 0);
     }
 
     #[test]
     fn test_state_machine_sync_with_different_ip_updates() {
         let mut state = AppState::default();
-        state.mark_synced("2001:db8::1".to_string());
+        state.mark_synced("2001:db8::1".parse().unwrap());
 
         // Sync with different IP
-        state.mark_synced("2001:db8::2".to_string());
-        assert_eq!(state.state, RecordState::Synced("2001:db8::2".to_string()));
+        state.mark_synced("2001:db8::2".parse().unwrap());
+        assert_eq!(
+            state.state,
+            RecordState::Synced("2001:db8::2".parse().unwrap())
+        );
         assert_eq!(state.error_count, 0);
     }
 
@@ -683,11 +719,11 @@ mod tests {
 
     #[test]
     fn test_netlink_event_ipv6_added() {
-        let event = NetlinkEvent::Ipv6Added("2001:db8::1".to_string());
+        let event = ipv6_added("2001:db8::1");
         assert!(matches!(event, NetlinkEvent::Ipv6Added(_)));
 
         if let NetlinkEvent::Ipv6Added(ip) = event {
-            assert_eq!(ip, "2001:db8::1".to_string());
+            assert_eq!(ip, "2001:db8::1".parse::<std::net::Ipv6Addr>().unwrap());
         }
     }
 
@@ -706,8 +742,8 @@ mod tests {
     #[test]
     fn test_netlink_event_sequence() {
         let events = [
-            NetlinkEvent::Ipv6Added("2001:db8::1".to_string()),
-            NetlinkEvent::Ipv6Added("2001:db8::2".to_string()),
+            ipv6_added("2001:db8::1"),
+            ipv6_added("2001:db8::2"),
             NetlinkEvent::Ipv6Removed,
             NetlinkEvent::Unknown,
         ];
@@ -728,7 +764,7 @@ mod tests {
         ];
 
         for ip in valid_ips {
-            let event = NetlinkEvent::Ipv6Added(ip.to_string());
+            let event = NetlinkEvent::Ipv6Added(ip.parse().unwrap());
             assert!(matches!(event, NetlinkEvent::Ipv6Added(_)));
             assert!(ip.parse::<std::net::Ipv6Addr>().is_ok());
         }
@@ -745,24 +781,21 @@ mod tests {
 
     #[test]
     fn test_is_syncable_ipv6_filters_link_local_even_if_syntactically_valid() {
-        assert!(!is_syncable_ipv6("fe80::1", false));
-        assert!(!is_syncable_ipv6("fe80::dead:beef", false));
+        assert!(!is_syncable_ipv6("fe80::1".parse().unwrap(), false));
+        assert!(!is_syncable_ipv6("fe80::dead:beef".parse().unwrap(), false));
     }
 
     #[test]
     fn test_is_syncable_ipv6_loopback_respects_flag() {
-        assert!(!is_syncable_ipv6("::1", false));
-        assert!(is_syncable_ipv6("::1", true));
+        assert!(!is_syncable_ipv6("::1".parse().unwrap(), false));
+        assert!(is_syncable_ipv6("::1".parse().unwrap(), true));
     }
 
     #[test]
     fn test_merge_burst_event_prefers_latest_routable_state() {
-        let mut current = NetlinkEvent::Ipv6Added("2001:db8::1".to_string());
-        merge_burst_event(
-            &mut current,
-            NetlinkEvent::Ipv6Added("2001:db8::2".to_string()),
-        );
-        assert_eq!(current, NetlinkEvent::Ipv6Added("2001:db8::2".to_string()));
+        let mut current = ipv6_added("2001:db8::1");
+        merge_burst_event(&mut current, ipv6_added("2001:db8::2"));
+        assert_eq!(current, ipv6_added("2001:db8::2"));
 
         merge_burst_event(&mut current, NetlinkEvent::Ipv6Removed);
         assert_eq!(current, NetlinkEvent::Ipv6Removed);
@@ -770,8 +803,8 @@ mod tests {
 
     #[test]
     fn test_merge_burst_event_ignores_unknown_event() {
-        let mut current = NetlinkEvent::Ipv6Added("2001:db8::1".to_string());
+        let mut current = ipv6_added("2001:db8::1");
         merge_burst_event(&mut current, NetlinkEvent::Unknown);
-        assert_eq!(current, NetlinkEvent::Ipv6Added("2001:db8::1".to_string()));
+        assert_eq!(current, ipv6_added("2001:db8::1"));
     }
 }

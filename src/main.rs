@@ -79,9 +79,5 @@ fn resolve_log_level(verbose: bool) -> Level {
             }
         }
     }
-    if verbose {
-        Level::DEBUG
-    } else {
-        Level::INFO
-    }
+    if verbose { Level::DEBUG } else { Level::INFO }
 }
