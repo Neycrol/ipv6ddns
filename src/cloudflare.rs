@@ -41,13 +41,11 @@
 
 use std::time::Duration;
 
-use anyhow::{bail, Context, Result};
-use async_trait::async_trait;
+use anyhow::{Context, Result, bail};
 use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
-use urlencoding::encode;
 
 use crate::constants::{
     CLOUDFLARE_API_BASE, CLOUDFLARE_USER_AGENT, DNS_RECORD_TYPE_AAAA, DNS_TTL_AUTO,
@@ -108,7 +106,7 @@ impl CloudflareClient {
     /// # Returns
     ///
     /// Returns a `Result` containing the serialized JSON payload or an error
-    fn build_aaaa_payload(record_name: &str, ipv6_addr: &str) -> Result<String> {
+    fn build_aaaa_payload(record_name: &str, ipv6_addr: std::net::Ipv6Addr) -> Result<String> {
         #[derive(Serialize)]
         struct Payload {
             #[serde(rename = "type")]
@@ -276,7 +274,7 @@ impl CloudflareClient {
         &self,
         zone_id: &str,
         record_name: &str,
-        ipv6_addr: &str,
+        ipv6_addr: std::net::Ipv6Addr,
     ) -> Result<DnsRecord> {
         let url = format!("{}/zones/{}/dns_records", CLOUDFLARE_API_BASE, zone_id);
         let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
@@ -310,7 +308,7 @@ impl CloudflareClient {
         zone_id: &str,
         record_id: &str,
         record_name: &str,
-        ipv6_addr: &str,
+        ipv6_addr: std::net::Ipv6Addr,
     ) -> Result<DnsRecord> {
         let url = format!(
             "{}/zones/{}/dns_records/{}",
@@ -355,13 +353,12 @@ impl CloudflareClient {
 // DnsProvider Implementation
 //==============================================================================
 
-#[async_trait]
 impl DnsProvider for CloudflareClient {
     async fn upsert_aaaa_record(
         &self,
         zone_id: &str,
         record_name: &str,
-        ipv6_addr: &str,
+        ipv6_addr: std::net::Ipv6Addr,
         policy: MultiRecordPolicy,
     ) -> Result<crate::dns_provider::DnsRecord> {
         self.upsert_aaaa_record_impl(zone_id, record_name, ipv6_addr, policy)
@@ -377,11 +374,17 @@ impl CloudflareClient {
         &self,
         zone_id: &str,
         record_name: &str,
-        ipv6_addr: &str,
+        ipv6_addr: std::net::Ipv6Addr,
         record: Option<DnsRecord>,
     ) -> Result<DnsRecord> {
         if let Some(record) = record {
-            if record.content == ipv6_addr {
+            // Compare as native addresses (normalizes formatting differences
+            // from the API, e.g. "2001:db8::1" vs "2001:0db8::0001").
+            if record
+                .content
+                .parse::<std::net::Ipv6Addr>()
+                .is_ok_and(|existing| existing == ipv6_addr)
+            {
                 debug!("Record already matches {}", ipv6_addr);
                 return Ok(record);
             }
@@ -397,7 +400,7 @@ impl CloudflareClient {
         &self,
         zone_id: &str,
         record_name: &str,
-        ipv6_addr: &str,
+        ipv6_addr: std::net::Ipv6Addr,
         policy: MultiRecordPolicy,
     ) -> Result<DnsRecord> {
         let records = self.get_records_impl(zone_id, record_name).await?;
@@ -433,7 +436,11 @@ impl CloudflareClient {
                 }
                 let mut first = None;
                 for record in records {
-                    if record.content == ipv6_addr {
+                    if record
+                        .content
+                        .parse::<std::net::Ipv6Addr>()
+                        .is_ok_and(|existing| existing == ipv6_addr)
+                    {
                         if first.is_none() {
                             first = Some(record);
                         }
@@ -458,7 +465,9 @@ impl CloudflareClient {
 
     /// Internal implementation of get_records
     async fn get_records_impl(&self, zone_id: &str, record_name: &str) -> Result<Vec<DnsRecord>> {
-        let record_name = encode(record_name);
+        // Record names are validated by `validate_record_name` (letters, digits,
+        // '-', '_', '*' wildcard labels, '@' apex), so they are always safe to
+        // interpolate into a URL query without additional percent-encoding.
         let url = format!(
             "{}/zones/{}/dns_records?name={}&type=AAAA",
             CLOUDFLARE_API_BASE, zone_id, record_name

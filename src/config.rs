@@ -406,6 +406,28 @@ mod tests {
     use serial_test::serial;
     use tempfile::TempDir;
 
+    /// Sets an environment variable in tests.
+    ///
+    /// Mutating the process environment is not thread-safe (`unsafe` since
+    /// edition 2024). This is only sound because every env-mutating test is
+    /// marked `#[serial]`, so no other thread touches the environment
+    /// concurrently.
+    macro_rules! set_env {
+        ($key:expr, $value:expr) => {
+            // SAFETY: guaranteed by the `#[serial]` contract above.
+            unsafe { std::env::set_var($key, $value) }
+        };
+    }
+
+    /// Removes an environment variable in tests.
+    /// See [`set_env`] for the safety contract.
+    macro_rules! remove_env {
+        ($key:expr) => {
+            // SAFETY: guaranteed by the `#[serial]` contract above.
+            unsafe { std::env::remove_var($key) }
+        };
+    }
+
     struct EnvGuard {
         saved: Vec<(&'static str, Option<String>)>,
     }
@@ -422,7 +444,7 @@ mod tests {
             let mut saved = Vec::with_capacity(keys.len());
             for key in keys {
                 saved.push((key, std::env::var(key).ok()));
-                std::env::remove_var(key);
+                remove_env!(key);
             }
             Self { saved }
         }
@@ -432,9 +454,9 @@ mod tests {
         fn drop(&mut self) {
             for (key, value) in self.saved.drain(..) {
                 if let Some(val) = value {
-                    std::env::set_var(key, val);
+                    set_env!(key, val);
                 } else {
-                    std::env::remove_var(key);
+                    remove_env!(key);
                 }
             }
         }
@@ -491,10 +513,10 @@ allow_loopback = false
 "#,
         );
 
-        std::env::set_var(ENV_API_TOKEN, "env_token_123456789012345678901234567890");
-        std::env::set_var(ENV_ZONE_ID, "envzone0123456789abcdef0123456789ab");
-        std::env::set_var(ENV_RECORD_NAME, "example.com");
-        std::env::set_var(ENV_ALLOW_LOOPBACK, "true");
+        set_env!(ENV_API_TOKEN, "env_token_123456789012345678901234567890");
+        set_env!(ENV_ZONE_ID, "envzone0123456789abcdef0123456789ab");
+        set_env!(ENV_RECORD_NAME, "example.com");
+        set_env!(ENV_ALLOW_LOOPBACK, "true");
 
         let cfg = Config::load(Some(path)).expect("config load");
         assert_eq!(
@@ -582,9 +604,9 @@ record_name = "example.com"
     #[serial]
     fn config_timeout_boundary_values() {
         let _env = EnvGuard::new();
-        std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
-        std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
-        std::env::set_var(ENV_RECORD_NAME, "example.com");
+        set_env!(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
+        set_env!(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
+        set_env!(ENV_RECORD_NAME, "example.com");
 
         // Test minimum timeout via config file
         let (_dir, path) = write_config(
@@ -639,9 +661,9 @@ timeout = 301
     #[serial]
     fn config_poll_interval_boundary_values() {
         let _env = EnvGuard::new();
-        std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
-        std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
-        std::env::set_var(ENV_RECORD_NAME, "example.com");
+        set_env!(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
+        set_env!(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
+        set_env!(ENV_RECORD_NAME, "example.com");
 
         // Test minimum poll interval via config file
         let (_dir, path) = write_config(
@@ -741,57 +763,57 @@ record_name = "example.com"
     #[serial]
     fn config_multi_record_policy_variants() {
         let _env = EnvGuard::new();
-        std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
-        std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
-        std::env::set_var(ENV_RECORD_NAME, "example.com");
+        set_env!(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
+        set_env!(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
+        set_env!(ENV_RECORD_NAME, "example.com");
 
         // Test error policy variants
         for policy in ["error", "fail", "reject"] {
-            std::env::set_var(ENV_MULTI_RECORD, policy);
+            set_env!(ENV_MULTI_RECORD, policy);
             let cfg = Config::load(None).expect("config load");
             assert!(matches!(cfg.multi_record, MultiRecordPolicy::Error));
         }
 
         // Test first policy variants
         for policy in ["first", "update_first", "updatefirst"] {
-            std::env::set_var(ENV_MULTI_RECORD, policy);
+            set_env!(ENV_MULTI_RECORD, policy);
             let cfg = Config::load(None).expect("config load");
             assert!(matches!(cfg.multi_record, MultiRecordPolicy::UpdateFirst));
         }
 
         // Test all policy variants
         for policy in ["all", "update_all", "updateall"] {
-            std::env::set_var(ENV_MULTI_RECORD, policy);
+            set_env!(ENV_MULTI_RECORD, policy);
             let cfg = Config::load(None).expect("config load");
             assert!(matches!(cfg.multi_record, MultiRecordPolicy::UpdateAll));
         }
 
-        std::env::remove_var(ENV_MULTI_RECORD);
+        remove_env!(ENV_MULTI_RECORD);
     }
 
     #[test]
     #[serial]
     fn config_allow_loopback_variants() {
         let _env = EnvGuard::new();
-        std::env::set_var(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
-        std::env::set_var(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
-        std::env::set_var(ENV_RECORD_NAME, "example.com");
+        set_env!(ENV_API_TOKEN, "0123456789012345678901234567890123456789");
+        set_env!(ENV_ZONE_ID, "0123456789abcdef0123456789abcdef");
+        set_env!(ENV_RECORD_NAME, "example.com");
 
         // Test true variants
         for value in ["1", "true", "yes", "on"] {
-            std::env::set_var(ENV_ALLOW_LOOPBACK, value);
+            set_env!(ENV_ALLOW_LOOPBACK, value);
             let cfg = Config::load(None).expect("config load");
             assert!(cfg.allow_loopback);
         }
 
         // Test false variants
         for value in ["0", "false", "no", "off"] {
-            std::env::set_var(ENV_ALLOW_LOOPBACK, value);
+            set_env!(ENV_ALLOW_LOOPBACK, value);
             let cfg = Config::load(None).expect("config load");
             assert!(!cfg.allow_loopback);
         }
 
-        std::env::remove_var(ENV_ALLOW_LOOPBACK);
+        remove_env!(ENV_ALLOW_LOOPBACK);
     }
 
     #[test]
@@ -807,9 +829,9 @@ record_name = "example.com"
         );
 
         // Empty env values should not override file values
-        std::env::set_var(ENV_API_TOKEN, "");
-        std::env::set_var(ENV_ZONE_ID, "");
-        std::env::set_var(ENV_RECORD_NAME, "");
+        set_env!(ENV_API_TOKEN, "");
+        set_env!(ENV_ZONE_ID, "");
+        set_env!(ENV_RECORD_NAME, "");
 
         let cfg = Config::load(Some(path)).expect("config load");
         assert_eq!(

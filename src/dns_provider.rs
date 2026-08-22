@@ -3,7 +3,6 @@
 //! This module defines a trait for DNS provider implementations, allowing
 //! ipv6ddns to support multiple DNS providers beyond Cloudflare.
 
-use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -74,7 +73,9 @@ pub enum MultiRecordPolicy {
 /// This trait defines the interface that all DNS provider implementations
 /// must support. It allows ipv6ddns to work with multiple DNS providers
 /// through a common API.
-#[async_trait]
+///
+/// Uses a native `async fn` in trait (RPITIT); consumers are generic over
+/// `DnsProvider` so dispatch stays static with no boxing.
 pub trait DnsProvider: Send + Sync {
     /// Creates or updates an AAAA record with the given IPv6 address
     ///
@@ -104,7 +105,7 @@ pub trait DnsProvider: Send + Sync {
         &self,
         zone_id: &str,
         record_name: &str,
-        ipv6_addr: &str,
+        ipv6_addr: std::net::Ipv6Addr,
         policy: MultiRecordPolicy,
     ) -> anyhow::Result<DnsRecord>;
 

@@ -29,7 +29,7 @@
 //! Unique-local addresses (fc00::/7) are allowed by design, since DDNS is often
 //! used on private networks.
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use crate::constants::{MAX_LABEL_LENGTH, MAX_RECORD_NAME_LENGTH};
 
@@ -98,10 +98,10 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
     Ok(())
 }
 
-/// Validates that a string is a properly formatted IPv6 address.
+/// Validates an IPv6 address and filters out reserved ranges.
 ///
-/// This function checks that the address is syntactically valid AND filters out
-/// reserved/special IPv6 address ranges that are not suitable for DDNS:
+/// This function filters out reserved/special IPv6 addresses that are not
+/// suitable for DDNS:
 /// - Unspecified address (::)
 /// - Loopback address (::1)
 /// - Link-local addresses (fe80::/10)
@@ -110,12 +110,7 @@ pub fn validate_record_name(record_name: &str) -> Result<()> {
 ///
 /// Note: unique-local addresses (fc00::/7) are allowed by design, since DDNS
 /// is often used on private networks.
-pub fn is_valid_ipv6(ip: &str, allow_loopback: bool) -> bool {
-    let addr = match ip.parse::<std::net::Ipv6Addr>() {
-        Ok(a) => a,
-        Err(_) => return false,
-    };
-
+pub fn is_valid_ipv6(addr: std::net::Ipv6Addr, allow_loopback: bool) -> bool {
     // Filter out unspecified address (::)
     if addr.is_unspecified() {
         return false;
@@ -146,6 +141,18 @@ pub fn is_valid_ipv6(ip: &str, allow_loopback: bool) -> bool {
     }
 
     true
+}
+
+/// Convenience wrapper: parses a string and validates it with [`is_valid_ipv6`].
+///
+/// Prefer the `Ipv6Addr`-based [`is_valid_ipv6`] on hot paths to avoid the
+/// parse cost; this wrapper is for textual inputs.
+#[cfg(test)]
+pub fn is_valid_ipv6_str(ip: &str, allow_loopback: bool) -> bool {
+    match ip.parse::<std::net::Ipv6Addr>() {
+        Ok(addr) => is_valid_ipv6(addr, allow_loopback),
+        Err(_) => false,
+    }
 }
 
 #[cfg(test)]
@@ -209,34 +216,34 @@ mod tests {
     #[test]
     fn test_is_valid_ipv6() {
         // Valid global unicast addresses
-        assert!(is_valid_ipv6("2606:4700:4700::1111", false));
-        assert!(is_valid_ipv6("2001:4860:4860::8888", false));
-        assert!(is_valid_ipv6("2a00:1450:4001:81b::200e", false));
+        assert!(is_valid_ipv6_str("2606:4700:4700::1111", false));
+        assert!(is_valid_ipv6_str("2001:4860:4860::8888", false));
+        assert!(is_valid_ipv6_str("2a00:1450:4001:81b::200e", false));
 
         // Unique-local addresses are allowed
-        assert!(is_valid_ipv6("fc00::1", false));
-        assert!(is_valid_ipv6("fd12:3456:789a::1", false));
+        assert!(is_valid_ipv6_str("fc00::1", false));
+        assert!(is_valid_ipv6_str("fd12:3456:789a::1", false));
         // Reserved addresses that should be rejected
-        assert!(!is_valid_ipv6("::", false)); // Unspecified
-        assert!(!is_valid_ipv6("::1", false)); // Loopback (default reject)
-        assert!(!is_valid_ipv6("fe80::1", false)); // Link-local
-        assert!(!is_valid_ipv6("fe80::dead:beef", false)); // Link-local
-        assert!(!is_valid_ipv6("ff00::1", false)); // Multicast
-        assert!(!is_valid_ipv6("ff02::1", false)); // Multicast
-        assert!(!is_valid_ipv6("2001:db8::1", false)); // Documentation
-        assert!(!is_valid_ipv6("2001:0db8::1", false)); // Documentation
+        assert!(!is_valid_ipv6_str("::", false)); // Unspecified
+        assert!(!is_valid_ipv6_str("::1", false)); // Loopback (default reject)
+        assert!(!is_valid_ipv6_str("fe80::1", false)); // Link-local
+        assert!(!is_valid_ipv6_str("fe80::dead:beef", false)); // Link-local
+        assert!(!is_valid_ipv6_str("ff00::1", false)); // Multicast
+        assert!(!is_valid_ipv6_str("ff02::1", false)); // Multicast
+        assert!(!is_valid_ipv6_str("2001:db8::1", false)); // Documentation
+        assert!(!is_valid_ipv6_str("2001:0db8::1", false)); // Documentation
 
         // Invalid formats
-        assert!(!is_valid_ipv6("192.168.1.1", false)); // IPv4
-        assert!(!is_valid_ipv6("invalid", false));
-        assert!(!is_valid_ipv6("", false));
-        assert!(!is_valid_ipv6("2001:db8::g", false));
+        assert!(!is_valid_ipv6_str("192.168.1.1", false)); // IPv4
+        assert!(!is_valid_ipv6_str("invalid", false));
+        assert!(!is_valid_ipv6_str("", false));
+        assert!(!is_valid_ipv6_str("2001:db8::g", false));
     }
 
     #[test]
     fn test_is_valid_ipv6_allow_loopback() {
-        assert!(is_valid_ipv6("::1", true));
-        assert!(!is_valid_ipv6("::", true));
+        assert!(is_valid_ipv6_str("::1", true));
+        assert!(!is_valid_ipv6_str("::", true));
     }
 
     // Additional edge case tests for IPv6 validation
@@ -244,36 +251,36 @@ mod tests {
     #[test]
     fn test_ipv6_compression_variants() {
         // Valid compressed addresses (not in documentation range)
-        assert!(is_valid_ipv6("2001:4860::8888", false));
-        assert!(is_valid_ipv6("2001:4860:0:0:0:0:0:8888", false));
-        assert!(is_valid_ipv6("2001::", false));
+        assert!(is_valid_ipv6_str("2001:4860::8888", false));
+        assert!(is_valid_ipv6_str("2001:4860:0:0:0:0:0:8888", false));
+        assert!(is_valid_ipv6_str("2001::", false));
     }
 
     #[test]
     fn test_ipv6_with_port() {
         // IPv6 addresses with port notation should be rejected
-        assert!(!is_valid_ipv6("[2001:db8::1]:8080", false));
+        assert!(!is_valid_ipv6_str("[2001:db8::1]:8080", false));
     }
 
     #[test]
     fn test_ipv6_zone_id() {
         // IPv6 addresses with zone ID should be rejected
-        assert!(!is_valid_ipv6("fe80::1%eth0", false));
+        assert!(!is_valid_ipv6_str("fe80::1%eth0", false));
     }
 
     #[test]
     fn test_ipv6_max_compression() {
-        assert!(!is_valid_ipv6("::", false)); // Fully compressed - unspecified, rejected
-        assert!(is_valid_ipv6("2001::", false)); // Trailing zeroes
-        assert!(!is_valid_ipv6("::1", false)); // Leading zeroes - loopback, rejected
+        assert!(!is_valid_ipv6_str("::", false)); // Fully compressed - unspecified, rejected
+        assert!(is_valid_ipv6_str("2001::", false)); // Trailing zeroes
+        assert!(!is_valid_ipv6_str("::1", false)); // Leading zeroes - loopback, rejected
     }
 
     #[test]
     fn test_ipv6_boundary_values() {
         // Minimum valid IPv6 (all zeros)
-        assert!(!is_valid_ipv6("::", false)); // Unspecified, rejected
-                                              // Maximum valid IPv6 (all F's)
-        assert!(!is_valid_ipv6(
+        assert!(!is_valid_ipv6_str("::", false)); // Unspecified, rejected
+        // Maximum valid IPv6 (all F's)
+        assert!(!is_valid_ipv6_str(
             "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
             false
         )); // Multicast-ish
@@ -281,28 +288,28 @@ mod tests {
 
     #[test]
     fn test_ipv6_partial_compression() {
-        assert!(is_valid_ipv6("2001:4860:0:0:1:0:0:1", false));
-        assert!(is_valid_ipv6("2001:4860::1:0:0:1", false));
-        assert!(is_valid_ipv6("2001:4860:0:0:1::1", false));
+        assert!(is_valid_ipv6_str("2001:4860:0:0:1:0:0:1", false));
+        assert!(is_valid_ipv6_str("2001:4860::1:0:0:1", false));
+        assert!(is_valid_ipv6_str("2001:4860:0:0:1::1", false));
     }
 
     #[test]
     fn test_ipv6_multiple_double_colon() {
         // Only one :: is allowed
-        assert!(!is_valid_ipv6("2001::db8::1", false));
+        assert!(!is_valid_ipv6_str("2001::db8::1", false));
     }
 
     #[test]
     fn test_ipv6_leading_trailing_colons() {
-        assert!(!is_valid_ipv6(":2001:db8::1", false));
-        assert!(!is_valid_ipv6("2001:db8::1:", false));
+        assert!(!is_valid_ipv6_str(":2001:db8::1", false));
+        assert!(!is_valid_ipv6_str("2001:db8::1:", false));
     }
 
     #[test]
     fn test_ipv6_invalid_characters() {
-        assert!(!is_valid_ipv6("2001:db8::g", false));
-        assert!(!is_valid_ipv6("2001:db8::1.2.3.4", false));
-        assert!(!is_valid_ipv6("2001:db8::12345", false)); // Too many digits
+        assert!(!is_valid_ipv6_str("2001:db8::g", false));
+        assert!(!is_valid_ipv6_str("2001:db8::1.2.3.4", false));
+        assert!(!is_valid_ipv6_str("2001:db8::12345", false)); // Too many digits
     }
 
     // Additional edge case tests for DNS record name validation
@@ -364,7 +371,7 @@ mod tests {
         // Leading/trailing whitespace is trimmed, so these should pass
         assert!(validate_record_name(" example.com").is_ok()); // Leading space (trimmed)
         assert!(validate_record_name("example.com ").is_ok()); // Trailing space (trimmed)
-                                                               // Internal whitespace should fail
+        // Internal whitespace should fail
         assert!(validate_record_name("ex ample.com").is_err()); // Internal space
         assert!(validate_record_name("example\t.com").is_err()); // Tab
         assert!(validate_record_name("example\n.com").is_err()); // Newline

@@ -10,7 +10,7 @@ use anyhow::Result;
 use serde::Serialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 use tracing::{error, info};
 
 use crate::daemon::{AppState, RecordState};
