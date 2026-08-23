@@ -47,6 +47,9 @@ async fn main() -> Result<()> {
     let config = Config::load(args.config).context("Config load failed")?;
 
     tracing_subscriber::fmt()
+        // journald stamps every journal line already; skipping our own
+        // timestamp saves per-line formatting and avoids duplicated times.
+        .without_time()
         .with_max_level(resolve_log_level(config.verbose))
         .init();
 

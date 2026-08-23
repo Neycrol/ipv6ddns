@@ -10,7 +10,7 @@ use anyhow::Result;
 use serde::Serialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::sync::{Mutex, oneshot};
+use tokio::sync::oneshot;
 use tracing::{error, info};
 
 use crate::daemon::{AppState, RecordState};
@@ -46,7 +46,7 @@ pub struct HealthServer {
 
 impl HealthServer {
     /// Starts the health check server
-    pub async fn start(addr: SocketAddr, state: Arc<Mutex<AppState>>) -> Result<Self> {
+    pub async fn start(addr: SocketAddr, state: Arc<std::sync::Mutex<AppState>>) -> Result<Self> {
         let listener = TcpListener::bind(addr).await?;
         info!("Health check server listening on {}", addr);
 
@@ -73,18 +73,23 @@ impl HealthServer {
                                     let path = parts.next().unwrap_or("");
 
                                     if method == "GET" && path == "/health" {
-                                        let snapshot = state.lock().await;
-                                        let response = build_response(&snapshot);
-                                        let body = match serde_json::to_string(&response) {
-                                            Ok(body) => body,
-                                            Err(_) => "{\"status\":\"error\"}".to_string(),
+                                        // Snapshot under a short-lived lock and
+                                        // release it before the async write:
+                                        // guards must never be held across .await.
+                                        let reply = {
+                                            let snapshot =
+                                                state.lock().unwrap_or_else(|p| p.into_inner());
+                                            let response = build_response(&snapshot);
+                                            let body = match serde_json::to_string(&response) {
+                                                Ok(body) => body,
+                                                Err(_) => "{\"status\":\"error\"}".to_string(),
+                                            };
+                                            format!(
+                                                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                                body.len(),
+                                                body
+                                            )
                                         };
-
-                                        let reply = format!(
-                                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                                            body.len(),
-                                            body
-                                        );
 
                                         if let Err(e) = socket.write_all(reply.as_bytes()).await {
                                             error!("Health response write failed: {}", e);

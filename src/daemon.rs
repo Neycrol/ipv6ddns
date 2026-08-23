@@ -186,6 +186,9 @@ fn merge_burst_event(current: &mut NetlinkEvent, next: NetlinkEvent) {
     match next {
         NetlinkEvent::Ipv6Added(ip) => *current = NetlinkEvent::Ipv6Added(ip),
         NetlinkEvent::Ipv6Removed => *current = NetlinkEvent::Ipv6Removed,
+        // An overflow supersedes anything coalesced so far: it means messages
+        // were lost, so only a full resync gives a trustworthy answer.
+        NetlinkEvent::Overflow => *current = NetlinkEvent::Overflow,
         NetlinkEvent::Unknown => {}
     }
 }
@@ -199,10 +202,14 @@ fn merge_burst_event(current: &mut NetlinkEvent, next: NetlinkEvent) {
 /// The daemon monitors IPv6 address changes and updates DNS records
 /// accordingly. It supports both event-driven (netlink) and polling-based monitoring.
 pub struct Daemon<P: DnsProvider> {
-    /// Shared configuration
-    config: Arc<Config>,
-    /// Shared application state (protected by mutex)
-    state: Arc<tokio::sync::Mutex<AppState>>,
+    /// Configuration (single owner — no sharing, so no `Arc` indirection)
+    config: Config,
+    /// Shared application state
+    ///
+    /// A plain [`std::sync::Mutex`]: the guard is never held across an
+    /// `.await`, and per the tokio docs a blocking mutex is preferred when
+    /// the value behind it is just data.
+    state: Arc<std::sync::Mutex<AppState>>,
     /// DNS provider client
     dns_provider: Arc<P>,
     /// Netlink socket for IPv6 address monitoring
@@ -219,8 +226,8 @@ impl<P: DnsProvider> Daemon<P> {
     /// * `netlink` - Netlink socket for IPv6 monitoring
     pub fn new(config: Config, dns_provider: Arc<P>, netlink: NetlinkSocket) -> Self {
         Self {
-            config: Arc::new(config),
-            state: Arc::new(tokio::sync::Mutex::new(AppState::default())),
+            config,
+            state: Arc::new(std::sync::Mutex::new(AppState::default())),
             dns_provider,
             netlink,
         }
@@ -230,6 +237,17 @@ impl<P: DnsProvider> Daemon<P> {
         if let Err(e) = self.sync_record(ip).await {
             error!("{}: {:#}", error_context, e);
         }
+    }
+
+    /// Locks the shared state, recovering from poisoning.
+    ///
+    /// A panic in the health-server task must not permanently wedge the
+    /// daemon's sync path, so poisoned guards are adopted instead of
+    /// propagating the poison.
+    fn lock_state(state: &std::sync::Mutex<AppState>) -> std::sync::MutexGuard<'_, AppState> {
+        state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     async fn detect_and_sync_with_context(
@@ -397,6 +415,19 @@ impl<P: DnsProvider> Daemon<P> {
                 )
                 .await;
             }
+            Ok(NetlinkEvent::Overflow) => {
+                // The kernel dropped queued messages when its socket buffer
+                // filled (netlink(7)): user-space and kernel state have
+                // diverged, so re-detect instead of waiting for events that
+                // may never arrive.
+                warn!("Netlink queue overflowed; resynchronizing from live state");
+                self.detect_and_sync_with_context(
+                    "IPv6 after netlink overflow",
+                    "No global IPv6 available after netlink overflow; keeping DNS unchanged",
+                    "Sync failed after netlink overflow",
+                )
+                .await;
+            }
             Ok(NetlinkEvent::Unknown) => {}
             Err(e) => debug!("Netlink error: {:#}", e),
         }
@@ -430,7 +461,7 @@ impl<P: DnsProvider> Daemon<P> {
         }
 
         {
-            let state = self.state.lock().await;
+            let state = Self::lock_state(&self.state);
             if let RecordState::Synced(current) = &state.state {
                 if *current == ip {
                     debug!("No change: {}", ip);
@@ -467,13 +498,13 @@ impl<P: DnsProvider> Daemon<P> {
 
         match result {
             Ok(record) => {
-                let mut state = self.state.lock().await;
+                let mut state = Self::lock_state(&self.state);
                 state.mark_synced(ip);
                 info!("Synced (ID: {})", record.id);
                 Ok(())
             }
             Err(e) => {
-                let mut state = self.state.lock().await;
+                let mut state = Self::lock_state(&self.state);
                 state.mark_error();
                 error!("Sync failed: {:#}", e);
                 Err(e)

@@ -48,7 +48,6 @@
 //! multicast group, which receives notifications for IPv6 address changes.
 
 use std::collections::VecDeque;
-use std::io::ErrorKind;
 use std::net::Ipv6Addr;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 use std::time::Duration;
@@ -139,6 +138,13 @@ const ALIGN_TO: usize = 4;
 
 // Buffer sizes for netlink operations
 const NETLINK_RECV_BUFFER_SIZE: usize = 8192;
+
+/// Requested `SO_RCVBUF` for the netlink socket (1 MiB).
+///
+/// The kernel clamps this to `net.core.rmem_max` and only commits memory as
+/// messages are actually queued, so asking for headroom costs nothing when
+/// the queue is empty. Overflow itself is also handled via `ENOBUFS`.
+const NETLINK_RCVBUF_REQUEST: libc::c_int = 1 << 20;
 const NETLINK_DUMP_BUFFER_SIZE: usize = 16384;
 const IPV6_ADDR_BYTES: usize = 16;
 
@@ -182,6 +188,13 @@ pub enum NetlinkEvent {
     ///
     /// This is used for events that don't match the above categories
     Unknown,
+    /// The kernel-side socket queue overflowed and messages were dropped
+    ///
+    /// Per netlink(7), netlink is unreliable: when the receive buffer fills,
+    /// the kernel discards messages and reports `ENOBUFS`. User-space and
+    /// kernel state have diverged, so consumers must re-detect the live
+    /// state instead of relying on further events.
+    Overflow,
 }
 
 struct NetlinkImpl {
@@ -212,6 +225,21 @@ impl NetlinkImpl {
             return Err(std::io::Error::last_os_error()).context("netlink bind");
         }
 
+        // Best-effort receive-buffer headroom so short bursts of address
+        // changes (e.g. an interface flap cycling through several addresses)
+        // are less likely to overflow the kernel queue. Failure is harmless:
+        // overflow is still detected and handled via `ENOBUFS`.
+        let rcvbuf = NETLINK_RCVBUF_REQUEST;
+        unsafe {
+            libc::setsockopt(
+                socket.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_RCVBUF,
+                &rcvbuf as *const libc::c_int as *const libc::c_void,
+                std::mem::size_of_val(&rcvbuf) as libc::socklen_t,
+            )
+        };
+
         let flags = unsafe { libc::fcntl(socket.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {
             return Err(std::io::Error::last_os_error()).context("fcntl F_GETFL");
@@ -241,26 +269,37 @@ impl NetlinkImpl {
 
     /// Reads pending bytes from the netlink socket into `buf`.
     ///
-    /// Returns `Ok(None)` when the read would block or the socket delivered no
-    /// data; otherwise returns the number of bytes written into `buf`.
-    fn recv_raw_fd(fd: i32, buf: &mut [u8]) -> std::io::Result<Option<usize>> {
+    /// Returns the number of bytes written into `buf`.
+    ///
+    /// # Critical contract
+    ///
+    /// `WouldBlock` **must propagate out of this function verbatim**. This
+    /// function is called inside [`tokio::io::AsyncFd`]'s `try_io`, which
+    /// intercepts `WouldBlock` to clear the socket's readiness. If we swallowed
+    /// it here (e.g. by mapping it to a sentinel), readiness would never be
+    /// cleared and `readable().await` would resolve instantly forever — a
+    /// 100% CPU busy loop on the single-threaded runtime (observed in real
+    /// testing, not just theory).
+    fn recv_raw_fd(fd: i32, buf: &mut [u8]) -> std::io::Result<usize> {
+        // SAFETY: `fd` is a valid open netlink socket and `buf` is writable for
+        // `buf.len()` bytes.
         let n = unsafe { libc::recv(fd, buf.as_mut_ptr().cast::<libc::c_void>(), buf.len(), 0) };
         if n < 0 {
-            let err = std::io::Error::last_os_error();
-            if err.kind() == ErrorKind::WouldBlock {
-                return Ok(None);
-            }
-            return Err(err);
+            // Note: ENOBUFS (kernel dropped queued messages, netlink(7)) has a
+            // different error kind than WouldBlock, so callers can distinguish
+            // "retry later" from "state diverged, re-detect".
+            return Err(std::io::Error::last_os_error());
         }
-        if n == 0 {
-            return Ok(None);
-        }
-        Ok(Some(n as usize))
+        Ok(n as usize)
     }
 
-    fn parse_messages(data: &[u8]) -> VecDeque<NetlinkEvent> {
+    /// Parses a received buffer and appends events to `out`.
+    ///
+    /// Takes the destination queue as a parameter so callers can reuse their
+    /// existing queue instead of allocating a fresh one per batch.
+    fn parse_messages_into(data: &[u8], out: &mut VecDeque<NetlinkEvent>) {
         let mut msg_offset = 0usize;
-        let mut events = VecDeque::new();
+        let events = out;
 
         while msg_offset + NLMSG_HDRLEN <= data.len() {
             // Safely extract nlmsg_len with bounds checking
@@ -306,13 +345,12 @@ impl NetlinkImpl {
 
             msg_offset += nlmsg_align(nlmsg_len);
         }
-
-        events
     }
 
     #[cfg(test)]
     fn parse_message(data: &[u8]) -> Option<NetlinkEvent> {
-        let mut events = Self::parse_messages(data);
+        let mut events = VecDeque::new();
+        Self::parse_messages_into(data, &mut events);
         events.pop_front()
     }
 }
@@ -337,17 +375,29 @@ impl NetlinkImpl {
                 Self::recv_raw_fd(inner.get_ref().as_raw_fd(), self.recv_buf.as_mut())
             });
             match received {
-                Ok(Ok(Some(n))) => {
+                // tokio intercepted WouldBlock: readiness has been cleared, so
+                // re-awaiting `readable()` below will properly sleep.
+                Err(_would_block) => continue,
+                Ok(Ok(n)) if n > 0 => {
                     drop(guard);
-                    let mut events = Self::parse_messages(&self.recv_buf[..n]);
-                    if let Some(event) = events.pop_front() {
-                        self.pending_events.append(&mut events);
+                    // Parse straight into the reused queue: no fresh
+                    // VecDeque allocation per received batch.
+                    Self::parse_messages_into(&self.recv_buf[..n], &mut self.pending_events);
+                    if let Some(event) = self.pending_events.pop_front() {
                         return event;
                     }
                 }
-                Ok(Ok(None)) => continue,
-                Ok(Err(_)) => return NetlinkEvent::Unknown,
-                Err(_would_block) => continue,
+                Ok(Ok(_)) => {
+                    // Zero-length datagram: nothing to parse, keep waiting.
+                    drop(guard);
+                }
+                Ok(Err(e)) => {
+                    return if e.raw_os_error() == Some(libc::ENOBUFS) {
+                        NetlinkEvent::Overflow
+                    } else {
+                        NetlinkEvent::Unknown
+                    };
+                }
             }
         }
     }
@@ -1241,7 +1291,8 @@ mod tests {
         let ip_bytes2 = [0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2];
         buf[rta_offset2 + 4..rta_offset2 + 20].copy_from_slice(&ip_bytes2);
 
-        let events = NetlinkImpl::parse_messages(&buf);
+        let mut events = VecDeque::new();
+        NetlinkImpl::parse_messages_into(&buf, &mut events);
         let ordered: Vec<NetlinkEvent> = events.into_iter().collect();
 
         assert_eq!(

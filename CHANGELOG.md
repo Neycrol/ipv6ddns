@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added rustdoc checks to CI pipeline
 
 ### Fixed
+- **Busy-spin after the first netlink event**: the netlink receive helper swallowed `WouldBlock` instead of propagating it, preventing tokio's `AsyncFd` from clearing socket readiness. `readable().await` then resolved instantly forever, pinning a full CPU core on the single-threaded runtime and starving every other task (including the health endpoint). Found by profiling the real binary under load — CPU sampling plus strace — not by review alone.
 - Android test timeout handling in CI
 
 ## [1.0.0] - 2026-01-19
