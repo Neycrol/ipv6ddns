@@ -8,12 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Record-ID cache in the Cloudflare client for `UpdateFirst` policy, eliminating the discovery GET from every sync after the first: one full HTTPS round trip per IPv6 change is gone (verified end-to-end against a local mock of the API, including 404-fallback re-discovery when the record is deleted externally). `Error` policy deliberately never uses the cache — its duplicate-refusal guarantee requires a live discovery on every sync, so it keeps paying the GET
 - DNS provider abstraction layer for multi-provider support
 - HTTP health check endpoint
 - HTTP connection pool optimization for better performance
 - Minimum Supported Rust Version (MSRV) specification
 
 ### Changed
+- Dropped the unused `webpki-roots` reqwest feature (the client uses the platform verifier; the feature only pulled dead weight into the dependency tree)
+- Added permanent hot-path CPU micro-benchmarks (`cpu_bench` test modules; run via `cargo test --release -- --ignored bench --nocapture`). These guard the project rule that CPU performance is never traded away
+- Extracted validation/redaction primitives into the `textops` workspace crate (tests and benchmarks travel with them)
+- Evaluated and REJECTED `opt-level = "s"` (twice, with progressively better methodology): it cuts `.text` 42% (5.5 MB -> 3.5 MB binary) and post-burst RSS ~7.1 MB -> ~5.8 MB, and with corrected artifact-free benchmarks merge/parse/redact/is_valid_ipv6 reached exact parity with opt-level 3 — but `validate_record_name` retained a consistent +2 ns traceable to its caller being compiled inside the binary. Per project rules CPU wins; staying at `opt-level = 3`
+- HTTP connection pool drops idle keep-alive connections after 15 s instead of reqwest's 90 s default, sized to IPv6-change bursts (SLAAC/DAD flurries) rather than to hours-apart events
 - Migrated to Rust edition 2024 (MSRV now 1.85)
 - Upgraded dependencies: tokio 1.53, reqwest 0.13 (new `rustls` + `webpki-roots` features), clap 4.6, toml 1.1, zeroize 1.9, serial_test 4.0, tempfile 3.27
 - Replaced `async-trait` with native `async fn` in traits: `Daemon` is now generic over `DnsProvider` and the netlink monitor uses enum dispatch instead of `Box<dyn>` (static dispatch, no boxing)

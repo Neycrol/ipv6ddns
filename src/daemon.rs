@@ -2,7 +2,6 @@
 //!
 //! This module contains the main daemon implementation for IPv6 DDNS synchronization.
 
-use std::borrow::Cow;
 use std::net::Ipv6Addr;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime};
@@ -17,6 +16,7 @@ use crate::dns_provider::DnsProvider;
 use crate::health::HealthServer;
 use crate::netlink::{NetlinkEvent, NetlinkSocket, detect_global_ipv6};
 use crate::validation::is_valid_ipv6;
+use textops::redact_secrets;
 
 const EVENT_COALESCE_WINDOW: Duration = Duration::from_millis(80);
 const EVENT_COALESCE_MAX_EVENTS: usize = 32;
@@ -154,30 +154,11 @@ pub fn backoff_delay(error_count: u64) -> Duration {
 /// assert!(redacted.contains("***REDACTED***"));
 /// ```
 #[must_use]
-pub fn redact_secrets<'a>(message: &'a str, api_token: &str, zone_id: &str) -> Cow<'a, str> {
-    let has_token = !api_token.is_empty() && message.contains(api_token);
-    let has_zone = !zone_id.is_empty() && message.contains(zone_id);
-    if !has_token && !has_zone {
-        return Cow::Borrowed(message);
-    }
-
-    let mut sanitized = message.to_string();
-    if has_token {
-        sanitized = sanitized.replace(api_token, "***REDACTED***");
-    }
-    if has_zone {
-        sanitized = sanitized.replace(zone_id, "***REDACTED***");
-    }
-
-    Cow::Owned(sanitized)
-}
-
 /// Determines whether an IPv6 address is eligible for DNS synchronization.
 ///
 /// This wrapper provides an abstraction layer over basic validation, allowing
 /// future filtering logic (e.g., prefix matching, blocklists) to be added
 /// without changing call sites.
-#[must_use]
 fn is_syncable_ipv6(ip: Ipv6Addr, allow_loopback: bool) -> bool {
     is_valid_ipv6(ip, allow_loopback)
 }
@@ -837,5 +818,100 @@ mod tests {
         let mut current = ipv6_added("2001:db8::1");
         merge_burst_event(&mut current, NetlinkEvent::Unknown);
         assert_eq!(current, ipv6_added("2001:db8::1"));
+    }
+
+    /// Manual CPU benchmarks. Run with:
+    /// `cargo test --release --ignored bench_ -- --nocapture`
+    mod cpu_bench {
+        use super::*;
+        #[allow(unused_imports)]
+        use crate::validation::validate_record_name;
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        fn measure<F: FnMut()>(
+            mut f: F,
+            iters: u32,
+            passes: u32,
+        ) -> (std::time::Duration, std::time::Duration) {
+            // Warmup
+            for _ in 0..iters {
+                f();
+            }
+            let mut mins = Vec::new();
+            for _ in 0..passes {
+                let start = Instant::now();
+                for _ in 0..iters {
+                    f();
+                }
+                mins.push(start.elapsed() / iters);
+            }
+            mins.sort();
+            (mins[0], mins[mins.len() / 2])
+        }
+
+        #[test]
+        #[ignore = "manual benchmark"]
+        fn bench_redact_secrets() {
+            let plain = "IPv6 change detected: 2001:db8::1";
+            let secret = "token=abcd1234efgh5678 zone=abc123";
+            let (min, med) = measure(
+                || {
+                    black_box(redact_secrets(
+                        black_box(plain),
+                        black_box("tok123"),
+                        black_box("zone9"),
+                    ));
+                },
+                50_000,
+                7,
+            );
+            println!("bench_redact_no_match: min {min:?} median {med:?}");
+            let (min, med) = measure(
+                || {
+                    black_box(redact_secrets(
+                        black_box(secret),
+                        black_box("abcd1234efgh5678"),
+                        black_box("abc123"),
+                    ));
+                },
+                50_000,
+                7,
+            );
+            println!("bench_redact_rewrite: min {min:?} median {med:?}");
+        }
+        #[test]
+        #[ignore = "manual benchmark"]
+        fn bench_validate_record_name() {
+            // Exercises the textops crate through the binary's dependency
+            // edge (production codegen path).
+            let (min, med) = measure(
+                || {
+                    black_box(validate_record_name(black_box("home.example.com")).is_ok());
+                },
+                50_000,
+                7,
+            );
+            println!("bench_validate_record_name: min {min:?}/call median {med:?}");
+        }
+
+        #[test]
+        #[ignore = "manual benchmark"]
+        fn bench_merge_burst_event() {
+            // Hoist construction out of the measured closure so we time only
+            // the merge itself, not Ipv6Addr string parsing (~20 ns).
+            let base_ip: std::net::Ipv6Addr = "2001:db8::1".parse().unwrap();
+            let next_removed = NetlinkEvent::Ipv6Removed;
+            let (min, med) = measure(
+                || {
+                    let mut current = NetlinkEvent::Ipv6Added(base_ip);
+                    merge_burst_event(black_box(&mut current), black_box(next_removed.clone()));
+                    black_box(current);
+                },
+                100_000,
+                7,
+            );
+            println!("bench_merge_burst_event: min {min:?} median {med:?}");
+        }
     }
 }

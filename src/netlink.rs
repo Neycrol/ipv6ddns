@@ -1381,4 +1381,81 @@ mod tests {
 
         assert_eq!(event, Some(ipv6_added("2001:db8::1")));
     }
+
+    /// Manual CPU benchmarks for the per-event hot path.
+    ///
+    /// Run with:
+    /// `cargo test --release --ignored bench_ -- --nocapture`
+    ///
+    /// These exist to guard the project's core principle that CPU
+    /// performance must never regress for the sake of other goals
+    /// (e.g. binary size): any codegen-level change must be measured here.
+    mod cpu_bench {
+        use super::*;
+        use std::hint::black_box;
+        use std::time::Instant;
+
+        fn synth_batch(n_msgs: usize) -> Vec<u8> {
+            let mut buf = Vec::with_capacity(64 * n_msgs);
+            for i in 0..n_msgs {
+                buf.extend_from_slice(&44u32.to_ne_bytes()); // nlmsg_len
+                buf.extend_from_slice(&RTM_NEWADDR_VAL.to_ne_bytes());
+                buf.extend_from_slice(&0u16.to_ne_bytes()); // flags
+                buf.extend_from_slice(&i.to_ne_bytes()); // seq
+                buf.extend_from_slice(&0u32.to_ne_bytes()); // pid
+                buf.push(AF_INET6);
+                buf.push(64); // prefixlen
+                buf.push(0); // flags
+                buf.push(RT_SCOPE_UNIVERSE);
+                buf.extend_from_slice(&0u32.to_ne_bytes()); // ifa_index
+                buf.extend_from_slice(&20u16.to_ne_bytes()); // rta_len
+                buf.extend_from_slice(&IFA_ADDRESS_VAL.to_ne_bytes());
+                buf.extend_from_slice(&[
+                    0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+                ]);
+            }
+            buf
+        }
+
+        #[test]
+        #[ignore = "manual benchmark"]
+        fn bench_parse_messages_into() {
+            // Rotate through several distinct buffers so LLVM cannot prove the
+            // input invariant and hoist the whole parse out of the loop.
+            let bufs: Vec<Vec<u8>> = (0..8)
+                .map(|i| synth_batch(black_box(4 + (i % 3))))
+                .collect();
+            let n_bufs = black_box(bufs.len() as u32);
+            const BATCHES_PER_PASS: u32 = 50_000;
+            const PASSES: u32 = 7;
+            let mut mins = Vec::new();
+            let mut events: VecDeque<NetlinkEvent> = VecDeque::with_capacity(6);
+            let mut idx: u32 = 0;
+            // Warmup
+            for _ in 0..BATCHES_PER_PASS {
+                events.clear();
+                idx = idx.wrapping_add(1) % black_box(n_bufs);
+                NetlinkImpl::parse_messages_into(black_box(&bufs[idx as usize]), &mut events);
+                black_box(&events);
+            }
+            for _pass in 0..PASSES {
+                let start = Instant::now();
+                for _ in 0..BATCHES_PER_PASS {
+                    events.clear();
+                    idx = idx.wrapping_add(1) % black_box(n_bufs);
+                    NetlinkImpl::parse_messages_into(black_box(&bufs[idx as usize]), &mut events);
+                    black_box(&events);
+                }
+                mins.push(start.elapsed() / BATCHES_PER_PASS);
+            }
+            mins.sort();
+            println!(
+                "bench_parse_messages_into: min {:?}/batch median {:?}  [{} passes x {}]",
+                mins[0],
+                mins[mins.len() / 2],
+                PASSES,
+                BATCHES_PER_PASS
+            );
+        }
+    }
 }

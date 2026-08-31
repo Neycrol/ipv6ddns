@@ -49,8 +49,9 @@ use tracing::{debug, warn};
 
 use crate::constants::{
     CLOUDFLARE_API_BASE, CLOUDFLARE_USER_AGENT, DNS_RECORD_TYPE_AAAA, DNS_TTL_AUTO,
-    HTTP_POOL_MAX_IDLE_PER_HOST, HTTP_STATUS_FORBIDDEN, HTTP_STATUS_SERVER_ERROR_MAX,
-    HTTP_STATUS_SERVER_ERROR_MIN, HTTP_STATUS_TOO_MANY_REQUESTS, HTTP_STATUS_UNAUTHORIZED,
+    HTTP_POOL_IDLE_TIMEOUT_SECS, HTTP_POOL_MAX_IDLE_PER_HOST, HTTP_STATUS_FORBIDDEN,
+    HTTP_STATUS_SERVER_ERROR_MAX, HTTP_STATUS_SERVER_ERROR_MIN, HTTP_STATUS_TOO_MANY_REQUESTS,
+    HTTP_STATUS_UNAUTHORIZED,
 };
 use crate::dns_provider::{DnsProvider, DnsRecord, MultiRecordPolicy};
 
@@ -93,6 +94,23 @@ pub struct CloudflareClient {
     api_token: zeroize::Zeroizing<String>,
     /// HTTP client for making requests
     client: reqwest::Client,
+    /// API root (overridable for testing against a local mock)
+    api_base: String,
+    /// Known record ID from the last successful sync.
+    ///
+    /// Architecture note: this eliminates the entire discovery GET stage.
+    /// Previously every sync paid two HTTPS round trips — one listing request
+    /// just to learn the record ID, then the actual update. The ID is stable,
+    /// so after the first discovery we PATCH directly and only re-discover if
+    /// Cloudflare answers 404 (record deleted externally).
+    cached_record: std::sync::Mutex<Option<CachedRecordId>>,
+}
+
+/// Identity of the AAAA record managed by this daemon.
+struct CachedRecordId {
+    zone_id: String,
+    name: String,
+    id: String,
 }
 
 impl CloudflareClient {
@@ -138,18 +156,34 @@ impl CloudflareClient {
     ///
     /// Returns a `Result` containing the client or an error if client creation fails
     pub fn new(api_token: &str, timeout: Duration) -> Result<Self> {
+        Self::with_api_base(CLOUDFLARE_API_BASE.to_string(), api_token, timeout)
+    }
+
+    /// Same as [`new`] but against an explicit API base URL (test hook).
+    fn with_api_base(api_base: String, api_token: &str, timeout: Duration) -> Result<Self> {
         let client = reqwest::Client::builder()
             .http1_only()
             .connect_timeout(timeout)
             .timeout(timeout)
             .user_agent(CLOUDFLARE_USER_AGENT)
             .pool_max_idle_per_host(HTTP_POOL_MAX_IDLE_PER_HOST)
+            // Keep-alive window sized to IPv6-change bursts, not to reqwest's
+            // default. Measured on a live instance: an idle pooled TLS
+            // connection (hyper buffers + rustls session state + parked
+            // connection task) pins ~2.6 MB of resident memory. Sync events
+            // are typically hours apart, so holding a connection for the
+            // default 90 s buys almost nothing while paying that cost every
+            // time; a short window still lets a burst of address changes
+            // (SLAAC/DAD flurries) share one handshake.
+            .pool_idle_timeout(Duration::from_secs(HTTP_POOL_IDLE_TIMEOUT_SECS))
             .build()
             .context("build reqwest client")?;
 
         Ok(Self {
             api_token: zeroize::Zeroizing::new(api_token.to_string()),
             client,
+            api_base,
+            cached_record: std::sync::Mutex::new(None),
         })
     }
 
@@ -276,7 +310,7 @@ impl CloudflareClient {
         record_name: &str,
         ipv6_addr: std::net::Ipv6Addr,
     ) -> Result<DnsRecord> {
-        let url = format!("{}/zones/{}/dns_records", CLOUDFLARE_API_BASE, zone_id);
+        let url = format!("{}/zones/{}/dns_records", self.api_base, zone_id);
         let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
 
         debug!("POST {} (record: {}, ip: {})", url, record_name, ipv6_addr);
@@ -312,7 +346,7 @@ impl CloudflareClient {
     ) -> Result<DnsRecord> {
         let url = format!(
             "{}/zones/{}/dns_records/{}",
-            CLOUDFLARE_API_BASE, zone_id, record_id
+            self.api_base, zone_id, record_id
         );
         let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
 
@@ -395,6 +429,85 @@ impl CloudflareClient {
         }
     }
 
+    /// Looks up the cached record ID for this exact zone+name, if any.
+    fn cached_record_id(&self, zone_id: &str, record_name: &str) -> Option<String> {
+        let guard = self
+            .cached_record
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard
+            .as_ref()
+            .filter(|c| c.zone_id == zone_id && c.name == record_name)
+            .map(|c| c.id.clone())
+    }
+
+    fn store_cached_record_id(&self, zone_id: &str, record_name: &str, id: &str) {
+        let mut guard = self
+            .cached_record
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *guard = Some(CachedRecordId {
+            zone_id: zone_id.to_string(),
+            name: record_name.to_string(),
+            id: id.to_string(),
+        });
+    }
+
+    /// Drops the cache entry if it belongs to this zone+name.
+    fn clear_cached_record_id(&self, zone_id: &str, record_name: &str) {
+        let mut guard = self
+            .cached_record
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if guard
+            .as_ref()
+            .is_some_and(|c| c.zone_id == zone_id && c.name == record_name)
+        {
+            *guard = None;
+        }
+    }
+
+    /// Update via a known record ID. Returns `Ok(None)` when Cloudflare
+    /// reports the record does not exist (HTTP 404), i.e. the cached ID is
+    /// stale and the caller should fall back to discovery.
+    async fn update_record_if_exists(
+        &self,
+        zone_id: &str,
+        record_id: &str,
+        record_name: &str,
+        ipv6_addr: std::net::Ipv6Addr,
+    ) -> Result<Option<DnsRecord>> {
+        let url = format!(
+            "{}/zones/{}/dns_records/{}",
+            self.api_base, zone_id, record_id
+        );
+        let payload = Self::build_aaaa_payload(record_name, ipv6_addr)?;
+
+        debug!(
+            "PUT {} (record: {}, id: {}, ip: {})",
+            url, record_name, record_id, ipv6_addr
+        );
+        let context = format!(
+            "update record '{}' (ID: {}) in zone '{}'",
+            record_name, record_id, zone_id
+        );
+        let (status, body): (StatusCode, ApiResponse<DnsRecord>) = self
+            .send_json_request(reqwest::Method::PUT, &url, Some(payload), &context)
+            .await?;
+
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        Self::handle_api_response(status, &body, &context)?;
+
+        body.result.map(Some).with_context(|| {
+            format!(
+                "API returned success but no result for record '{}' (ID: {})",
+                record_name, record_id
+            )
+        })
+    }
+
     /// Internal implementation of upsert_aaaa_record
     async fn upsert_aaaa_record_impl(
         &self,
@@ -403,6 +516,31 @@ impl CloudflareClient {
         ipv6_addr: std::net::Ipv6Addr,
         policy: MultiRecordPolicy,
     ) -> Result<DnsRecord> {
+        // Cached fast path, ONLY for `UpdateFirst`: its semantics ("update
+        // some one record") tolerate external topology changes between syncs.
+        // `Error` policy deliberately does NOT use the cache — its guarantee
+        // ("refuse when duplicates exist") requires seeing the live record
+        // set on every sync, so it always pays the discovery GET. Correctness
+        // outranks the saved round trip.
+        if matches!(policy, MultiRecordPolicy::UpdateFirst) {
+            if let Some(id) = self.cached_record_id(zone_id, record_name) {
+                match self
+                    .update_record_if_exists(zone_id, &id, record_name, ipv6_addr)
+                    .await
+                {
+                    Ok(Some(record)) => return Ok(record),
+                    Ok(None) => {
+                        warn!(
+                            "Cached record ID for '{}' no longer exists; rediscovering",
+                            record_name
+                        );
+                        self.clear_cached_record_id(zone_id, record_name);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+
         let records = self.get_records_impl(zone_id, record_name).await?;
         match policy {
             MultiRecordPolicy::Error => {
@@ -422,13 +560,16 @@ impl CloudflareClient {
                 .await
             }
             MultiRecordPolicy::UpdateFirst => {
-                self.upsert_single_record(
-                    zone_id,
-                    record_name,
-                    ipv6_addr,
-                    records.into_iter().next(),
-                )
-                .await
+                let result = self
+                    .upsert_single_record(
+                        zone_id,
+                        record_name,
+                        ipv6_addr,
+                        records.into_iter().next(),
+                    )
+                    .await?;
+                self.store_cached_record_id(zone_id, record_name, &result.id);
+                Ok(result)
             }
             MultiRecordPolicy::UpdateAll => {
                 if records.is_empty() {
@@ -470,7 +611,7 @@ impl CloudflareClient {
         // interpolate into a URL query without additional percent-encoding.
         let url = format!(
             "{}/zones/{}/dns_records?name={}&type=AAAA",
-            CLOUDFLARE_API_BASE, zone_id, record_name
+            self.api_base, zone_id, record_name
         );
 
         debug!("GET {} (record: {})", url, record_name);
@@ -857,5 +998,273 @@ mod tests {
 
         let err: ApiError = serde_json::from_str(json).unwrap();
         assert_eq!(err.code, 9999);
+    }
+
+    /// End-to-end verification of the record-ID cache architecture against a
+    /// local mock of the Cloudflare API. Asserts the actual HTTP request
+    /// sequence, proving the discovery GET stage is eliminated after the
+    /// first sync and recovered via 404 fallback when the record vanishes.
+    mod mock_e2e {
+        use super::*;
+        use std::sync::Mutex as StdMutex;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+
+        struct MockCf {
+            records: StdMutex<Vec<serde_json::Value>>,
+            requests: StdMutex<Vec<String>>,
+            next_id: StdMutex<u64>,
+        }
+
+        const ZONE: &str = "zoneid123";
+        const NAME: &str = "test.example.com";
+
+        async fn spawn_mock(state: std::sync::Arc<MockCf>) -> std::net::SocketAddr {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move {
+                loop {
+                    let Ok((sock, _)) = listener.accept().await else {
+                        return;
+                    };
+                    let st = state.clone();
+                    tokio::spawn(async move {
+                        let _ = handle_conn(sock, st).await;
+                    });
+                }
+            });
+            addr
+        }
+
+        async fn handle_conn(
+            mut sock: tokio::net::TcpStream,
+            st: std::sync::Arc<MockCf>,
+        ) -> std::io::Result<()> {
+            let (method, path, body) = read_request(&mut sock).await?;
+            st.requests.lock().unwrap().push(method.clone());
+
+            let prefix = format!("/zones/{ZONE}/dns_records");
+            let (status, payload): (&str, serde_json::Value) = if method == "GET"
+                && path.starts_with(&format!("{prefix}?"))
+            {
+                let records = st.records.lock().unwrap().clone();
+                (
+                    "200 OK",
+                    serde_json::json!({"success": true, "errors": [], "messages": [], "result": records}),
+                )
+            } else if method == "POST" && path == prefix {
+                let mut rec: serde_json::Value = serde_json::from_str(&body).unwrap();
+                let mut nid = st.next_id.lock().unwrap();
+                *nid += 1;
+                rec["id"] = serde_json::json!(format!("rec-{nid}"));
+                st.records.lock().unwrap().push(rec.clone());
+                (
+                    "200 OK",
+                    serde_json::json!({"success": true, "errors": [], "messages": [], "result": rec}),
+                )
+            } else if (method == "PUT" || method == "PATCH")
+                && path.starts_with(&format!("{prefix}/"))
+            {
+                let id = path.rsplit('/').next().unwrap_or("");
+                let mut records = st.records.lock().unwrap();
+                match records.iter_mut().find(|r| r["id"] == id) {
+                    Some(rec) => {
+                        let upd: serde_json::Value = serde_json::from_str(&body).unwrap();
+                        if let (Some(obj), Some(new_content)) =
+                            (rec.as_object_mut(), upd.get("content"))
+                        {
+                            obj.insert("content".into(), new_content.clone());
+                            if let Some(name) = upd.get("name") {
+                                obj.insert("name".into(), name.clone());
+                            }
+                        }
+                        (
+                            "200 OK",
+                            serde_json::json!({"success": true, "errors": [], "messages": [], "result": rec.clone()}),
+                        )
+                    }
+                    None => (
+                        "404 Not Found",
+                        serde_json::json!({"success": false, "errors": [{"code": 81044, "message": "record does not exist"}], "messages": [], "result": null}),
+                    ),
+                }
+            } else {
+                (
+                    "404 Not Found",
+                    serde_json::json!({"success": false, "errors": [], "messages": [], "result": null}),
+                )
+            };
+            let body_bytes = payload.to_string();
+            let resp = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body_bytes.len(),
+                body_bytes
+            );
+            sock.write_all(resp.as_bytes()).await?;
+            sock.shutdown().await
+        }
+
+        async fn read_request(
+            sock: &mut tokio::net::TcpStream,
+        ) -> std::io::Result<(String, String, String)> {
+            let mut buf: Vec<u8> = Vec::new();
+            let mut tmp = [0u8; 2048];
+            loop {
+                if let Some(pos) = find_subsequence(&buf, b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&buf[..pos]).to_string();
+                    let clen = head
+                        .lines()
+                        .find_map(|l| {
+                            if l.to_ascii_lowercase().starts_with("content-length:") {
+                                l.split(':').nth(1)?.trim().parse::<usize>().ok()
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or(0);
+                    while buf.len() < pos + 4 + clen {
+                        let n = sock.read(&mut tmp).await?;
+                        if n == 0 {
+                            break;
+                        }
+                        buf.extend_from_slice(&tmp[..n]);
+                    }
+                    let mut parts = head.split_whitespace();
+                    let method = parts.next().unwrap_or("").to_string();
+                    let path = parts.next().unwrap_or("").to_string();
+                    let body = String::from_utf8_lossy(&buf[pos + 4..]).to_string();
+                    return Ok((method, path, body));
+                }
+                let n = sock.read(&mut tmp).await?;
+                if n == 0 {
+                    return Err(std::io::ErrorKind::UnexpectedEof.into());
+                }
+                buf.extend_from_slice(&tmp[..n]);
+            }
+        }
+
+        fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+            haystack.windows(needle.len()).position(|w| w == needle)
+        }
+
+        async fn make_client(
+            state: &std::sync::Arc<MockCf>,
+        ) -> (CloudflareClient, std::net::SocketAddr) {
+            let addr = spawn_mock(state.clone()).await;
+            let client = CloudflareClient::with_api_base(
+                format!("http://{addr}"),
+                "test-token",
+                Duration::from_secs(3),
+            )
+            .unwrap();
+            (client, addr)
+        }
+
+        fn record_json(id: &str, content: &str) -> serde_json::Value {
+            serde_json::json!({
+                "id": id,
+                "type": "AAAA",
+                "name": NAME,
+                "content": content,
+                "proxied": false,
+                "ttl": 1
+            })
+        }
+
+        async fn upsert(client: &CloudflareClient, ip: &str) {
+            client
+                .upsert_aaaa_record(
+                    ZONE,
+                    NAME,
+                    ip.parse().unwrap(),
+                    MultiRecordPolicy::UpdateFirst,
+                )
+                .await
+                .unwrap();
+        }
+
+        /// THE architectural assertion: sync #1 discovers (GET+PUT); every
+        /// later sync PATCHes directly with NO GET stage; external deletion
+        /// is recovered via one extra round trip (PUT-404, GET, PUT).
+        #[tokio::test]
+        async fn test_record_id_cache_cuts_discovery_stage() {
+            let state = std::sync::Arc::new(MockCf {
+                records: StdMutex::new(vec![record_json("rec-1", "2001:db8::1")]),
+                requests: StdMutex::new(Vec::new()),
+                next_id: StdMutex::new(1),
+            });
+            let (client, _addr) = make_client(&state).await;
+            let ip2 = "2001:db8::2";
+            let ip3 = "2001:db8::3";
+
+            // Sync #1: discovery then update.
+            upsert(&client, ip2).await;
+            assert_eq!(*state.requests.lock().unwrap(), vec!["GET", "PUT"]);
+
+            // Sync #2: cached ID — the GET stage is gone.
+            *state.requests.lock().unwrap() = Vec::new();
+            upsert(&client, ip3).await;
+            assert_eq!(*state.requests.lock().unwrap(), vec!["PUT"]);
+
+            // Sync #3: record deleted externally. Cached PUT hits 404, we
+            // rediscover (GET -> empty), CREATE a fresh record.
+            state.records.lock().unwrap().clear();
+            *state.requests.lock().unwrap() = Vec::new();
+            upsert(&client, ip2).await; // 404 on stale id
+            assert_eq!(*state.requests.lock().unwrap(), vec!["PUT", "GET", "POST"]);
+
+            // Sync #4: cache re-populated by recovery — GET-free again.
+            *state.requests.lock().unwrap() = Vec::new();
+            upsert(&client, ip3).await;
+            assert_eq!(*state.requests.lock().unwrap(), vec!["PUT"]);
+        }
+
+        /// `Error` policy must NOT use the cache: its duplicate-refusal
+        /// guarantee requires a live discovery on every sync.
+        #[tokio::test]
+        async fn test_error_policy_always_discovers_and_refuses_duplicates() {
+            let state = std::sync::Arc::new(MockCf {
+                records: StdMutex::new(vec![record_json("rec-1", "2001:db8::1")]),
+                requests: StdMutex::new(Vec::new()),
+                next_id: StdMutex::new(1),
+            });
+            let addr = spawn_mock(state.clone()).await;
+            let client = CloudflareClient::with_api_base(
+                format!("http://{addr}"),
+                "test-token",
+                Duration::from_secs(3),
+            )
+            .unwrap(); // Sync #1 and #2 BOTH pay discovery: no caching under Error policy.
+            for ip in ["2001:db8::2", "2001:db8::3"] {
+                client
+                    .upsert_aaaa_record(ZONE, NAME, ip.parse().unwrap(), MultiRecordPolicy::Error)
+                    .await
+                    .unwrap();
+            }
+            assert_eq!(
+                *state.requests.lock().unwrap(),
+                vec!["GET", "PUT", "GET", "PUT"]
+            );
+
+            // Duplicate appears → Error policy refuses, even though it has
+            // seen this record before.
+            state
+                .records
+                .lock()
+                .unwrap()
+                .push(record_json("rec-dup", "2001:db8::9"));
+            *state.requests.lock().unwrap() = Vec::new();
+            let err = client
+                .upsert_aaaa_record(
+                    ZONE,
+                    NAME,
+                    "2001:db8::2".parse().unwrap(),
+                    MultiRecordPolicy::Error,
+                )
+                .await
+                .expect_err("duplicate must be refused");
+            assert!(err.to_string().contains("Multiple AAAA records"));
+            assert_eq!(*state.requests.lock().unwrap(), vec!["GET"]); // refused before any write
+        }
     }
 }

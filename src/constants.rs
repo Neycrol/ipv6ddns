@@ -83,12 +83,6 @@ pub const MIN_ZONE_ID_LENGTH: usize = 16;
 /// Maximum zone ID length in characters
 pub const MAX_ZONE_ID_LENGTH: usize = 64;
 
-/// Maximum DNS record name length in characters
-pub const MAX_RECORD_NAME_LENGTH: usize = 253;
-
-/// Maximum DNS label length in characters
-pub const MAX_LABEL_LENGTH: usize = 63;
-
 //==============================================================================
 // Environment Variable Names
 //==============================================================================
@@ -124,3 +118,12 @@ pub const ENV_HEALTH_PORT: &str = "IPV6DDNS_HEALTH_PORT";
 /// (api.cloudflare.com). Keeping one idle connection avoids repeated
 /// TCP + TLS handshakes on consecutive API calls.
 pub const HTTP_POOL_MAX_IDLE_PER_HOST: usize = 1;
+
+/// How long the pool keeps an idle keep-alive connection before closing it.
+///
+/// Sized to IPv6-change bursts (SLAAC/DAD flurries can produce several syncs
+/// within seconds), not to reqwest's 90 s default. An idle TLS connection
+/// pins its buffers and session state in RSS (~2.6 MB measured); with real
+/// events hours apart, a long window pays that cost continuously for a
+/// handshake saving that is almost never collected.
+pub const HTTP_POOL_IDLE_TIMEOUT_SECS: u64 = 15;

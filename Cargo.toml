@@ -7,9 +7,12 @@ description = "Event-driven IPv6 DDNS client for Cloudflare"
 authors = ["Neycrol <neycrol@users.noreply.github.com>"]
 license = "MIT"
 
+[workspace]
+members = ["textops"]
+
 [dependencies]
 tokio = { version = "1.53", features = ["rt", "net", "time", "macros", "signal", "sync", "io-util"] }
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "webpki-roots"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 toml = "1.1"
@@ -19,12 +22,23 @@ tracing-subscriber = { version = "0.3", features = ["fmt"] }
 clap = { version = "4.6", features = ["derive"] }
 libc = "0.2"
 zeroize = { version = "1.8", features = ["serde", "zeroize_derive"] }
+textops = { path = "textops" }
 
 [dev-dependencies]
 serial_test = "4.0"
 tempfile = "3.27"
 
 [profile.release]
+# opt-level = 3 everywhere, as a hard project principle: CPU performance is
+# never traded away, not even 2 ns.
+#
+# History: "s" was evaluated TWICE. It cuts .text 42% (5.5 MB -> 3.5 MB
+# binary) and post-burst RSS ~7.1 MB -> ~5.8 MB. With corrected benchmarks,
+# merge/parse/redact/is_valid_ipv6 reached exact parity with "3" (verified
+# via same-binary alternating A/B), but validate_record_name retained a
+# consistent +2 ns: its CALLER (config.rs, in the binary) compiles at the
+# bin's optimization level, so no per-package override on textops could fix
+# it. Per project rules, memory lost; CPU wins.
 opt-level = 3
 lto = true
 codegen-units = 1
@@ -33,6 +47,11 @@ strip = true
 # supervisor restart it, so skip unwind tables/landing pads (smaller binary,
 # less code for the CPU to carry around).
 panic = "abort"
+
+# The textops workspace member holds the validation/redaction primitives plus
+# their permanent cpu_bench micro-benchmarks, so any future codegen change can
+# be adjudicated with:
+#   cargo test --release -- --ignored bench --nocapture
 
 [profile.dev]
 opt-level = 0

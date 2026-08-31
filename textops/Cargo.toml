@@ -1,0 +1,13 @@
+[package]
+name = "textops"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.85.0"
+description = "Validation and log-redaction primitives for ipv6ddns"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+
+# NOTE: this package is compiled at opt-level 3 even when the release profile
+# uses a different global setting — see the override in the root Cargo.toml.
