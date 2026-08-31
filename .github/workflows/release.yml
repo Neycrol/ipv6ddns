@@ -139,7 +139,7 @@ jobs:
           APPIMAGE_TOOL_URL: auto
         run: |
           ./scripts/ci/build-artifacts.sh x86_64
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: ipv6ddns-x86_64
           path: |
@@ -179,7 +179,7 @@ jobs:
           CARGO_BUILD_TARGET: aarch64-unknown-linux-gnu
         run: |
           ./scripts/ci/build-artifacts.sh aarch64
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: ipv6ddns-aarch64
           path: |
@@ -216,7 +216,7 @@ jobs:
           sudo -u builder -H env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" GITHUB_SHA="$GITHUB_SHA" _commit="$GITHUB_SHA" \
             _prebuilt_bin="$BIN" RUSTFLAGS= CARGO_ENCODED_RUSTFLAGS= CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS= \
             bash -c 'cd "$GITHUB_WORKSPACE/packaging/arch"; makepkg -f --noconfirm --syncdeps'
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: ipv6ddns-archpkg
           path: |
@@ -251,7 +251,7 @@ jobs:
           sudo -u builder -H env GITHUB_SHA="$GITHUB_SHA" _commit="$GITHUB_SHA" _prebuilt_bin="$BIN" BUILDDIR="/home/builder/build" \
             CARCH="aarch64" CHOST="aarch64-unknown-linux-gnu" \
             bash -c "cd '$GITHUB_WORKSPACE/packaging/archlinuxarm'; makepkg -f --noconfirm --syncdeps --ignorearch"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: ipv6ddns-archlinuxarm
           path: |
@@ -308,7 +308,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           gradle -p android :app:assembleRelease
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: ipv6ddns-android-apk
           path: |
@@ -351,7 +351,7 @@ jobs:
         run: |
           chmod +x scripts/ci/verify-artifacts.sh
           ./scripts/ci/verify-artifacts.sh release-assets
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: verified-release-assets
           path: release-assets/**
