@@ -643,16 +643,10 @@ fn extract_ipv6_from_ifaddrmsg(
     if ifa_scope != RT_SCOPE_UNIVERSE {
         return None;
     }
-    if (ifa_flags as u32) & IFA_F_TEMPORARY != 0 {
-        return None;
-    }
-    if (ifa_flags as u32) & IFA_F_TENTATIVE != 0 {
-        return None;
-    }
-    if (ifa_flags as u32) & IFA_F_DADFAILED != 0 {
-        return None;
-    }
-    if (ifa_flags as u32) & IFA_F_DEPRECATED != 0 {
+
+    // Combine mask to filter out temporary, tentative, deprecated, and dad-failed addresses with a single branch
+    const INVALID_FLAGS: u32 = IFA_F_TEMPORARY | IFA_F_TENTATIVE | IFA_F_DADFAILED | IFA_F_DEPRECATED;
+    if (ifa_flags as u32 & INVALID_FLAGS) != 0 {
         return None;
     }
 
@@ -707,13 +701,10 @@ fn extract_ipv6_addresses_for_dump(
     if ifa_scope != RT_SCOPE_UNIVERSE {
         return None;
     }
-    if (ifa_flags as u32) & IFA_F_TENTATIVE != 0 {
-        return None;
-    }
-    if (ifa_flags as u32) & IFA_F_DADFAILED != 0 {
-        return None;
-    }
-    if (ifa_flags as u32) & IFA_F_DEPRECATED != 0 {
+
+    // Combine mask to filter out tentative, deprecated, and dad-failed addresses with a single branch
+    const INVALID_DUMP_FLAGS: u32 = IFA_F_TENTATIVE | IFA_F_DADFAILED | IFA_F_DEPRECATED;
+    if (ifa_flags as u32 & INVALID_DUMP_FLAGS) != 0 {
         return None;
     }
 
