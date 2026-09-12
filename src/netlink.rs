@@ -774,7 +774,11 @@ fn netlink_dump_ipv6() -> Result<(Option<Ipv6Addr>, Option<Ipv6Addr>)> {
 
     let mut stable: Option<Ipv6Addr> = None;
     let mut temporary: Option<Ipv6Addr> = None;
-    let mut recv_buf = vec![0u8; NETLINK_DUMP_BUFFER_SIZE];
+
+    // Performance optimization: Allocate the 16KB receive buffer on the stack
+    // instead of the heap to avoid recurring allocation overhead, especially
+    // since this function runs repeatedly during the polling fallback mode.
+    let mut recv_buf = [0u8; NETLINK_DUMP_BUFFER_SIZE];
 
     loop {
         let n = unsafe {
