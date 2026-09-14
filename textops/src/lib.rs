@@ -127,22 +127,22 @@ pub fn is_valid_ipv6(addr: std::net::Ipv6Addr, allow_loopback: bool) -> bool {
         return false;
     }
 
-    let segments = addr.segments();
+    let octets = addr.octets();
 
     // Filter out link-local addresses (fe80::/10)
     // Link-local addresses have first 10 bits as 1111111010
-    if segments[0] & 0xffc0 == 0xfe80 {
+    if octets[0] == 0xfe && (octets[1] & 0xc0) == 0x80 {
         return false;
     }
 
     // Filter out multicast addresses (ff00::/8)
     // Multicast addresses have first 8 bits as 11111111
-    if segments[0] & 0xff00 == 0xff00 {
+    if octets[0] == 0xff {
         return false;
     }
 
     // Filter out documentation addresses (2001:db8::/32)
-    if segments[0] == 0x2001 && segments[1] == 0x0db8 {
+    if octets[0..4] == [0x20, 0x01, 0x0d, 0xb8] {
         return false;
     }
 
@@ -181,13 +181,14 @@ pub fn redact_secrets<'a>(
     // one allocation) was benchmarked and REJECTED — it measured ~204 ns vs
     // ~196 ns for these two std `replace` calls on typical log lines. At
     // this string length, std's optimized replace wins. Keep the simple form.
-    let mut sanitized = message.to_string();
-    if has_token {
-        sanitized = sanitized.replace(api_token, "***REDACTED***");
-    }
-    if has_zone {
-        sanitized = sanitized.replace(zone_id, "***REDACTED***");
-    }
+    let sanitized = match (has_token, has_zone) {
+        (true, false) => message.replace(api_token, "***REDACTED***"),
+        (false, true) => message.replace(zone_id, "***REDACTED***"),
+        (true, true) => message
+            .replace(api_token, "***REDACTED***")
+            .replace(zone_id, "***REDACTED***"),
+        (false, false) => unreachable!(),
+    };
 
     std::borrow::Cow::Owned(sanitized)
 }

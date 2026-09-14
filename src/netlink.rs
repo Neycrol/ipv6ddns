@@ -573,11 +573,12 @@ fn rta_align(len: usize) -> usize {
 fn parse_rta_ipv6_address(data: &[u8], msg_offset: usize, msg_end: usize) -> Option<Ipv6Addr> {
     let mut rta_offset = msg_offset + NLMSG_HDRLEN + IFADDRMSG_LEN;
     while rta_offset + RTA_HEADER_SIZE <= msg_end {
-        let rta_len = u16::from_ne_bytes([data[rta_offset], data[rta_offset + 1]]) as usize;
+        let header_chunk = &data[rta_offset..rta_offset + 4];
+        let rta_len = u16::from_ne_bytes([header_chunk[0], header_chunk[1]]) as usize;
         if rta_len < RTA_HEADER_SIZE {
             break;
         }
-        let rta_type = u16::from_ne_bytes([data[rta_offset + 2], data[rta_offset + 3]]);
+        let rta_type = u16::from_ne_bytes([header_chunk[2], header_chunk[3]]);
 
         let payload_len = rta_len - RTA_HEADER_SIZE;
         let payload_offset = rta_offset + RTA_HEADER_SIZE;
