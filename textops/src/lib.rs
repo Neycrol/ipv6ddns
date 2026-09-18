@@ -181,15 +181,20 @@ pub fn redact_secrets<'a>(
     // one allocation) was benchmarked and REJECTED — it measured ~204 ns vs
     // ~196 ns for these two std `replace` calls on typical log lines. At
     // this string length, std's optimized replace wins. Keep the simple form.
-    let mut sanitized = message.to_string();
-    if has_token {
-        sanitized = sanitized.replace(api_token, "***REDACTED***");
+    //
+    // However, we avoid an unconditional `message.to_string()` allocation
+    // before the replace calls by branching directly.
+    if has_token && has_zone {
+        std::borrow::Cow::Owned(
+            message
+                .replace(api_token, "***REDACTED***")
+                .replace(zone_id, "***REDACTED***"),
+        )
+    } else if has_token {
+        std::borrow::Cow::Owned(message.replace(api_token, "***REDACTED***"))
+    } else {
+        std::borrow::Cow::Owned(message.replace(zone_id, "***REDACTED***"))
     }
-    if has_zone {
-        sanitized = sanitized.replace(zone_id, "***REDACTED***");
-    }
-
-    std::borrow::Cow::Owned(sanitized)
 }
 
 #[cfg(test)]
