@@ -5,3 +5,6 @@
 ## 2024-05-19 - Removed unconditional string allocation in redact_secrets
 **Learning:** The `redact_secrets` function was unconditionally calling `message.to_string()` before applying `replace` operations, which caused a completely unnecessary heap allocation because `replace()` itself allocates a new String anyway.
 **Action:** Replaced the unconditional allocation with a direct conditional branch that calls `.replace()` right on the string slice `message`, shaving off up to ~70ns of allocation latency per call when redacting secrets. Always avoid allocating a base string just to call string-mutating functions that return new strings.
+## 2025-02-23 - Eliminated unconditional string allocations in build_aaaa_payload
+**Learning:** `build_aaaa_payload` was performing `to_string()` on both `record_name` and `ipv6_addr`, causing unnecessary heap allocations. The `serde` library natively serializes `std::net::Ipv6Addr` and we can use a lifetime parameter to borrow `&'a str` for the name.
+**Action:** Always prefer borrowing string references via lifetimes `(&'a str)` and using standard networking types directly (like `std::net::Ipv6Addr`) for short-lived payload structs sent to Serde instead of allocating wrapper Strings.
