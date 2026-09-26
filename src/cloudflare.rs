@@ -125,20 +125,22 @@ impl CloudflareClient {
     ///
     /// Returns a `Result` containing the serialized JSON payload or an error
     fn build_aaaa_payload(record_name: &str, ipv6_addr: std::net::Ipv6Addr) -> Result<String> {
+        // Bolt: Eliminated two string allocations by borrowing the name string
+        // and using std::net::Ipv6Addr's native Serde implementation.
         #[derive(Serialize)]
-        struct Payload {
+        struct Payload<'a> {
             #[serde(rename = "type")]
             rt: &'static str,
-            name: String,
-            content: String,
+            name: &'a str,
+            content: std::net::Ipv6Addr,
             ttl: u64,
             proxied: bool,
         }
 
         serde_json::to_string(&Payload {
             rt: DNS_RECORD_TYPE_AAAA,
-            name: record_name.to_string(),
-            content: ipv6_addr.to_string(),
+            name: record_name,
+            content: ipv6_addr,
             ttl: DNS_TTL_AUTO,
             proxied: false,
         })
