@@ -5,3 +5,6 @@
 ## 2024-05-19 - Removed unconditional string allocation in redact_secrets
 **Learning:** The `redact_secrets` function was unconditionally calling `message.to_string()` before applying `replace` operations, which caused a completely unnecessary heap allocation because `replace()` itself allocates a new String anyway.
 **Action:** Replaced the unconditional allocation with a direct conditional branch that calls `.replace()` right on the string slice `message`, shaving off up to ~70ns of allocation latency per call when redacting secrets. Always avoid allocating a base string just to call string-mutating functions that return new strings.
+## 2024-05-20 - Avoided string allocations during Serde JSON serialization
+**Learning:** Short-lived payload structures used purely for JSON serialization were forcing unnecessary heap allocations by converting perfectly valid standard library types (like `std::net::Ipv6Addr`) into `String`, and copying borrowed string parameters (`&str`) into owned `String` fields.
+**Action:** When defining throwaway serialization structs (like `Payload`), use lifetimes (`<'a>`) to borrow strings instead of owning them, and rely on Serde's native implementation for types like `std::net::Ipv6Addr`. This approach allows Serde to do the direct write into the final JSON output buffer, eliminating intermediate string allocations.
