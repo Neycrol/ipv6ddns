@@ -5,3 +5,6 @@
 ## 2024-05-19 - Removed unconditional string allocation in redact_secrets
 **Learning:** The `redact_secrets` function was unconditionally calling `message.to_string()` before applying `replace` operations, which caused a completely unnecessary heap allocation because `replace()` itself allocates a new String anyway.
 **Action:** Replaced the unconditional allocation with a direct conditional branch that calls `.replace()` right on the string slice `message`, shaving off up to ~70ns of allocation latency per call when redacting secrets. Always avoid allocating a base string just to call string-mutating functions that return new strings.
+## 2026-10-01 - Avoided unnecessary allocations in Cloudflare JSON serialization
+**Learning:** `serde_json` serialization in Rust can natively handle std types like `Ipv6Addr` without allocating intermediate `String`s. By borrowing string references and letting Serde format the std types itself, we can avoid temporary allocations entirely when constructing short-lived payload structures.
+**Action:** Always prefer borrowing values with lifetimes (`<'a>`) and passing primitive/standard library types directly into structures intended for serialization, rather than allocating strings first.
